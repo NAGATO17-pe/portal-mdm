@@ -18,23 +18,23 @@ aplicar_css()
 with st.sidebar:
     st.markdown("""
         <div class="sidebar-logo">
-            <div style="font-size:2rem;">🌿</div>
-            <h2>ACP MDM Portal</h2>
-            <p>Portal De Cuarentena · Proyecciones</p>
+            <div style="font-size:2.4rem; filter: drop-shadow(0 4px 6px rgba(45,90,39,0.3)); margin-bottom: 6px;">🌿</div>
+            <h2>ACP MDM</h2>
+            <p style="font-weight: 500; letter-spacing: 0.3px;">Data Quality Premium</p>
         </div>
     """, unsafe_allow_html=True)
 
     pagina = st.radio(
         "Navegación",
         options=[
-            "🏠  Inicio",
-            "🔴  Cuarentena",
-            "🔗  Homologación",
-            "📚  Catálogos › Variedades",
-            "📚  Catálogos › Geografía",
-            "📚  Catálogos › Personal",
-            "⚙️   Config › Reglas de Validación",
-            "⚙️   Config › Parámetros Pipeline",
+            "Inicio", 
+            "Cuarentena", 
+            "Homologación", 
+            "Variedades", 
+            "Geografía", 
+            "Personal", 
+            "Reglas de Validación", 
+            "Parámetros Pipeline"
         ],
         label_visibility="collapsed",
     )
@@ -46,21 +46,21 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 # ── Enrutamiento ──────────────────────────────────────────────────────────
-if pagina == "🏠  Inicio":
+if pagina == "Inicio":
     from paginas.inicio import render
-elif pagina == "🔴  Cuarentena":
+elif pagina == "Cuarentena":
     from paginas.cuarentena import render
-elif pagina == "🔗  Homologación":
+elif pagina == "Homologación":
     from paginas.homologacion import render
-elif pagina == "📚  Catálogos › Variedades":
+elif pagina == "Variedades":
     from paginas.catalogos.variedades import render
-elif pagina == "📚  Catálogos › Geografía":
+elif pagina == "Geografía":
     from paginas.catalogos.geografia import render
-elif pagina == "📚  Catálogos › Personal":
+elif pagina == "Personal":
     from paginas.catalogos.personal import render
-elif pagina == "⚙️   Config › Reglas de Validación":
+elif pagina == "Reglas de Validación":
     from paginas.configuracion.reglas_validacion import render
-elif pagina == "⚙️   Config › Parámetros Pipeline":
+elif pagina == "Parámetros Pipeline":
     from paginas.configuracion.parametros_pipeline import render
 else:
     from paginas.inicio import render

@@ -1,10 +1,9 @@
-"""
-parametros_pipeline.py — Parámetros operativos del ETL.
-"""
 import streamlit as st
+import pandas as pd
 from utils.formato import header_pagina
-from utils.datos_mock import PARAMETROS_PIPELINE
 
+# DataFrame vacío como placeholder para parámetros
+PARAMETROS_PIPELINE = pd.DataFrame(columns=["Parámetro", "Valor actual", "Descripción", "Última modificación"])
 
 def render():
     header_pagina(
@@ -22,24 +21,27 @@ def render():
 
     st.markdown("### ⚙️ Parámetros activos")
 
-    for _, row in df.iterrows():
-        with st.container():
-            p1, p2, p3 = st.columns([2.5, 2, 4])
-            with p1:
-                st.markdown(f"**`{row['Parámetro']}`**")
-                st.caption(f"Última mod.: {row['Última modificación']}")
-            with p2:
-                nuevo_val = st.text_input(
-                    "Valor",
-                    value=str(row["Valor actual"]),
-                    key=f"param_{row['Parámetro']}",
-                    label_visibility="collapsed",
-                )
-            with p3:
-                st.markdown(f"<span style='color:#666; font-size:0.85rem;'>{row['Descripción']}</span>",
-                            unsafe_allow_html=True)
+    if df.empty:
+        st.info("No hay parámetros configurados.")
+    else:
+        for _, row in df.iterrows():
+            with st.container():
+                p1, p2, p3 = st.columns([2.5, 2, 4])
+                with p1:
+                    st.markdown(f"**`{row['Parámetro']}`**")
+                    st.caption(f"Última mod.: {row['Última modificación']}")
+                with p2:
+                    st.text_input(
+                        "Valor",
+                        value=str(row["Valor actual"]),
+                        key=f"param_{row['Parámetro']}",
+                        label_visibility="collapsed",
+                    )
+                with p3:
+                    st.markdown(f"<span style='color:#666; font-size:0.85rem;'>{row['Descripción']}</span>",
+                                unsafe_allow_html=True)
 
-        st.markdown("---")
+            st.markdown("---")
 
-    if st.button("💾 Guardar todos los cambios", key="btn_param_guardar", type="primary"):
-        st.success("✅ Parámetros actualizados. Aplicarán en la próxima ejecución del ETL (demo).")
+        if st.button("💾 Guardar todos los cambios", key="btn_param_guardar", type="primary"):
+            st.toast("Guardado simulado: DB desconectada.", icon="💾")
