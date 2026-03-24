@@ -97,7 +97,7 @@ def cargar_fact_ciclo_poda(engine: Engine) -> dict:
 
             _insertar(conexion, {
                 'id_geo':      id_geo,
-                'id_tiempo':   obtener_id_tiempo(fecha, engine),
+                'id_tiempo':   obtener_id_tiempo(fecha),
                 'id_variedad': id_var,
                 'tipo_eval':   titulo(fila.get('Tipo_Evaluacion_Raw')),
                 'tallos':      _a_decimal(fila.get('TallosPlanta_Raw')),

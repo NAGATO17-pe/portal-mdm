@@ -1,0 +1,34 @@
+
+============================================================
+  DWH Geographic Phenology � ETL Pipeline
+  Inicio: 2026-03-19 12:35:10
+============================================================
+
+[01/17] Verificando conexion SQL Server...
+D:\Proyecto2026\ACP_DWH\ACP Proyecciones\ETL\config\conexion.py:53: SAWarning: Unrecognized server version info '17.0.1000.7'.  Some SQL Server features may not function properly.
+  with engine.connect() as conexion:
+Traceback (most recent call last):
+  File "D:\Proyecto2026\ACP_DWH\ACP Proyecciones\ETL\config\conexion.py", line 58, in verificar_conexion
+    print(f'\u2705 Conectado a: {fila.base_activa}')
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\chernandez\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2705' in position 0: character maps to <undefined>
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "D:\Proyecto2026\ACP_DWH\ACP Proyecciones\ETL\pipeline.py", line 140, in <module>
+    ejecutar()
+    ~~~~~~~~^^
+  File "D:\Proyecto2026\ACP_DWH\ACP Proyecciones\ETL\pipeline.py", line 79, in ejecutar
+    if not verificar_conexion():
+           ~~~~~~~~~~~~~~~~~~^^
+  File "D:\Proyecto2026\ACP_DWH\ACP Proyecciones\ETL\config\conexion.py", line 61, in verificar_conexion
+    print(f'\u274c Error de conexi�n: {error}')
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\chernandez\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u274c' in position 0: character maps to <undefined>

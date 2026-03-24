@@ -1,0 +1,1 @@
+ID_Evaluacion_Pesos, Fecha_Raw, Modulo_Raw, Turno_Raw, Valvula_Raw, Variedad_Raw, Evaluacion_Raw, PesoBaya_Raw, CantMuestra_Raw, Nombre_Archivo, Fecha_Sistema

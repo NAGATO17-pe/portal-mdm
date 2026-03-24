@@ -6,6 +6,8 @@ El ETL usa este diccionario para saber a qué tabla va cada archivo.
 """
 
 from pathlib import Path
+import re
+import unicodedata
 
 
 # Carpeta raíz donde el usuario deposita los Excel de campo
@@ -42,6 +44,70 @@ RUTAS: dict[str, str] = {
     'proyeccion_pesos':          'Bronce.Proyeccion_Pesos',
 }
 
+ALIAS_CARPETAS: dict[str, str] = {
+    'evaluacion_vegetativa_arandano': 'evaluacion_vegetativa',
+    'evaluacion_peso':                'evaluacion_pesos',
+    'evaluacion_pesos_reporte':       'evaluacion_pesos',
+}
+
+ALIAS_ARCHIVOS: dict[str, str] = {
+    'reporte_evaluacion_peso':        'evaluacion_pesos',
+    'evaluacion_peso':                'evaluacion_pesos',
+    'evaluacion_pesos':               'evaluacion_pesos',
+    'evaluacion_vegetativa':          'evaluacion_vegetativa',
+    'vegetativa_arandano':            'evaluacion_vegetativa',
+}
+
+
+def _normalizar_nombre(texto: str) -> str:
+    """
+    Normaliza texto para comparacion:
+    - elimina acentos
+    - minusculas
+    - separadores/puntuacion -> underscore
+    """
+    texto = unicodedata.normalize('NFKD', str(texto))
+    texto = ''.join(ch for ch in texto if not unicodedata.combining(ch))
+    texto = texto.casefold().strip()
+    texto = re.sub(r'[^a-z0-9]+', '_', texto)
+    texto = re.sub(r'_+', '_', texto).strip('_')
+    return texto
+
+
+_RUTAS_NORMALIZADAS: dict[str, str] = {
+    _normalizar_nombre(carpeta): carpeta
+    for carpeta in RUTAS
+}
+for alias, canonica in ALIAS_CARPETAS.items():
+    _RUTAS_NORMALIZADAS[_normalizar_nombre(alias)] = canonica
+
+
+def _resolver_carpeta_canonica(nombre_carpeta: str) -> str | None:
+    return _RUTAS_NORMALIZADAS.get(_normalizar_nombre(nombre_carpeta))
+
+
+def _inferir_carpeta_por_archivo(nombre_archivo: str) -> str | None:
+    """
+    Infere carpeta destino cuando el Excel se deja suelto en data/entrada.
+    """
+    token = _normalizar_nombre(Path(nombre_archivo).stem)
+    if not token:
+        return None
+
+    for alias, canonica in ALIAS_ARCHIVOS.items():
+        if _normalizar_nombre(alias) in token:
+            return canonica
+
+    candidatos = sorted(
+        ((_normalizar_nombre(carpeta), carpeta) for carpeta in RUTAS),
+        key=lambda item: len(item[0]),
+        reverse=True
+    )
+    for clave, canonica in candidatos:
+        if clave and clave in token:
+            return canonica
+    return None
+
 
 def obtener_archivo_mas_reciente(carpeta: Path) -> Path | None:
     """
@@ -63,15 +129,41 @@ def listar_carpetas_con_archivos() -> list[tuple[str, Path, str]]:
 
     Retorna lista de tuplas: (nombre_carpeta, ruta_archivo, tabla_destino)
     """
-    pendientes = []
+    pendientes_por_carpeta: dict[str, Path] = {}
 
-    for nombre_carpeta, tabla_destino in RUTAS.items():
-        ruta_carpeta = CARPETA_ENTRADA / nombre_carpeta
-        if not ruta_carpeta.exists():
-            continue
-        archivo = obtener_archivo_mas_reciente(ruta_carpeta)
+    if CARPETA_ENTRADA.exists():
+        # 1) Subcarpetas (acepta tildes, mayusculas y separadores distintos).
+        for ruta in CARPETA_ENTRADA.iterdir():
+            if not ruta.is_dir():
+                continue
+
+            carpeta_canonica = _resolver_carpeta_canonica(ruta.name)
+            if not carpeta_canonica:
+                continue
+
+            archivo = obtener_archivo_mas_reciente(ruta)
+            if not archivo:
+                continue
+
+            actual = pendientes_por_carpeta.get(carpeta_canonica)
+            if actual is None or archivo.stat().st_mtime > actual.stat().st_mtime:
+                pendientes_por_carpeta[carpeta_canonica] = archivo
+
+        # 2) Archivos sueltos en data/entrada.
+        for archivo in CARPETA_ENTRADA.glob('*.xlsx'):
+            carpeta_canonica = _inferir_carpeta_por_archivo(archivo.name)
+            if not carpeta_canonica:
+                continue
+
+            actual = pendientes_por_carpeta.get(carpeta_canonica)
+            if actual is None or archivo.stat().st_mtime > actual.stat().st_mtime:
+                pendientes_por_carpeta[carpeta_canonica] = archivo
+
+    pendientes: list[tuple[str, Path, str]] = []
+    for carpeta_canonica, tabla_destino in RUTAS.items():
+        archivo = pendientes_por_carpeta.get(carpeta_canonica)
         if archivo:
-            pendientes.append((nombre_carpeta, archivo, tabla_destino))
+            pendientes.append((carpeta_canonica, archivo, tabla_destino))
 
     return pendientes
 

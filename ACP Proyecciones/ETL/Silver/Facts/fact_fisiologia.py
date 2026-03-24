@@ -99,7 +99,7 @@ def cargar_fact_fisiologia(engine: Engine) -> dict:
                 )
             """), {
                 'id_geo':        id_geo,
-                'id_tiempo':     obtener_id_tiempo(fecha, engine),
+                'id_tiempo':     obtener_id_tiempo(fecha),
                 'id_variedad':   id_var,
                 'tercio':        tercio,
                 'brotes_prod':   brotes_prod,

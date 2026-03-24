@@ -27,13 +27,13 @@ with st.sidebar:
     pagina = st.radio(
         "Navegación",
         options=[
-            "Inicio", 
-            "Cuarentena", 
-            "Homologación", 
-            "Variedades", 
-            "Geografía", 
-            "Personal", 
-            "Reglas de Validación", 
+            "Inicio",
+            "Cuarentena",
+            "Homologación",
+            "Variedades",
+            "Geografía",
+            "Personal",
+            "Reglas de Validación",
             "Parámetros Pipeline"
         ],
         label_visibility="collapsed",
@@ -46,6 +46,17 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 # ── Enrutamiento ──────────────────────────────────────────────────────────
+def header_pagina(emoji, titulo, subtitulo=None):
+    st.markdown(f"""
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
+            <div style="font-size: 3.5rem; filter: drop-shadow(0 4px 6px rgba(45,90,39,0.3));">{emoji}</div>
+            <div>
+                <h1 style="margin: 0; padding: 0; font-size: 2.5rem; line-height: 1.2;">{titulo}</h1>
+                {"<p style='margin: 0; padding: 0; font-size: 1rem; color: #666;'>"+subtitulo+"</p>" if subtitulo else ""}
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
 if pagina == "Inicio":
     from paginas.inicio import render
 elif pagina == "Cuarentena":

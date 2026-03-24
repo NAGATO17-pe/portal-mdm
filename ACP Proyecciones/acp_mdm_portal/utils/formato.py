@@ -301,11 +301,4 @@ def load_lottieurl(url: str):
     except Exception:
         return None
 
-@st.cache_data
-def load_lottieurl(url: str):
-    import requests
-    r = requests.get(url)
-    if r.status_code != 200:
-        return None
-    return r.json()
 

@@ -5,24 +5,67 @@ Dashboard con métricas del día, estado por tabla, alertas y log de cargas.
 import streamlit as st
 import pandas as pd
 from utils.formato import header_pagina, colorear_estado, crear_tarjeta_kpi
+from utils.db import ejecutar_query, verificar_conexion
 
-# DataFrames vacíos como placeholders para futura conexión a BD
-ESTADO_TABLAS = pd.DataFrame(columns=["Tabla", "Última carga", "Filas insertadas", "Filas rechazadas", "Estado"])
-LOG_CARGAS = pd.DataFrame(columns=["Fecha", "Tablas procesadas", "Total filas", "Rechazadas", "Resultado"])
+@st.cache_data(ttl=60, show_spinner=False)
+def _cargar_resumen_ultima_carga() -> pd.DataFrame:
+    """
+    Obtiene el resumen de la ULTIMA ejecucion del pipeline por tabla
+    desde Auditoria.Log_Carga.
+    """
+    return ejecutar_query("""
+        SELECT
+            lc.Tabla_Destino                              AS [Tabla],
+            CONVERT(varchar, MAX(lc.Fecha_Inicio), 120)  AS [Ultima carga],
+            SUM(lc.Filas_Insertadas)                     AS [Filas insertadas],
+            SUM(lc.Filas_Rechazadas)                     AS [Filas rechazadas],
+            MAX(lc.Estado_Proceso)                       AS [Estado]
+        FROM Auditoria.Log_Carga lc
+        WHERE lc.Fecha_Inicio >= CAST(DATEADD(day, -7, GETDATE()) AS DATE)
+        GROUP BY lc.Tabla_Destino
+        ORDER BY MAX(lc.Fecha_Inicio) DESC
+    """)
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cargar_log_reciente() -> pd.DataFrame:
+    """Log de las ultimas 20 ejecuciones del pipeline."""
+    return ejecutar_query("""
+        SELECT TOP 20
+            CONVERT(varchar, Fecha_Inicio, 120) AS [Fecha],
+            Nombre_Proceso                      AS [Proceso],
+            Tabla_Destino                       AS [Tabla],
+            Filas_Leidas                        AS [Leidas],
+            Filas_Insertadas                    AS [Insertadas],
+            Filas_Rechazadas                    AS [Rechazadas],
+            ROUND(Duracion_Segundos, 1)         AS [Duración (s)],
+            Estado_Proceso                      AS [Estado]
+        FROM Auditoria.Log_Carga
+        ORDER BY Fecha_Inicio DESC
+    """)
+
 
 def render():
-    header_pagina("🏠", "Inicio", "Estado del pipeline · Conexión a Base de Datos pendiente")
+    conectado = verificar_conexion()
+    header_pagina("HOME", "Inicio", "Estado del pipeline · Data Warehouse ACP")
 
-    # ── Métricas principales (Premium HTML) ──────────────────────────────
-    filas_ok_txt = "0"
-    en_cuarentena_txt = "0"
-    pendientes_txt = "0"
+    # ── Métricas principales ────────────────────────────────────────────────
+    df_estado = pd.DataFrame()
+    if conectado:
+        try:
+            df_estado = _cargar_resumen_ultima_carga()
+        except Exception:
+            pass
+
+    total_ok         = int(df_estado['Filas insertadas'].sum()) if not df_estado.empty else 0
+    total_rechaz     = int(df_estado['Filas rechazadas'].sum()) if not df_estado.empty else 0
+    ultima_carga     = df_estado['Ultima carga'].max()          if not df_estado.empty else 'Sin datos'
+    tablas_con_error = int((df_estado['Estado'] != 'OK').sum()) if not df_estado.empty else 0
 
     html_kpis = f"""<div class="kpi-container" style="margin-bottom: 32px;">
-{crear_tarjeta_kpi("Última carga", "N/A", "⏱️", "")}
-{crear_tarjeta_kpi("Filas OK", filas_ok_txt, "✅", "success")}
-{crear_tarjeta_kpi("En cuarentena", en_cuarentena_txt, "🔴", "danger")}
-{crear_tarjeta_kpi("Homologaciones", pendientes_txt, "🔗", "warning")}
+{crear_tarjeta_kpi("Ultima carga", ultima_carga, "RELOJ", "")}
+{crear_tarjeta_kpi("Filas OK", f"{total_ok:,}", "OK", "success")}
+{crear_tarjeta_kpi("Rechazadas", f"{total_rechaz:,}", "ERROR", "danger" if total_rechaz > 0 else "")}
+{crear_tarjeta_kpi("Tablas con error", str(tablas_con_error), "ALERTA", "warning" if tablas_con_error > 0 else "success")}
 </div>"""
     st.markdown(html_kpis, unsafe_allow_html=True)
 
@@ -114,13 +157,18 @@ def render():
     st.markdown("<hr style='margin: 32px 0;'>", unsafe_allow_html=True)
 
     # ── Estado por tabla ──────────────────────────────────────────────────
-    st.markdown("### 📊 Estado de la última carga por tabla")
-    if ESTADO_TABLAS.empty:
-        st.write("No hay datos de carga recientes.")
+    st.markdown("### Estado de la ultima carga por tabla")
+    if not conectado or df_estado.empty:
+        st.info("No hay registros de carga en los ultimos 7 dias.")
     else:
+        def _color_estado(val):
+            if val == 'OK':
+                return 'background-color:rgba(46,139,87,0.15); color:#2E8B57; font-weight:600'
+            return 'background-color:rgba(192,57,43,0.15); color:#C0392B; font-weight:600'
+
         st.dataframe(
-            ESTADO_TABLAS.style
-                .map(colorear_estado, subset=["Estado"])
+            df_estado.style
+                .map(_color_estado, subset=["Estado"])
                 .format({"Filas insertadas": "{:,}", "Filas rechazadas": "{:,}"}),
             width="stretch",
             hide_index=True,
@@ -128,15 +176,17 @@ def render():
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── Log últimas 10 cargas ─────────────────────────────────────────────
-    with st.expander("📋 Log de cargas (solo lectura)", expanded=False):
-        if LOG_CARGAS.empty:
-            st.write("El historial de cargas está vacío.")
+    # ── Log últimas 20 cargas ─────────────────────────────────────────────
+    with st.expander("Log de cargas (solo lectura)", expanded=False):
+        if not conectado:
+            st.warning("Sin conexion a la base de datos.")
         else:
-            st.dataframe(
-                LOG_CARGAS.style
-                    .map(colorear_estado, subset=["Resultado"])
-                    .format({"Total filas": "{:,}", "Rechazadas": "{:,}"}),
-                width="stretch",
-                hide_index=True,
-            )
+            df_log = _cargar_log_reciente()
+            if df_log.empty:
+                st.write("El historial de cargas esta vacio.")
+            else:
+                st.dataframe(
+                    df_log.style.map(_color_estado, subset=["Estado"]),
+                    width="stretch",
+                    hide_index=True,
+                )

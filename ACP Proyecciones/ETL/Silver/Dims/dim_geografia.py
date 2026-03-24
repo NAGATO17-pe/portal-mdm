@@ -36,7 +36,7 @@ def _cargar_catalogo_geografia(engine: Engine) -> pd.DataFrame:
                 Codigo_SAP_Campo,
                 Es_Test_Block
             FROM MDM.Catalogo_Geografia
-            WHERE Activo = 1
+            WHERE Es_Activa = 1
         """))
         return pd.DataFrame(resultado.fetchall(), columns=resultado.keys())
 
@@ -154,6 +154,148 @@ def cargar_dim_geografia(engine: Engine) -> dict:
                     resumen['sin_cambios'] += 1
             else:
                 _insertar_registro(conexion, fila_catalogo)
+                resumen['insertados'] += 1
+
+    return resumen
+
+
+# Implementacion corregida: clave natural completa + comparacion estable.
+def _geo_es_nulo(valor) -> bool:
+    import pandas as _pd
+    if valor is None:
+        return True
+    if isinstance(valor, float) and _pd.isna(valor):
+        return True
+    return str(valor).strip() in ('', 'None', 'nan')
+
+
+def _geo_normalizar_entero(valor) -> int | None:
+    if _geo_es_nulo(valor):
+        return None
+    if isinstance(valor, bool):
+        return 1 if valor else 0
+    texto = str(valor).strip().lower()
+    if texto in ('true', 'verdadero', 'si', 'yes'):
+        return 1
+    if texto in ('false', 'falso', 'no'):
+        return 0
+    return int(float(str(valor).strip()))
+
+
+def _geo_normalizar_texto(valor, usar_titulo: bool = False) -> str | None:
+    from utils.texto import normalizar_espacio, titulo as _titulo
+
+    if _geo_es_nulo(valor):
+        return None
+
+    texto = normalizar_espacio(str(valor))
+    return _titulo(texto) if usar_titulo else texto
+
+
+def _geo_normalizar_fila(fila: pd.Series | dict) -> dict:
+    from utils.texto import limpiar_numerico_texto
+
+    return {
+        'Fundo': _geo_normalizar_texto(fila.get('Fundo'), usar_titulo=True),
+        'Sector': _geo_normalizar_texto(fila.get('Sector'), usar_titulo=True),
+        'Modulo': _geo_normalizar_entero(fila.get('Modulo')),
+        'Turno': _geo_normalizar_entero(fila.get('Turno')),
+        'Valvula': limpiar_numerico_texto(_geo_normalizar_texto(fila.get('Valvula'))),
+        'Cama': limpiar_numerico_texto(_geo_normalizar_texto(fila.get('Cama'))),
+        'Codigo_SAP_Campo': _geo_normalizar_texto(fila.get('Codigo_SAP_Campo')),
+        'Es_Test_Block': _geo_normalizar_entero(fila.get('Es_Test_Block')) or 0,
+    }
+
+
+def _geo_clave(fila: dict) -> tuple:
+    return (
+        (fila.get('Fundo') or '').lower(),
+        (fila.get('Sector') or '').lower(),
+        fila.get('Modulo'),
+        fila.get('Turno'),
+        (fila.get('Valvula') or '').lower(),
+        (fila.get('Cama') or '').lower(),
+    )
+
+
+def _geo_hay_cambio(existente: dict, actual: dict) -> bool:
+    return (
+        (existente.get('Codigo_SAP_Campo') or None) != (actual.get('Codigo_SAP_Campo') or None)
+        or int(existente.get('Es_Test_Block', 0)) != int(actual.get('Es_Test_Block', 0))
+    )
+
+
+def _geo_insertar_registro(conexion, fila: dict) -> None:
+    hoy = date.today()
+    conexion.execute(text("""
+        INSERT INTO Silver.Dim_Geografia (
+            Fundo, Sector, Modulo, Turno,
+            Valvula, Cama, Es_Test_Block,
+            Codigo_SAP_Campo,
+            Fecha_Inicio_Vigencia, Fecha_Fin_Vigencia, Es_Vigente
+        ) VALUES (
+            :fundo, :sector, :modulo, :turno,
+            :valvula, :cama, :es_test_block,
+            :codigo_sap,
+            :fecha_inicio, NULL, 1
+        )
+    """), {
+        'fundo': fila.get('Fundo'),
+        'sector': fila.get('Sector'),
+        'modulo': fila.get('Modulo'),
+        'turno': fila.get('Turno'),
+        'valvula': fila.get('Valvula'),
+        'cama': fila.get('Cama'),
+        'es_test_block': int(fila.get('Es_Test_Block', 0)),
+        'codigo_sap': fila.get('Codigo_SAP_Campo'),
+        'fecha_inicio': hoy,
+    })
+
+
+def cargar_dim_geografia(engine: Engine) -> dict:
+    resumen = {'insertados': 0, 'cerrados': 0, 'sin_cambios': 0}
+
+    df_catalogo = _cargar_catalogo_geografia(engine)
+    if df_catalogo.empty:
+        return resumen
+
+    df_vigentes = _obtener_vigentes(engine)
+
+    registros_catalogo = []
+    claves_catalogo = set()
+    for _, fila_catalogo in df_catalogo.iterrows():
+        fila_normalizada = _geo_normalizar_fila(fila_catalogo)
+        clave = _geo_clave(fila_normalizada)
+        if clave in claves_catalogo:
+            continue
+        claves_catalogo.add(clave)
+        registros_catalogo.append(fila_normalizada)
+
+    indice_vigentes: dict[tuple, dict] = {}
+    for _, fila_vigente in df_vigentes.iterrows():
+        fila_normalizada = _geo_normalizar_fila(fila_vigente)
+        fila_normalizada['ID_Geografia'] = int(fila_vigente['ID_Geografia'])
+        clave = _geo_clave(fila_normalizada)
+        if (
+            clave not in indice_vigentes
+            or fila_normalizada['ID_Geografia'] > indice_vigentes[clave]['ID_Geografia']
+        ):
+            indice_vigentes[clave] = fila_normalizada
+
+    with engine.begin() as conexion:
+        for fila_catalogo in registros_catalogo:
+            clave = _geo_clave(fila_catalogo)
+            if clave in indice_vigentes:
+                existente = indice_vigentes[clave]
+                if _geo_hay_cambio(existente, fila_catalogo):
+                    _cerrar_registro(conexion, int(existente['ID_Geografia']))
+                    _geo_insertar_registro(conexion, fila_catalogo)
+                    resumen['cerrados'] += 1
+                    resumen['insertados'] += 1
+                else:
+                    resumen['sin_cambios'] += 1
+            else:
+                _geo_insertar_registro(conexion, fila_catalogo)
                 resumen['insertados'] += 1
 
     return resumen

@@ -15,19 +15,16 @@ from config.conexion import obtener_engine
 
 def registrar_inicio(tabla_destino: str,
                      nombre_archivo: str) -> int:
-    """
-    Registra el inicio de una carga en Auditoria.Log_Carga.
-    Retorna el ID del registro para actualizarlo al finalizar.
-    """
     engine = obtener_engine()
 
     with engine.begin() as conexion:
         resultado = conexion.execute(text("""
             INSERT INTO Auditoria.Log_Carga (
+                Nombre_Proceso,
                 Tabla_Destino,
-                Nombre_Archivo,
+                Nombre_Archivo_Fuente,
                 Fecha_Inicio,
-                Estado,
+                Estado_Proceso,
                 Filas_Leidas,
                 Filas_Insertadas,
                 Filas_Rechazadas,
@@ -36,6 +33,7 @@ def registrar_inicio(tabla_destino: str,
             )
             OUTPUT INSERTED.ID_Log_Carga
             VALUES (
+                :nombre_proceso,
                 :tabla_destino,
                 :nombre_archivo,
                 :fecha_inicio,
@@ -43,6 +41,7 @@ def registrar_inicio(tabla_destino: str,
                 0, 0, 0, 0, NULL
             )
         """), {
+            'nombre_proceso': 'ETL_Pipeline',
             'tabla_destino':  tabla_destino,
             'nombre_archivo': nombre_archivo,
             'fecha_inicio':   datetime.now(),
@@ -52,9 +51,6 @@ def registrar_inicio(tabla_destino: str,
 
 
 def registrar_fin(id_log: int, resultado: dict) -> None:
-    """
-    Actualiza el registro de Log_Carga al finalizar la carga.
-    """
     engine  = obtener_engine()
     fin     = datetime.now()
     estado  = resultado.get('estado', 'ERROR')
@@ -65,14 +61,14 @@ def registrar_fin(id_log: int, resultado: dict) -> None:
         conexion.execute(text("""
             UPDATE Auditoria.Log_Carga
             SET
-                Fecha_Fin         = :fecha_fin,
-                Estado            = :estado,
-                Filas_Insertadas  = :filas_insertadas,
-                Filas_Rechazadas  = :filas_rechazadas,
-                Duracion_Segundos = DATEDIFF(
+                Fecha_Fin             = :fecha_fin,
+                Estado_Proceso        = :estado,
+                Filas_Insertadas      = :filas_insertadas,
+                Filas_Rechazadas      = :filas_rechazadas,
+                Duracion_Segundos     = DATEDIFF(
                     SECOND, Fecha_Inicio, :fecha_fin
                 ),
-                Mensaje_Error     = :mensaje_error
+                Mensaje_Error         = :mensaje_error
             WHERE ID_Log_Carga = :id_log
         """), {
             'fecha_fin':        fin,
@@ -82,7 +78,6 @@ def registrar_fin(id_log: int, resultado: dict) -> None:
             'mensaje_error':    mensaje if estado != 'OK' else None,
             'id_log':           id_log,
         })
-
 
 def registrar_decision_mdm(tabla_origen: str,
                             texto_crudo: str,

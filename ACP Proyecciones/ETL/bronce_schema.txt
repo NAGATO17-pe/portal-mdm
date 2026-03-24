@@ -1,0 +1,22 @@
+Data_SAP: Almacen_Raw, Cantidad_Jabas_Raw, Codigo_Cliente_Raw, Consumidor_PEP_Raw, Des_Consumidor_PEP_Raw, Des_Variedad_Raw, Descripcion_Material_Raw, Doc_Remision_Raw, Fecha_Cosecha_Raw, Fecha_Recepcion_Raw, Fecha_Sistema, FechaSubida_Raw, ID_Data_SAP, Lote_Raw, Material_Codigo_Raw, Nombre_Archivo, Peso_Bruto_Raw, Peso_Neto_Raw, Peso_Tara_Raw, Responsable_Raw, Variedad_Codigo_Raw
+Proyeccion_Pesos: Fecha_Raw, Fecha_Sistema, ID_Proyeccion_Pesos, Modulo_Raw, Nombre_Archivo, Peso_Proyectado_Raw, Variedad_Raw
+Dashboard: Fecha_Sistema, ID_Dashboard, Nombre_Archivo, Ruta_Origen
+Conteo_Fruta: Evaluador_Raw, Fecha_Raw, Fecha_Sistema, ID_Conteo_Fruta, Modulo_Raw, Nombre_Archivo, Tipo_Evaluacion_Raw, Turno_Raw, Valores_Raw, Valvula_Raw, Variedad_Raw
+Induccion_Floral: Evaluador_Raw, Fecha_Raw, Fecha_Sistema, ID_Induccion_Floral, Modulo_Raw, Nombre_Archivo, Tipo_Evaluacion_Raw, Turno_Raw, Valores_Raw, Valvula_Raw, Variedad_Raw
+Ciclos_Fenologicos: Color_Raw, Evaluador_Raw, Fecha_Raw, Fecha_Sistema, FechaSubida_Raw, ID_Ciclo_Fenologico, Modulo_Raw, Nombre_Archivo, Organo_Raw, Turno_Raw, Valores_Raw, Valvula_Raw, Variedad_Raw
+Maduracion: Evaluador_Raw, Fecha_Raw, Fecha_Sistema, ID_Maduracion, Modulo_Raw, Nombre_Archivo, Turno_Raw, Valores_Raw, Valvula_Raw, Variedad_Raw
+Pintado_Flores: Evaluador_Raw, Fecha_Raw, Fecha_Sistema, ID_Pintado_Flores, Modulo_Raw, Nombre_Archivo, Turno_Raw, Valores_Raw, Valvula_Raw, Variedad_Raw
+Peladas: Evaluador_Raw, Fecha_Raw, Fecha_Sistema, ID_Peladas, Modulo_Raw, Nombre_Archivo, Turno_Raw, Valores_Raw, Valvula_Raw, Variedad_Raw
+Evaluacion_Vegetativa: Evaluador_Raw, Fecha_Raw, Fecha_Sistema, ID_Evaluacion_Veg, Modulo_Raw, Nombre_Archivo, Semanas_Poda_Raw, Turno_Raw, Valores_Raw, Valvula_Raw, Variedad_Raw
+Tasa_Crecimiento_Brotes: Evaluador_Raw, Fecha_Raw, Fecha_Sistema, ID_Tasa_Crecimiento, Modulo_Raw, Nombre_Archivo, Turno_Raw, Valores_Raw, Valvula_Raw, Variedad_Raw
+Evaluacion_Calidad_Poda: Evaluador_Raw, Fecha_Raw, Fecha_Sistema, ID_Evaluacion_Poda, Modulo_Raw, Nombre_Archivo, Tipo_Evaluacion_Raw, Turno_Raw, Valores_Raw, Valvula_Raw, Variedad_Raw
+Fisiologia: Brote_Raw, Fecha_Raw, Fecha_Sistema, Hinchadas_Raw, ID_Fisiologia, Modulo_Raw, Nombre_Archivo, Productivas_Raw, Tercio_Raw, Total_Org_Raw, Turno_Raw, Valvula_Raw, Variedad_Raw
+Calibres: Evaluador_Raw, Fecha_Raw, Fecha_Sistema, ID_Calibres, Modulo_Raw, Nombre_Archivo, Turno_Raw, Valores_Raw, Variedad_Raw
+Consolidado_Tareos: Actividad_Raw, DNIResponsable_Raw, Fecha_Raw, Fecha_Sistema, HorasTrabajadas_Raw, ID_Tareo, IDPersonalGeneral_Raw, IDPlanilla_Raw, Labor_Raw, Modulo_Raw, Nombre_Archivo, Turno_Raw
+Fiscalizacion: DNI_Raw, Fecha_Raw, Fecha_Sistema, ID_Fiscalizacion, Modulo_Raw, Nombre_Archivo, Turno_Raw, Valores_Raw
+Seguimiento_Errores: Evaluador_Raw, Fecha_Raw, Fecha_Sistema, ID_Seguimiento_Errores, Modulo_Raw, Nombre_Archivo, Tipo_Error_Raw, Valores_Raw
+Evaluacion_Pesos: CantMuestra_Raw, Evaluacion_Raw, Fecha_Raw, Fecha_Sistema, ID_Evaluacion_Pesos, Modulo_Raw, Nombre_Archivo, PesoBaya_Raw, Turno_Raw, Valvula_Raw, Variedad_Raw
+Reporte_Cosecha: Fecha_Raw, Fecha_Sistema, ID_Reporte_Cosecha, Jabas_Raw, KgNeto_Raw, Modulo_Raw, Nombre_Archivo, Turno_Raw, Valores_Raw, Valvula_Raw, Variedad_Raw
+Cierre_Mapas_Cosecha: Fecha_Raw, Fecha_Sistema, ID_Cierre_Cosecha, Modulo_Raw, Nombre_Archivo, Valores_Raw, Variedad_Raw
+Reporte_Clima: Fecha_Raw, Fecha_Sistema, Hora_Raw, Humedad_Raw, ID_Reporte_Clima, Nombre_Archivo, Precipitacion_Raw, Sector_Raw, TempMax_Raw, TempMin_Raw, Valores_Raw
+Variables_Meteorologicas: Fecha_Raw, Fecha_Sistema, ID_Variables_Met, Modulo_Raw, Nombre_Archivo, Radiacion_Raw, Valores_Raw, VPD_Raw

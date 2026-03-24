@@ -98,7 +98,7 @@ def cargar_fact_conteo_fenologico(engine: Engine) -> dict:
                 })
                 continue
 
-            id_tiempo = obtener_id_tiempo(obtener_id_tiempo(fecha), engine)
+            id_tiempo = obtener_id_tiempo(fecha)
 
             # ── Geografía ─────────────────────────────────────
             modulo_raw = fila.get('Modulo_Raw')

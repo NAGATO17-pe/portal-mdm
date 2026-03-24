@@ -1,0 +1,104 @@
+﻿py : D:\Proyecto2026\ACP_DWH\ACP 
+Proyecciones\ETL\config\conexion.py:53: SAWarning: Unrecognized server 
+version info '17.0.1000.7'.  Some SQL Server features may not function 
+properly.
+En línea: 1 Carácter: 20
++ $env:PYTHONUTF8=1; py pipeline.py > traceback.txt 2>&1; py convert.py
++                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (D:\Proyecto2026...ction p 
+   roperly.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  with engine.connect() as conexion:
+C:\Users\chernandez\AppData\Local\Python\pythoncore-3.14-64\Lib\context
+lib.py:141: SAWarning: Unrecognized server version info '17.0.1000.7'. 
+ Some SQL Server features may not function properly.
+  return next(self.gen)
+C:\Users\chernandez\AppData\Local\Python\pythoncore-3.14-64\Lib\site-pa
+ckages\pandas\io\sql.py:1648: SAWarning: Unrecognized server version 
+info '17.0.1000.7'.  Some SQL Server features may not function 
+properly.
+  con = self.exit_stack.enter_context(con.connect())
+C:\Users\chernandez\AppData\Local\Python\pythoncore-3.14-64\Lib\context
+lib.py:141: SAWarning: Unrecognized server version info '17.0.1000.7'. 
+ Some SQL Server features may not function properly.
+  return next(self.gen)
+D:\Proyecto2026\ACP_DWH\ACP 
+Proyecciones\ETL\silver\dims\dim_personal.py:22: SAWarning: 
+Unrecognized server version info '17.0.1000.7'.  Some SQL Server 
+features may not function properly.
+  with engine.connect() as conexion:
+
+============================================================
+  DWH Geographic Phenology ÔÇö ETL Pipeline
+  Inicio: 2026-03-19 14:10:27
+============================================================
+
+[01/17] Verificando conexion SQL Server...
+Ô£à Conectado a: ACP_DataWarehose_Proyecciones
+[02/17] Limpiando cache...
+[03/17] Cargando archivos Excel a Bronce...
+Bronce: 1 archivo(s) encontrado(s).
+  Cargando Reporte_evaluacion_peso_v2.xlsx ÔåÆ Bronce.Evaluacion_Pesos... ÔØî (pyodbc.ProgrammingError) ('42S22', "[42S22] [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]Invalid column name 'PesoBayasPequenas2_Raw'. (207) (SQLExecute); [42S22] [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]Statement(s) could not be prepared. (8180)")
+[SQL: INSERT INTO [Bronce].[Evaluacion_Pesos] ([Fecha_Raw], [DNI_Raw], [Fecha_Subida_Raw], [Nombres_Raw], [Modulo_Raw], [Turno_Raw], [Valvula_Raw], [Evaluacion_Raw], [Variedad_Raw], [Cama_Raw], [BayasPequenas_Raw], [PesoBayasPequenas_Raw], [BayasGrandes_Raw], [PesoBayasPequenas2_Raw], [BayasFase1_Raw], [PesoBayasFase1_Raw], [BayasFase2_Raw], [PesoBayasFase2_Raw], [Cremas_Raw], [PesoCremas_Raw], [Maduras_Raw], [PesoMaduras_Raw], [Cosechables_Raw], [PesoCosechables_Raw], [Fecha_Sistema], [Nombre_Archivo], [Estado_Carga]) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+[parameters: [('2025-07-14', '76603166', '14/07/2025 17:09:53', 'ANELT DEL PILAR VENTURA GARCIA', '10', '13', '39', 'Poda general', 'ROCIO', '0', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '102', '306.8', datetime.datetime(2026, 3, 19, 14, 10, 29, 694566), 'Reporte_evaluacion_peso_v2.xlsx', 'CARGADO'), ('2025-07-21', '76603166', '21/07/2025 20:12:33', 'ANELT DEL PILAR VENTURA GARCIA', '10', '13', '38', 'Poda general', 'ROCIO', '1', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '127', '335.6', datetime.datetime(2026, 3, 19, 14, 10, 29, 694566), 'Reporte_evaluacion_peso_v2.xlsx', 'CARGADO'), ('2025-07-30', '76603166', '30/07/2025 17:24:09', 'ANELT DEL PILAR VENTURA GARCIA', '10', '15', '44', 'Poda general', 'SEKOYA BEAUTY', '1', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '236', '785.3', datetime.datetime(2026, 3, 19, 14, 10, 29, 694566), 'Reporte_evaluacion_peso_v2.xlsx', 'CARGADO'), ('2025-08-04', '76603166', '04/08/2025 17:50:08', 'ANELT DEL PILAR VENTURA GARCIA', '10', '02', '5', 'Poda general', 'SEKOYA POP', '0', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '96', '377.8', datetime.datetime(2026, 3, 19, 14, 10, 29, 694566), 'Reporte_evaluacion_peso_v2.xlsx', 'CARGADO'), ('2025-08-04', '76603166', '04/08/2025 17:50:08', 'ANELT DEL PILAR VENTURA GARCIA', '10', '12', '34', 'Poda general', 'ROCIO', '0', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '347', '831.6', datetime.datetime(2026, 3, 19, 14, 10, 29, 694566), 'Reporte_evaluacion_peso_v2.xlsx', 'CARGADO'), ('2025-08-11', '76603166', '11/08/2025 17:40:36', 'ANELT DEL PILAR VENTURA GARCIA', '10', '19', '55', 'Poda general', 'ROCIO', '0', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '277', '650.5', datetime.datetime(2026, 3, 19, 14, 10, 29, 694566), 'Reporte_evaluacion_peso_v2.xlsx', 'CARGADO'), ('2025-08-25', '76603166', '25/08/2025 19:55:59', 'ANELT DEL PILAR VENTURA GARCIA', '10', '02', '5', 'Poda general', 'ROCIO', '0', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '138', '296', datetime.datetime(2026, 3, 19, 14, 10, 29, 694566), 'Reporte_evaluacion_peso_v2.xlsx', 'CARGADO'), ('2025-10-20', '76603166', '20/10/2025 19:03:03', 'ANELT DEL PILAR VENTURA GARCIA', '10', '17', '51', 'Poda general', 'MALIBU', '0', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '154', '244.2', datetime.datetime(2026, 3, 19, 14, 10, 29, 694566), 'Reporte_evaluacion_peso_v2.xlsx', 'CARGADO')  ... displaying 10 of 1000 total bound parameter sets ...  ('2025-10-13', '75467229', '14/10/2025 07:02:33', 'ISAAC ISRAEL PEREZ HUARIPATA', '11', '18', '63', 'Poda general', 'SEKOYA BEAUTY', '7', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '104', '398.4', datetime.datetime(2026, 3, 19, 14, 10, 29, 694566), 'Reporte_evaluacion_peso_v2.xlsx', 'CARGADO'), ('2025-10-27', '75467229', '27/10/2025 22:47:43', 'ISAAC ISRAEL PEREZ HUARIPATA', '11', '18', '76', 'Poda general', 'SEKOYA BEAUTY', '0', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '.00', '98', '291.6', datetime.datetime(2026, 3, 19, 14, 10, 29, 694566), 'Reporte_evaluacion_peso_v2.xlsx', 'CARGADO')]]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+[04/17] Cargando Dim_Personal (SCD1)...
+[05/17] Cargando Dim_Geografia (SCD2)...
+[06/17] Cargando Fact_Cosecha_SAP...
+       -> 0 insertados | 0 rechazados | 0 cuarentena
+[07/17] Cargando Fact_Conteo_Fenologico...
+       -> 0 insertados | 0 rechazados | 0 cuarentena
+[08/17] Cargando Fact_Peladas...
+       -> 0 insertados | 0 rechazados | 0 cuarentena
+[09/17] Cargando Fact_Telemetria_Clima...
+       -> 0 insertados | 0 rechazados | 0 cuarentena
+[10/17] Cargando Fact_Evaluacion_Pesos...
+       -> 0 insertados | 5672 rechazados | 11344 cuarentena
+[11/17] Cargando Fact_Tareo...
+       -> 0 insertados | 0 rechazados | 0 cuarentena
+[12/17] Cargando Fact_Fisiologia...
+       -> 0 insertados | 0 rechazados | 0 cuarentena
+[13/17] Cargando Fact_Evaluacion_Vegetativa...
+       -> 0 insertados | 0 rechazados | 0 cuarentena
+[14/17] Cargando Fact_Sanidad_Activo...
+       -> 0 insertados | 0 rechazados | 0 cuarentena
+[15/17] Cargando Fact_Ciclo_Poda...
+       -> 0 insertados | 0 rechazados | 0 cuarentena
+[16/17] Refrescando Marts Gold...
+  Ô£à Gold.Mart_Cosecha: 0 filas
+  Ô£à Gold.Mart_Proyecciones: 0 filas
+  Ô£à Gold.Mart_Fenologia: 0 filas
+  Ô£à Gold.Mart_Clima: 0 filas
+  Ô£à Gold.Mart_Pesos_Calibres: 0 filas
+  Ô£à Gold.Mart_Administrativo: 0 filas
+[17/17] Finalizando...
+
+============================================================
+  RESUMEN FINAL
+============================================================
+  Bronce archivos                               1
+  Bronce filas                                  0
+  Dim_Personal insertados                       0
+  Dim_Personal actualizados                     0
+  Dim_Geografia insertados                      0
+  Dim_Geografia cerrados                        0
+  Fact_Cosecha_SAP                              0
+  Fact_Conteo_Fenologico                        0
+  Fact_Peladas                                  0
+  Fact_Telemetria_Clima                         0
+  Fact_Evaluacion_Pesos                         0
+  Fact_Tareo                                    0
+  Fact_Fisiologia                               0
+  Fact_Evaluacion_Vegetativa                    0
+  Fact_Sanidad_Activo                           0
+  Fact_Ciclo_Poda                               0
+  Gold.Mart_Cosecha                             0
+  Gold.Mart_Proyecciones                        0
+  Gold.Mart_Fenologia                           0
+  Gold.Mart_Clima                               0
+  Gold.Mart_Pesos_Calibres                      0
+  Gold.Mart_Administrativo                      0
+  Duracion total                                35.88s
+============================================================
+

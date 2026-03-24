@@ -1,15 +1,25 @@
-import streamlit as st
-import pandas as pd
-from utils.formato import header_pagina
+from utils.db import ejecutar_query, verificar_conexion
 
-# DataFrame vacío como placeholder para reglas de validación
-REGLAS_VALIDACION = pd.DataFrame(columns=[
-    "Tabla destino", "Columna", "Tipo validación", "Valor min", "Valor max", "Acción", "Activa"
-])
+@st.cache_data(ttl=60, show_spinner=False)
+def cargar_reglas_db() -> pd.DataFrame:
+    """Obtiene las reglas de validacion desde Config."""
+    return ejecutar_query("""
+        SELECT 
+            Tabla_Destino   AS [Tabla destino], 
+            Columna, 
+            Tipo_Validacion AS [Tipo validación], 
+            Valor_Min        AS [Valor min], 
+            Valor_Max        AS [Valor max], 
+            Accion          AS [Acción], 
+            Activo
+        FROM Config.Reglas_Validacion
+        ORDER BY Tabla_Destino, Columna
+    """)
 
 def render():
+    conectado = verificar_conexion()
     header_pagina(
-        "⚙️", "Configuración · Reglas de Validación",
+        "LIST", "Configuración · Reglas de Validación",
         "Ajusta rangos y reglas de calidad de datos sin tocar código"
     )
 
@@ -19,12 +29,15 @@ def render():
         </div>
     """, unsafe_allow_html=True)
 
-    df = REGLAS_VALIDACION.copy()
+    if conectado:
+        df = cargar_reglas_db()
+    else:
+        df = pd.DataFrame(columns=["Tabla destino", "Columna", "Tipo validación", "Valor min", "Valor max", "Acción", "Activo"])
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Total reglas", len(df))
-    c2.metric("Activas", df["Activa"].sum() if not df.empty else 0)
-    c3.metric("Inactivas", (~df["Activa"]).sum() if not df.empty else 0)
+    c2.metric("Activas", int(df["Activo"].sum()) if not df.empty else 0)
+    c3.metric("Inactivas", int((~df["Activo"].astype(bool)).sum()) if not df.empty else 0)
 
     st.markdown("<br>", unsafe_allow_html=True)
 

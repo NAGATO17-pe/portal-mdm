@@ -4,8 +4,7 @@ dim_personal.py
 Carga y actualización de Silver.Dim_Personal.
 Fuentes: Bronce.Consolidado_Tareos + Bronce.Fiscalizacion
 
-Lógica:
-  - SCD Tipo 1 — actualiza sin historial
+Lógica SCD Tipo 1:
   - DNI nulo → ID_Personal = -1 (surrogate ya existe en seed)
   - Si DNI existe → UPDATE nombre si cambió
   - Si DNI no existe → INSERT nuevo registro
@@ -16,56 +15,42 @@ from sqlalchemy.engine import Engine
 from sqlalchemy import text
 
 from utils.dni   import procesar_dni
-from utils.texto import normalizar_nombre_persona, mayusculas
+from utils.texto import normalizar_nombre_persona
 
 
 def _cargar_personal_bronce(engine: Engine) -> pd.DataFrame:
-    """
-    Lee personal único desde Bronce.Consolidado_Tareos
-    y Bronce.Fiscalizacion.
-    Une ambas fuentes y deduplica por DNI.
-    """
     with engine.connect() as conexion:
 
         tareos = conexion.execute(text("""
             SELECT DISTINCT
                 DNIResponsable_Raw  AS dni_raw,
-                Evaluador_Raw       AS nombre_raw,
+                NULL                AS nombre_raw,
                 NULL                AS sexo_raw,
                 IDPlanilla_Raw      AS planilla_raw,
                 'Operario'          AS rol
             FROM Bronce.Consolidado_Tareos
             WHERE DNIResponsable_Raw IS NOT NULL
         """))
+        df_tareos = pd.DataFrame(tareos.fetchall(), columns=tareos.keys())
 
         fiscalizacion = conexion.execute(text("""
             SELECT DISTINCT
                 DNI_Raw             AS dni_raw,
-                Evaluador_Raw       AS nombre_raw,
+                NULL                AS nombre_raw,
                 NULL                AS sexo_raw,
                 NULL                AS planilla_raw,
                 'Evaluador'         AS rol
             FROM Bronce.Fiscalizacion
             WHERE DNI_Raw IS NOT NULL
         """))
-
-    df_tareos = pd.DataFrame(tareos.fetchall(), columns=tareos.keys())
-    df_fisca  = pd.DataFrame(fiscalizacion.fetchall(), columns=fiscalizacion.keys())
+        df_fisca  = pd.DataFrame(fiscalizacion.fetchall(), columns=fiscalizacion.keys())
 
     df = pd.concat([df_tareos, df_fisca], ignore_index=True)
 
-    # Limpiar DNI
-    df['dni_limpio'] = df['dni_raw'].apply(
-        lambda v: procesar_dni(v)[0]
-    )
-
-    # Descartar registros sin DNI válido
+    df['dni_limpio'] = df['dni_raw'].apply(lambda v: procesar_dni(v)[0])
     df = df[df['dni_limpio'].notna()].copy()
-
-    # Normalizar nombre
     df['nombre_limpio'] = df['nombre_raw'].apply(normalizar_nombre_persona)
 
-    # Normalizar sexo
     def normalizar_sexo(valor: str | None) -> str | None:
         if not valor:
             return None
@@ -78,7 +63,7 @@ def _cargar_personal_bronce(engine: Engine) -> pd.DataFrame:
 
     df['sexo_limpio'] = df['sexo_raw'].apply(normalizar_sexo)
 
-    # Deduplicar — priorizar Fiscalizacion sobre Tareos
+    # Priorizar Fiscalizacion sobre Tareos
     df = df.sort_values('rol', ascending=False)
     df = df.drop_duplicates(subset='dni_limpio', keep='first')
 
@@ -86,9 +71,6 @@ def _cargar_personal_bronce(engine: Engine) -> pd.DataFrame:
 
 
 def _obtener_personal_existente(engine: Engine) -> pd.DataFrame:
-    """
-    Carga el personal ya registrado en Silver.Dim_Personal.
-    """
     with engine.connect() as conexion:
         resultado = conexion.execute(text("""
             SELECT ID_Personal, DNI, Nombre_Completo, Rol
@@ -99,10 +81,6 @@ def _obtener_personal_existente(engine: Engine) -> pd.DataFrame:
 
 
 def cargar_dim_personal(engine: Engine) -> dict:
-    """
-    Sincroniza Silver.Dim_Personal con las fuentes Bronce.
-    Retorna resumen de operaciones realizadas.
-    """
     resumen = {'insertados': 0, 'actualizados': 0, 'sin_cambios': 0}
 
     df_bronce    = _cargar_personal_bronce(engine)
@@ -119,7 +97,6 @@ def cargar_dim_personal(engine: Engine) -> dict:
             planilla= fila.get('planilla_raw')
 
             if dni in dnis_existentes:
-                # SCD1 — actualizar si el nombre cambió
                 existente = df_existente[df_existente['DNI'] == dni].iloc[0]
                 if existente['Nombre_Completo'] != nombre:
                     conexion.execute(text("""
@@ -132,16 +109,15 @@ def cargar_dim_personal(engine: Engine) -> dict:
                 else:
                     resumen['sin_cambios'] += 1
             else:
-                # Nuevo registro
+                # FIX: INSERT sin Fecha_Evento, Fecha_Sistema, Estado_DQ
+                # — esas columnas no existen en Dim_Personal según DDL v2
                 conexion.execute(text("""
                     INSERT INTO Silver.Dim_Personal (
                         DNI, Nombre_Completo, Rol, Sexo,
-                        ID_Planilla, Pct_Asertividad, Dias_Ausentismo,
-                        Fecha_Evento, Fecha_Sistema, Estado_DQ
+                        ID_Planilla, Pct_Asertividad, Dias_Ausentismo
                     ) VALUES (
                         :dni, :nombre, :rol, :sexo,
-                        :planilla, NULL, 0,
-                        SYSDATETIME(), SYSDATETIME(), 'OK'
+                        :planilla, NULL, 0
                     )
                 """), {
                     'dni':      dni,

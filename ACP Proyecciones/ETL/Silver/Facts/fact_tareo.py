@@ -77,7 +77,7 @@ def cargar_fact_tareo(engine: Engine) -> dict:
                 resumen['rechazados'] += 1
                 continue
 
-            id_tiempo = obtener_id_tiempo(fecha, engine)
+            id_tiempo = obtener_id_tiempo(fecha)
 
             # ── Geografía ─────────────────────────────────────
             modulo_raw = fila.get('Modulo_Raw')

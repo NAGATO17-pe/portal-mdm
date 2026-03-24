@@ -1,20 +1,31 @@
-import streamlit as st
-import pandas as pd
-from utils.formato import header_pagina
+from utils.db import ejecutar_query, verificar_conexion
 
-# DataFrame vacío como placeholder para catálogo de variedades
-VARIEDADES = pd.DataFrame(columns=["Nombre canónico", "Breeder", "Activa"])
+@st.cache_data(ttl=60, show_spinner=False)
+def cargar_variedades_db() -> pd.DataFrame:
+    """Obtiene el catalogo de variedades desde MDM."""
+    return ejecutar_query("""
+        SELECT 
+            Nombre_Canonico AS [Nombre canónico], 
+            Breeder, 
+            Es_Activo       AS [Activa]
+        FROM MDM.Catalogo_Variedades
+        ORDER BY Nombre_Canonico
+    """)
 
 def render():
-    header_pagina("📚", "Catálogos · Variedades", "Gestión del catálogo oficial de variedades")
+    conectado = verificar_conexion()
+    header_pagina("VARIEDAD", "Catálogos · Variedades", "Gestión del catálogo oficial de variedades")
 
-    df = VARIEDADES.copy()
+    if conectado:
+        df = cargar_variedades_db()
+    else:
+        df = pd.DataFrame(columns=["Nombre canónico", "Breeder", "Activa"])
 
     # KPIs
     c1, c2, c3 = st.columns(3)
     c1.metric("Total variedades", len(df))
-    c2.metric("Activas", df["Activa"].sum() if not df.empty else 0)
-    c3.metric("Inactivas", (~df["Activa"]).sum() if not df.empty else 0)
+    c2.metric("Activas", int(df["Activa"].sum()) if not df.empty else 0)
+    c3.metric("Inactivas", int((~df["Activa"].astype(bool)).sum()) if not df.empty else 0)
 
     st.markdown("<br>", unsafe_allow_html=True)
 

@@ -112,7 +112,7 @@ def cargar_fact_telemetria_clima(engine: Engine) -> dict:
                 )
             """), {
                 'id_geo':        id_geo,
-                'id_tiempo':     obtener_id_tiempo(fecha, engine),
+                'id_tiempo':     obtener_id_tiempo(fecha),
                 'temp_max':      _a_decimal(fila.get('TempMax_Raw')),
                 'temp_min':      _a_decimal(fila.get('TempMin_Raw')),
                 'humedad':       humedad,
@@ -158,7 +158,7 @@ def cargar_fact_telemetria_clima(engine: Engine) -> dict:
                 )
             """), {
                 'id_geo':       id_geo,
-                'id_tiempo':    obtener_id_tiempo(fecha, engine),
+                'id_tiempo':    obtener_id_tiempo(fecha),
                 'temp_max':     _a_decimal(fila.get('TempMax_Raw')),
                 'temp_min':     _a_decimal(fila.get('TempMin_Raw')),
                 'humedad':      humedad,

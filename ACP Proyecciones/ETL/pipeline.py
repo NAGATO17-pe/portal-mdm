@@ -117,18 +117,20 @@ def ejecutar() -> None:
         try:
             r = funcion(engine)
             _resumen_fact(r)
-            resumen[f'{nombre}'] = r.get('insertados', 0)
+            resumen[nombre] = r.get('insertados', 0)
         except Exception as error:
-            print(f'  Error en {nombre}: {error}')
+            print(f'  ❌ Error en {nombre}: {error}')
+            # FIX: marcar con sufijo ERROR para que el gate de Gold lo detecte
             resumen[f'{nombre} ERROR'] = str(error)
 
+    # FIX: pasar resumen completo — marts.py decide si publicar o bloquear
     _paso(16, total, 'Refrescando Marts Gold...')
     try:
-        resumen_marts = refrescar_todos_los_marts(engine)
-        for mart, filas in resumen_marts.items():
-            resumen[mart] = f'{filas} filas'
+        resumen_marts = refrescar_todos_los_marts(engine, resumen_etl=resumen)
+        for mart, valor in resumen_marts.items():
+            resumen[mart] = valor if isinstance(valor, int) else valor
     except Exception as error:
-        print(f'  Error en Gold: {error}')
+        print(f'  ❌ Error en Gold: {error}')
 
     _paso(17, total, 'Finalizando...')
     _resumen_final(inicio, resumen)

@@ -88,7 +88,7 @@ def cargar_fact_sanidad_activo(engine: Engine) -> dict:
                 )
             """), {
                 'id_geo':      id_geo,
-                'id_tiempo':   obtener_id_tiempo(fecha, engine),
+                'id_tiempo':   obtener_id_tiempo(fecha),
                 'id_variedad': id_var,
                 'vivas':       a_int(fila.get('Plantas_Vivas_Raw')),
                 'muertas':     a_int(fila.get('Plantas_Muertas_Raw')),

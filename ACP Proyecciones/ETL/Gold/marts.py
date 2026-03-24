@@ -1,7 +1,13 @@
 """
+marts.py
+========
 Refresca todos los Marts Gold desde Silver.
 Operación: TRUNCATE + INSERT — siempre desde cero.
 Power BI solo conecta a estos Marts.
+
+FIX: Gold no se publica si alguna fact crítica falló en el pipeline.
+     refrescar_todos_los_marts() recibe el resumen del ETL y aborta
+     si hay errores en las facts bloqueantes.
 """
 
 from sqlalchemy.engine import Engine
@@ -16,6 +22,27 @@ MARTS = [
     'Gold.Mart_Pesos_Calibres',
     'Gold.Mart_Administrativo',
 ]
+
+# Facts cuya falla bloquea la publicación de Gold
+FACTS_BLOQUEANTES = {
+    'Fact_Cosecha_SAP',
+    'Fact_Conteo_Fenologico',
+    'Fact_Evaluacion_Pesos',
+    'Fact_Telemetria_Clima',
+}
+
+
+def _hay_fallas_criticas(resumen_etl: dict) -> list[str]:
+    """
+    Detecta facts bloqueantes que terminaron en ERROR.
+    Retorna lista de nombres con error (vacía = todo OK).
+    """
+    fallas = []
+    for nombre in FACTS_BLOQUEANTES:
+        clave_error = f'{nombre} ERROR'
+        if clave_error in resumen_etl:
+            fallas.append(nombre)
+    return fallas
 
 
 def _truncar(conexion, mart: str) -> None:
@@ -50,7 +77,7 @@ def refrescar_mart_cosecha(conexion) -> int:
             ON  p.ID_Tiempo     = cs.ID_Tiempo
             AND p.ID_Variedad   = cs.ID_Variedad
             AND p.ID_Geografia  = cs.ID_Geografia
-            AND p.ID_Escenario  = 4  -- Escenario Final
+            AND p.ID_Escenario  = 4
     """))
     return _contar(conexion, 'Gold.Mart_Cosecha')
 
@@ -77,11 +104,11 @@ def refrescar_mart_proyecciones(conexion) -> int:
             p.Flag_Override,
             w.Estado
         FROM Silver.Fact_Proyecciones p
-        JOIN Silver.Dim_Tiempo            t ON t.ID_Tiempo        = p.ID_Tiempo
-        JOIN Silver.Dim_Geografia         g ON g.ID_Geografia     = p.ID_Geografia AND g.Es_Vigente = 1
-        JOIN Silver.Dim_Variedad          v ON v.ID_Variedad      = p.ID_Variedad
-        JOIN Silver.Dim_Escenario_Proyeccion e ON e.ID_Escenario  = p.ID_Escenario
-        JOIN Silver.Dim_Estado_Workflow   w ON w.ID_Workflow      = p.ID_Estado_Workflow
+        JOIN Silver.Dim_Tiempo               t ON t.ID_Tiempo       = p.ID_Tiempo
+        JOIN Silver.Dim_Geografia            g ON g.ID_Geografia    = p.ID_Geografia AND g.Es_Vigente = 1
+        JOIN Silver.Dim_Variedad             v ON v.ID_Variedad     = p.ID_Variedad
+        JOIN Silver.Dim_Escenario_Proyeccion e ON e.ID_Escenario    = p.ID_Escenario
+        JOIN Silver.Dim_Estado_Workflow      w ON w.ID_Workflow     = p.ID_Estado_Workflow
     """))
     return _contar(conexion, 'Gold.Mart_Proyecciones')
 
@@ -105,10 +132,10 @@ def refrescar_mart_fenologia(conexion) -> int:
             ef.Orden_Estado,
             SUM(cf.Cantidad_Organos)
         FROM Silver.Fact_Conteo_Fenologico cf
-        JOIN Silver.Dim_Tiempo             t  ON t.ID_Tiempo           = cf.ID_Tiempo
-        JOIN Silver.Dim_Geografia          g  ON g.ID_Geografia        = cf.ID_Geografia AND g.Es_Vigente = 1
-        JOIN Silver.Dim_Variedad           v  ON v.ID_Variedad         = cf.ID_Variedad
-        JOIN Silver.Dim_Estado_Fenologico  ef ON ef.ID_Estado_Fenologico = cf.ID_Estado_Fenologico
+        JOIN Silver.Dim_Tiempo            t  ON t.ID_Tiempo             = cf.ID_Tiempo
+        JOIN Silver.Dim_Geografia         g  ON g.ID_Geografia          = cf.ID_Geografia AND g.Es_Vigente = 1
+        JOIN Silver.Dim_Variedad          v  ON v.ID_Variedad           = cf.ID_Variedad
+        JOIN Silver.Dim_Estado_Fenologico ef ON ef.ID_Estado_Fenologico = cf.ID_Estado_Fenologico
         GROUP BY
             cf.ID_Tiempo, cf.ID_Geografia, cf.ID_Variedad,
             g.Fundo, v.Nombre_Variedad, t.Semana_ISO,
@@ -186,7 +213,7 @@ def refrescar_mart_administrativo(conexion) -> int:
             SUM(ta.Horas_Trabajadas),
             SUM(CAST(ta.Es_Observado_SAP AS INT))
         FROM Silver.Fact_Tareo ta
-        JOIN Silver.Dim_Tiempo   t  ON t.ID_Tiempo   = ta.ID_Tiempo
+        JOIN Silver.Dim_Tiempo    t  ON t.ID_Tiempo   = ta.ID_Tiempo
         LEFT JOIN Silver.Dim_Personal sp ON sp.ID_Personal = ta.ID_Personal_Supervisor
         GROUP BY ta.ID_Tiempo, ta.ID_Personal, ta.ID_Actividad_Operativa,
                  sp.Nombre_Completo, t.Semana_ISO
@@ -209,11 +236,22 @@ FUNCIONES_MARTS = {
 }
 
 
-def refrescar_todos_los_marts(engine: Engine) -> dict:
+def refrescar_todos_los_marts(engine: Engine,
+                               resumen_etl: dict | None = None) -> dict:
     """
     Refresca todos los Marts Gold en orden.
     TRUNCATE + INSERT — siempre desde cero.
+
+    FIX: si resumen_etl contiene errores en facts bloqueantes,
+    aborta sin tocar Gold y retorna dict con la causa.
     """
+    if resumen_etl is not None:
+        fallas = _hay_fallas_criticas(resumen_etl)
+        if fallas:
+            msg = f'Gold bloqueado — facts con error: {fallas}'
+            print(f'  ⛔ {msg}')
+            return {'BLOQUEADO': msg}
+
     resumen = {}
 
     with engine.begin() as conexion:

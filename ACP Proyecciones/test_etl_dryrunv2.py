@@ -157,25 +157,37 @@ def normalizar_nombre_columna(nombre: str) -> str:
 def detectar_header(ruta_xlsx: Path, hoja: Optional[str] = None) -> int:
     """
     Detecta automáticamente en qué fila está el header del Excel.
-    Prueba filas 0-5 y devuelve la primera que tenga ≥3 columnas no nulas.
+    Optimizado: lee el archivo UNA sola vez (sin header) y escanea las
+    primeras filas en memoria, evitando hasta 6 lecturas redundantes.
     """
-    for fila_header in range(6):
+    # Intentar con calamine (mucho más rápido) y caer a openpyxl
+    for engine in ("calamine", "openpyxl"):
         try:
-            df_prueba = pd.read_excel(
+            df_raw = pd.read_excel(
                 ruta_xlsx,
                 sheet_name=hoja or 0,
-                header=fila_header,
-                nrows=3,
+                header=None,
+                nrows=8,
                 dtype=str,
+                engine=engine,
             )
-            columnas_validas = [
-                c for c in df_prueba.columns
-                if not str(c).startswith("Unnamed") and str(c).strip()
-            ]
-            if len(columnas_validas) >= 3:
-                return fila_header
+            break
         except Exception:
+            df_raw = None
             continue
+
+    if df_raw is None or df_raw.empty:
+        return 0
+
+    for fila_idx in range(min(6, len(df_raw))):
+        fila = df_raw.iloc[fila_idx]
+        columnas_validas = [
+            v for v in fila
+            if pd.notna(v) and not str(v).startswith("Unnamed") and str(v).strip()
+        ]
+        if len(columnas_validas) >= 3:
+            return fila_idx
+
     return 0
 
 

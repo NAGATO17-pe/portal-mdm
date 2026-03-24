@@ -138,7 +138,7 @@ def cargar_fact_cosecha_sap(engine: Engine) -> dict:
 
             _insertar_fila(conexion, {
                 'id_geo':         id_geo,
-                'id_tiempo':      obtener_id_tiempo(fecha, engine),
+                'id_tiempo':      obtener_id_tiempo(fecha),
                 'id_variedad':    id_var,
                 'id_condicion':   ID_CONDICION_DEFAULT,
                 'kg_brutos':      None,
@@ -193,7 +193,7 @@ def cargar_fact_cosecha_sap(engine: Engine) -> dict:
 
             _insertar_fila(conexion, {
                 'id_geo':         id_geo,
-                'id_tiempo':      obtener_id_tiempo(fecha, engine),
+                'id_tiempo':      obtener_id_tiempo(fecha),
                 'id_variedad':    id_var,
                 'id_condicion':   ID_CONDICION_DEFAULT,
                 'kg_brutos':      a_decimal(fila.get('Peso_Bruto_Raw')),

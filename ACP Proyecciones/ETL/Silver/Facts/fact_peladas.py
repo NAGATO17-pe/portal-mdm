@@ -128,7 +128,7 @@ def cargar_fact_peladas(engine: Engine) -> dict:
                 )
             """), {
                 'id_geo':          id_geo,
-                'id_tiempo':       obtener_id_tiempo(fecha, engine),
+                'id_tiempo':       obtener_id_tiempo(fecha),
                 'id_variedad':     id_var,
                 'id_personal':     id_personal,
                 'punto':           punto,

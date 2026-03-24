@@ -1,12 +1,23 @@
-import streamlit as st
-import pandas as pd
-from utils.formato import header_pagina
+from utils.db import ejecutar_query, verificar_conexion
 
-# DataFrame vacío como placeholder para geografía
-GEOGRAFIA = pd.DataFrame(columns=["Fundo", "Sector", "Módulo", "Turno", "Es Test Block", "Activa"])
+@st.cache_data(ttl=60, show_spinner=False)
+def cargar_geografia_db() -> pd.DataFrame:
+    """Obtiene la dimension geografia desde Silver."""
+    return ejecutar_query("""
+        SELECT 
+            Fundo, 
+            Sector, 
+            Modulo      AS [Módulo], 
+            Turno, 
+            Es_Test_Block AS [Es Test Block], 
+            Es_Vigente    AS [Activa]
+        FROM Silver.Dim_Geografia
+        ORDER BY Fundo, Sector, Modulo
+    """)
 
 def render():
-    header_pagina("📚", "Catálogos · Geografía", "Fundos, sectores y módulos · cambios activan SCD2")
+    conectado = verificar_conexion()
+    header_pagina("📍", "Catálogos · Geografía", "Fundos, sectores y módulos · cambios activan SCD2")
 
     st.markdown("""
         <div class="banner-aviso">
@@ -15,12 +26,15 @@ def render():
         </div>
     """, unsafe_allow_html=True)
 
-    df = GEOGRAFIA.copy()
+    if conectado:
+        df = cargar_geografia_db()
+    else:
+        df = pd.DataFrame(columns=["Fundo", "Sector", "Módulo", "Turno", "Es Test Block", "Activa"])
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Módulos totales", len(df))
-    c2.metric("Activos", df["Activa"].sum() if not df.empty else 0)
-    c3.metric("Test Blocks", df["Es Test Block"].sum() if not df.empty else 0)
+    c2.metric("Activos", int(df["Activa"].sum()) if not df.empty else 0)
+    c3.metric("Test Blocks", int(df["Es Test Block"].sum()) if not df.empty else 0)
 
     st.markdown("<br>", unsafe_allow_html=True)
 

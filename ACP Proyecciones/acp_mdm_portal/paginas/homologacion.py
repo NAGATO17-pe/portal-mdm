@@ -1,14 +1,44 @@
-import streamlit as st
-import pandas as pd
-from utils.formato import header_pagina, score_a_color
+from utils.db import ejecutar_query, verificar_conexion
 
-# DataFrames vacíos como placeholders para homologación
-HOMOLOGACION_PENDIENTE = pd.DataFrame(columns=["Texto crudo", "Valor canónico sugerido", "Score", "Tabla origen", "Veces visto", "Fecha"])
-HOMOLOGACION_HISTORIAL = pd.DataFrame(columns=["Texto crudo", "Valor canónico", "Score", "Tabla", "Aprobado por", "Fecha aprobación"])
+@st.cache_data(ttl=60, show_spinner=False)
+def cargar_sugerencias_pendientes() -> pd.DataFrame:
+    """
+    Obtiene registros que requieren homologacion (Estado_Carga = 'EN_CUARENTENA' 
+    y que tienen algun valor Sugerido en la tabla de MDM correspondiente).
+    Como fallback mostramos solo los registros en cuarentena para revisar.
+    """
+    return ejecutar_query("""
+        SELECT 
+            Valor_Raw          AS [Texto crudo],
+            Valor_Sugerido     AS [Valor canónico sugerido],
+            Score              AS [Score],
+            Tabla_Origen       AS [Tabla origen],
+            1                  AS [Veces visto],
+            CONVERT(varchar, Fecha_Sistema, 23) AS [Fecha]
+        FROM MDM.Log_Sugerencias_MDM
+        WHERE Estado_Revision = 'PENDIENTE'
+        ORDER BY Score DESC, Fecha_Sistema DESC
+    """)
+
+@st.cache_data(ttl=60, show_spinner=False)
+def cargar_historial_homologacion() -> pd.DataFrame:
+    """Lista de ultimas 100 decisiones tomadas en el MDM."""
+    return ejecutar_query("""
+        SELECT TOP 100
+            Valor_Raw          AS [Texto crudo],
+            Valor_Mapeado      AS [Valor canónico],
+            0.99               AS [Score],
+            Tabla_Destino      AS [Tabla],
+            Usuario_Revision   AS [Aprobado por],
+            CONVERT(varchar, Fecha_Revision, 23) AS [Fecha aprobación]
+        FROM MDM.Log_Decisiones_MDM
+        ORDER BY Fecha_Revision DESC
+    """)
+
 
 def render():
-    header_pagina(
-        "🔗", "Homologación",
+    conectado = verificar_conexion()
+    header_pagina("🔗", "Homologación",
         "Sugerencias automáticas pendientes de revisión · aprueba, corrige o rechaza"
     )
 
@@ -16,7 +46,11 @@ def render():
 
     # ── Tab 1: Pendientes ─────────────────────────────────────────────────
     with tab1:
-        df = HOMOLOGACION_PENDIENTE.copy()
+        if not conectado:
+            st.warning("Sin conexion a la base de datos.")
+            return
+
+        df = cargar_sugerencias_pendientes()
 
         if df.empty:
             from streamlit_lottie import st_lottie
@@ -69,7 +103,10 @@ def render():
 
     # ── Tab 2: Historial ──────────────────────────────────────────────────
     with tab2:
-        df_hist = HOMOLOGACION_HISTORIAL.copy()
+        if not conectado:
+            st.warning("Sin conexion a la base de datos.")
+        else:
+            df_hist = cargar_historial_homologacion()
 
         if df_hist.empty:
             st.markdown("<br>", unsafe_allow_html=True)

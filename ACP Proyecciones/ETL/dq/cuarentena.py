@@ -16,39 +16,52 @@ def enviar_a_cuarentena(engine: Engine,
     """
     Inserta filas rechazadas en MDM.Cuarentena.
     Retorna el número de filas enviadas.
+
+    Columnas DDL v2:
+      Campo_Origen    (no Columna_Error)
+      Valor_Recibido  (no Valor_Raw)
+      Motivo          (no Motivo_Rechazo)
+      Estado          (no Revisado — BIT)
     """
     if not filas:
         return 0
 
     ahora = datetime.now()
+    payload = [{
+        'tabla_origen':   tabla_origen,
+        'campo_origen':   fila.get('columna', 'DESCONOCIDA'),
+        'valor_recibido': str(fila.get('valor', '')),
+        'motivo':         fila.get('motivo', 'Sin motivo'),
+        'tipo_regla':     fila.get('tipo_regla', 'DQ'),
+        'score':          fila.get('score_levenshtein', None),
+        'fecha_ingreso':  ahora,
+    } for fila in filas]
 
+    sentencia = text("""
+        INSERT INTO MDM.Cuarentena (
+            Tabla_Origen,
+            Campo_Origen,
+            Valor_Recibido,
+            Motivo,
+            Tipo_Regla,
+            Score_Levenshtein,
+            Estado,
+            Fecha_Ingreso
+        ) VALUES (
+            :tabla_origen,
+            :campo_origen,
+            :valor_recibido,
+            :motivo,
+            :tipo_regla,
+            :score,
+            'PENDIENTE',
+            :fecha_ingreso
+        )
+    """)
+
+    tam_lote = 2000
     with engine.begin() as conexion:
-        for fila in filas:
-            conexion.execute(text("""
-                INSERT INTO MDM.Cuarentena (
-                    Tabla_Origen,
-                    Columna_Error,
-                    Valor_Raw,
-                    Motivo_Rechazo,
-                    Severidad,
-                    Revisado,
-                    Fecha_Sistema
-                ) VALUES (
-                    :tabla_origen,
-                    :columna_error,
-                    :valor_raw,
-                    :motivo_rechazo,
-                    :severidad,
-                    0,
-                    :fecha_sistema
-                )
-            """), {
-                'tabla_origen':   tabla_origen,
-                'columna_error':  fila.get('columna',  'DESCONOCIDA'),
-                'valor_raw':      str(fila.get('valor', '')),
-                'motivo_rechazo': fila.get('motivo',   'Sin motivo'),
-                'severidad':      fila.get('severidad','ALTO'),
-                'fecha_sistema':  ahora,
-            })
+        for inicio in range(0, len(payload), tam_lote):
+            conexion.execute(sentencia, payload[inicio:inicio + tam_lote])
 
     return len(filas)

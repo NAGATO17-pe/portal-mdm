@@ -1,11 +1,12 @@
 """
 conexion.py
 ===========
-Conexión a SQL Server via pyodbc + SQLAlchemy.
-Las credenciales vienen del archivo .env — nunca hardcodeadas.
+Conexion a SQL Server via pyodbc + SQLAlchemy.
+Usa odbc_connect directo para evitar problemas de parsing de URL.
 """
 
 import os
+import urllib
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
@@ -13,45 +14,40 @@ from sqlalchemy.engine import Engine
 load_dotenv()
 
 
-def obtener_cadena_conexion() -> str:
-    """
-    Construye la cadena de conexión desde variables de entorno.
-    """
-    servidor = os.getenv('DB_SERVIDOR')
-    base     = os.getenv('DB_NOMBRE', 'ACP_Geographic_Phenology')
+def obtener_engine() -> Engine:
+    servidor = os.getenv('DB_SERVIDOR', 'LCP-PAG-PRACTIC')
+    base     = os.getenv('DB_NOMBRE', 'ACP_DataWarehose_Proyecciones')
     usuario  = os.getenv('DB_USUARIO')
     clave    = os.getenv('DB_CLAVE')
     driver   = os.getenv('DB_DRIVER', 'ODBC Driver 17 for SQL Server')
 
-    # Autenticación Windows (sin usuario/clave)
     if not usuario:
-        return (
-            f'mssql+pyodbc://@{servidor}/{base}'
-            f'?driver={driver.replace(" ", "+")}'
-            f'&trusted_connection=yes'
+        cadena_pyodbc = (
+            f'DRIVER={{{driver}}};'
+            f'SERVER={servidor};'
+            f'DATABASE={base};'
+            f'Trusted_Connection=yes;'
+            f'TrustServerCertificate=yes;'
+        )
+    else:
+        cadena_pyodbc = (
+            f'DRIVER={{{driver}}};'
+            f'SERVER={servidor};'
+            f'DATABASE={base};'
+            f'UID={usuario};'
+            f'PWD={clave};'
+            f'TrustServerCertificate=yes;'
         )
 
-    # Autenticación SQL Server
-    return (
-        f'mssql+pyodbc://{usuario}:{clave}@{servidor}/{base}'
-        f'?driver={driver.replace(" ", "+")}'
+    cadena_url = (
+        'mssql+pyodbc:///?odbc_connect='
+        + urllib.parse.quote_plus(cadena_pyodbc)
     )
 
-
-def obtener_engine() -> Engine:
-    """
-    Retorna el engine de SQLAlchemy.
-    Reutilizar este engine en todo el ETL — no crear uno por módulo.
-    """
-    cadena = obtener_cadena_conexion()
-    return create_engine(cadena, fast_executemany=True)
+    return create_engine(cadena_url, fast_executemany=True)
 
 
 def verificar_conexion() -> bool:
-    """
-    Verifica que la conexión a SQL Server funciona.
-    Retorna True si conecta, False si falla.
-    """
     try:
         engine = obtener_engine()
         with engine.connect() as conexion:
@@ -59,10 +55,10 @@ def verificar_conexion() -> bool:
                 text('SELECT DB_NAME() AS base_activa')
             )
             fila = resultado.fetchone()
-            print(f'✅ Conectado a: {fila.base_activa}')
+            print(f'Conectado a: {fila.base_activa}')
             return True
     except Exception as error:
-        print(f'❌ Error de conexión: {error}')
+        print(f'Error de conexion: {error}')
         return False
 
 

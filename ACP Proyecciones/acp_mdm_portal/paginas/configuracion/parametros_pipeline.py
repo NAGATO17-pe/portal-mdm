@@ -1,11 +1,20 @@
-import streamlit as st
-import pandas as pd
-from utils.formato import header_pagina
+from utils.db import ejecutar_query, verificar_conexion
 
-# DataFrame vacío como placeholder para parámetros
-PARAMETROS_PIPELINE = pd.DataFrame(columns=["Parámetro", "Valor actual", "Descripción", "Última modificación"])
+@st.cache_data(ttl=60, show_spinner=False)
+def cargar_parametros_db() -> pd.DataFrame:
+    """Obtiene los parametros operativos del pipeline."""
+    return ejecutar_query("""
+        SELECT 
+            Nombre_Parametro AS [Parámetro], 
+            Valor            AS [Valor actual], 
+            Descripcion      AS [Descripción], 
+            CONVERT(varchar, Fecha_Modificacion, 120) AS [Última modificación]
+        FROM Config.Parametros_Pipeline
+        ORDER BY Nombre_Parametro
+    """)
 
 def render():
+    conectado = verificar_conexion()
     header_pagina(
         "⚙️", "Configuración · Parámetros Pipeline",
         "Parámetros operativos del ETL · edita con confirmación"
@@ -17,9 +26,12 @@ def render():
         </div>
     """, unsafe_allow_html=True)
 
-    df = PARAMETROS_PIPELINE.copy()
+    if conectado:
+        df = cargar_parametros_db()
+    else:
+        df = pd.DataFrame(columns=["Parámetro", "Valor actual", "Descripción", "Última modificación"])
 
-    st.markdown("### ⚙️ Parámetros activos")
+    st.markdown("### Parámetros activos")
 
     if df.empty:
         st.info("No hay parámetros configurados.")
@@ -44,4 +56,4 @@ def render():
             st.markdown("---")
 
         if st.button("💾 Guardar todos los cambios", key="btn_param_guardar", type="primary"):
-            st.toast("Guardado simulado: DB desconectada.", icon="💾")
+            st.toast("Guardado simulado: Funcionalidad de escritura pendiente.", icon="💾")

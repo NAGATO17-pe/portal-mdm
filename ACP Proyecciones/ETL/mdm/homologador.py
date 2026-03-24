@@ -2,14 +2,21 @@
 homologador.py
 ==============
 Homologación de texto libre via Levenshtein (rapidfuzz).
-Resuelve aliases de variedades, nombres de personal y geografía
-contra el diccionario canónico en MDM.Diccionario_Homologacion.
+Resuelve aliases de variedades contra MDM.Diccionario_Homologacion.
 
 Flujo:
-  1. Busca match exacto en el diccionario
-  2. Si no hay exacto → calcula similitud Levenshtein
-  3. Si score >= umbral → homologación automática
-  4. Si score < umbral → va a MDM.Cuarentena para revisión humana
+  1. Match exacto en el diccionario (Aprobado_Por IS NOT NULL)
+  2. Si no → Levenshtein contra valores canónicos aprobados
+  3. score >= 0.85 → homologación automática
+  4. score < 0.85 → MDM.Cuarentena para revisión humana
+
+DDL v2 — MDM.Diccionario_Homologacion:
+  Columnas reales: ID_Homologacion, Texto_Crudo, Valor_Canonico,
+    Tabla_Origen, Campo_Origen, Score_Levenshtein,
+    Aprobado_Por NVARCHAR(20), Fecha_Aprobacion, Veces_Aplicado
+  NO existe columna Aprobado BIT — se usa Aprobado_Por para distinguir
+    aprobados  : Aprobado_Por IS NOT NULL AND Aprobado_Por != 'PENDIENTE'
+    pendientes : Aprobado_Por = 'PENDIENTE' o IS NULL
 """
 
 import pandas as pd
@@ -18,16 +25,26 @@ from sqlalchemy.engine import Engine
 from sqlalchemy import text
 from datetime import datetime
 
+from utils.texto import normalizar_variedad, quitar_tildes
 
-UMBRAL_AUTO = 0.85  # Score mínimo para homologación automática
+
+UMBRAL_AUTO = 0.85
+
+
+def _clave_variedad(valor: str | None) -> str | None:
+    if valor is None:
+        return None
+    valor_normalizado = normalizar_variedad(valor)
+    if not valor_normalizado:
+        return None
+    return quitar_tildes(valor_normalizado).lower()
 
 
 def cargar_diccionario(engine: Engine,
                         tabla_origen: str) -> pd.DataFrame:
     """
-    Carga el diccionario de homologación aprobado
-    para una tabla origen específica.
-    Solo trae entradas con Aprobado = 1.
+    Carga entradas aprobadas del diccionario para una tabla origen.
+    Aprobado = Aprobado_Por IS NOT NULL AND != 'PENDIENTE'
     """
     with engine.connect() as conexion:
         resultado = conexion.execute(text("""
@@ -37,76 +54,129 @@ def cargar_diccionario(engine: Engine,
                 Score_Levenshtein,
                 Veces_Aplicado
             FROM MDM.Diccionario_Homologacion
-            WHERE Tabla_Origen = :tabla_origen
-              AND Aprobado     = 1
+            WHERE Tabla_Origen  = :tabla_origen
+              AND Aprobado_Por IS NOT NULL
+              AND Aprobado_Por != 'PENDIENTE'
         """), {'tabla_origen': tabla_origen})
 
-        return pd.DataFrame(resultado.fetchall(),
-                            columns=resultado.keys())
+        df = pd.DataFrame(resultado.fetchall(), columns=resultado.keys())
+        if df.empty:
+            return df
+        df['Clave_Texto_Crudo'] = df['Texto_Crudo'].map(_clave_variedad)
+        df['Clave_Valor_Canonico'] = df['Valor_Canonico'].map(_clave_variedad)
+        return df
+
+
+def cargar_catalogo_variedades(engine: Engine) -> pd.DataFrame:
+    """
+    Carga el catalogo canonico de variedades.
+    Fuente de verdad para homologacion inicial:
+    - MDM.Catalogo_Variedades activas
+    - fallback a Silver.Dim_Variedad
+    """
+    with engine.connect() as conexion:
+        resultado = conexion.execute(text("""
+            SELECT Nombre_Canonico AS Valor_Canonico
+            FROM MDM.Catalogo_Variedades
+            WHERE Es_Activa = 1
+
+            UNION
+
+            SELECT Nombre_Variedad AS Valor_Canonico
+            FROM Silver.Dim_Variedad
+        """))
+
+        df = pd.DataFrame(resultado.fetchall(), columns=resultado.keys())
+        if df.empty:
+            return df
+
+        df['Clave_Valor_Canonico'] = df['Valor_Canonico'].map(_clave_variedad)
+        df = df.dropna(subset=['Clave_Valor_Canonico'])
+        df = df.drop_duplicates(subset=['Clave_Valor_Canonico'], keep='first')
+        return df
 
 
 def buscar_match_exacto(valor: str,
                          diccionario: pd.DataFrame) -> str | None:
-    """
-    Busca un match exacto (case-insensitive) en el diccionario.
-    Retorna el valor canónico si existe, None si no.
-    """
     if diccionario.empty:
         return None
+    clave = _clave_variedad(valor)
+    if clave is None:
+        return None
+    coincidencia = diccionario[diccionario['Clave_Texto_Crudo'] == clave]
+    return coincidencia.iloc[0]['Valor_Canonico'] if not coincidencia.empty else None
 
-    coincidencia = diccionario[
-        diccionario['Texto_Crudo'].str.lower() == valor.lower()
-    ]
 
-    if not coincidencia.empty:
-        return coincidencia.iloc[0]['Valor_Canonico']
+def buscar_match_catalogo(valor: str,
+                           catalogo: pd.DataFrame) -> str | None:
+    if catalogo.empty:
+        return None
 
-    return None
+    clave = _clave_variedad(valor)
+    if clave is None:
+        return None
+
+    coincidencia = catalogo[catalogo['Clave_Valor_Canonico'] == clave]
+    return coincidencia.iloc[0]['Valor_Canonico'] if not coincidencia.empty else None
 
 
 def buscar_match_levenshtein(valor: str,
-                              diccionario: pd.DataFrame) -> tuple[str | None, float]:
-    """
-    Busca el mejor match usando similitud Levenshtein.
-    Retorna (valor_canonico, score) o (None, 0.0) si no hay match suficiente.
-    """
-    if diccionario.empty:
+                              catalogo: pd.DataFrame) -> tuple[str | None, float]:
+    if catalogo.empty:
         return None, 0.0
 
-    candidatos = diccionario['Valor_Canonico'].tolist()
+    valor_normalizado = normalizar_variedad(valor)
+    if not valor_normalizado:
+        return None, 0.0
 
-    resultado = process.extractOne(
-        valor,
-        candidatos,
-        scorer=fuzz.token_sort_ratio,
-    )
+    candidatos = catalogo['Valor_Canonico'].tolist()
+    resultado  = process.extractOne(valor_normalizado, candidatos, scorer=fuzz.token_sort_ratio)
 
     if resultado is None:
         return None, 0.0
 
     match, score, _ = resultado
-    score_normalizado = score / 100.0
+    score_norm = score / 100.0
 
-    if score_normalizado >= UMBRAL_AUTO:
-        return match, score_normalizado
+    return (match, score_norm) if score_norm >= UMBRAL_AUTO else (None, score_norm)
 
-    return None, score_normalizado
+
+def buscar_sugerencia_levenshtein(valor: str,
+                                   catalogo: pd.DataFrame) -> tuple[str | None, float]:
+    if catalogo.empty:
+        return None, 0.0
+
+    valor_normalizado = normalizar_variedad(valor)
+    if not valor_normalizado:
+        return None, 0.0
+
+    candidatos = catalogo['Valor_Canonico'].tolist()
+    resultado = process.extractOne(valor_normalizado, candidatos, scorer=fuzz.token_sort_ratio)
+    if resultado is None:
+        return None, 0.0
+
+    match, score, _ = resultado
+    return match, score / 100.0
 
 
 def registrar_homologacion(engine: Engine,
                             tabla_origen: str,
+                            campo_origen: str,
                             texto_crudo: str,
                             valor_canonico: str,
                             score: float,
                             aprobado: bool = True) -> None:
     """
-    Registra una homologación en MDM.Diccionario_Homologacion.
-    Si aprobado=False → queda pendiente de revisión humana en Streamlit.
+    Registra o actualiza una entrada en MDM.Diccionario_Homologacion.
+    aprobado=True  → Aprobado_Por = 'SISTEMA'
+    aprobado=False → Aprobado_Por = 'PENDIENTE' (requiere revisión humana)
     """
+    aprobado_por = 'SISTEMA' if aprobado else 'PENDIENTE'
+
     with engine.begin() as conexion:
-        # Verificar si ya existe
         existe = conexion.execute(text("""
-            SELECT COUNT(*) FROM MDM.Diccionario_Homologacion
+            SELECT COUNT(*)
+            FROM MDM.Diccionario_Homologacion
             WHERE Tabla_Origen = :tabla_origen
               AND Texto_Crudo  = :texto_crudo
         """), {
@@ -115,85 +185,105 @@ def registrar_homologacion(engine: Engine,
         }).scalar()
 
         if existe:
-            # Incrementar contador de usos
-            conexion.execute(text("""
-                UPDATE MDM.Diccionario_Homologacion
-                SET Veces_Aplicado = Veces_Aplicado + 1
-                WHERE Tabla_Origen = :tabla_origen
-                  AND Texto_Crudo  = :texto_crudo
-            """), {
-                'tabla_origen': tabla_origen,
-                'texto_crudo':  texto_crudo,
-            })
+            if aprobado:
+                conexion.execute(text("""
+                    UPDATE MDM.Diccionario_Homologacion
+                    SET Valor_Canonico     = :valor_canonico,
+                        Score_Levenshtein  = :score,
+                        Aprobado_Por       = :aprobado_por,
+                        Fecha_Aprobacion   = :fecha_aprobacion,
+                        Veces_Aplicado     = Veces_Aplicado + 1
+                    WHERE Tabla_Origen = :tabla_origen
+                      AND Texto_Crudo  = :texto_crudo
+                """), {
+                    'tabla_origen':      tabla_origen,
+                    'texto_crudo':       texto_crudo,
+                    'valor_canonico':    valor_canonico,
+                    'score':             round(score, 4),
+                    'aprobado_por':      aprobado_por,
+                    'fecha_aprobacion':  datetime.now(),
+                })
+            else:
+                conexion.execute(text("""
+                    UPDATE MDM.Diccionario_Homologacion
+                    SET Valor_Canonico    = COALESCE(Valor_Canonico, :valor_canonico),
+                        Score_Levenshtein = :score,
+                        Veces_Aplicado    = Veces_Aplicado + 1
+                    WHERE Tabla_Origen = :tabla_origen
+                      AND Texto_Crudo  = :texto_crudo
+                """), {
+                    'tabla_origen':      tabla_origen,
+                    'texto_crudo':       texto_crudo,
+                    'valor_canonico':    valor_canonico,
+                    'score':             round(score, 4),
+                })
         else:
-            # Insertar nueva entrada
             conexion.execute(text("""
                 INSERT INTO MDM.Diccionario_Homologacion (
-                    Tabla_Origen,
-                    Campo_Origen,
-                    Texto_Crudo,
-                    Valor_Canonico,
+                    Texto_Crudo, Valor_Canonico,
+                    Tabla_Origen, Campo_Origen,
                     Score_Levenshtein,
-                    Aprobado,
-                    Aprobado_Por,
+                    Aprobado_Por, Fecha_Aprobacion,
                     Veces_Aplicado
                 ) VALUES (
-                    :tabla_origen,
-                    :campo_origen,
-                    :texto_crudo,
-                    :valor_canonico,
+                    :texto_crudo, :valor_canonico,
+                    :tabla_origen, :campo_origen,
                     :score,
-                    :aprobado,
-                    :aprobado_por,
+                    :aprobado_por, :fecha_aprobacion,
                     1
                 )
             """), {
-                'tabla_origen':  tabla_origen,
-                'campo_origen':  'Variedad_Raw',
-                'texto_crudo':   texto_crudo,
-                'valor_canonico': valor_canonico,
-                'score':         round(score, 4),
-                'aprobado':      1 if aprobado else 0,
-                'aprobado_por':  'SISTEMA' if aprobado else 'PENDIENTE',
+                'texto_crudo':       texto_crudo,
+                'valor_canonico':    valor_canonico,
+                'tabla_origen':      tabla_origen,
+                'campo_origen':      campo_origen,
+                'score':             round(score, 4),
+                'aprobado_por':      aprobado_por,
+                'fecha_aprobacion':  datetime.now() if aprobado else None,
             })
 
 
 def homologar_valor(valor: str | None,
                     tabla_origen: str,
+                    campo_origen: str,
                     diccionario: pd.DataFrame,
+                    catalogo: pd.DataFrame,
                     engine: Engine) -> tuple[str | None, str]:
     """
     Homologa un valor contra el diccionario canónico.
-
-    Retorna tupla (valor_homologado, estado):
-      - estado = 'EXACTO'       → match exacto en diccionario
-      - estado = 'LEVENSHTEIN'  → match automático por similitud
-      - estado = 'CUARENTENA'   → sin match suficiente → revisión humana
+    Retorna (valor_homologado, estado):
+      'EXACTO'      → match exacto en diccionario aprobado
+      'LEVENSHTEIN' → similitud >= 0.85, auto-aprobado
+      'CUARENTENA'  → sin match → revisión humana
+      'NULO'        → valor vacío o None
     """
     if not valor or not str(valor).strip():
         return None, 'NULO'
 
     valor = str(valor).strip()
 
-    # 1. Match exacto
     canonico = buscar_match_exacto(valor, diccionario)
     if canonico:
-        registrar_homologacion(engine, tabla_origen, valor, canonico, 1.0)
+        registrar_homologacion(engine, tabla_origen, campo_origen,
+                               valor, canonico, 1.0, aprobado=True)
         return canonico, 'EXACTO'
 
-    # 2. Levenshtein
-    canonico, score = buscar_match_levenshtein(valor, diccionario)
+    canonico = buscar_match_catalogo(valor, catalogo)
     if canonico:
-        registrar_homologacion(engine, tabla_origen, valor, canonico, score)
+        registrar_homologacion(engine, tabla_origen, campo_origen,
+                               valor, canonico, 1.0, aprobado=True)
+        return canonico, 'CATALOGO'
+
+    canonico, score = buscar_match_levenshtein(valor, catalogo)
+    if canonico:
+        registrar_homologacion(engine, tabla_origen, campo_origen,
+                               valor, canonico, score, aprobado=True)
         return canonico, 'LEVENSHTEIN'
 
-    # 3. Sin match → cuarentena
-    registrar_homologacion(
-        engine, tabla_origen, valor,
-        valor,   # se guarda el crudo como candidato
-        score,
-        aprobado=False
-    )
+    sugerencia, score = buscar_sugerencia_levenshtein(valor, catalogo)
+    registrar_homologacion(engine, tabla_origen, campo_origen,
+                           valor, sugerencia or normalizar_variedad(valor) or valor,
+                           score, aprobado=False)
     return None, 'CUARENTENA'
 
 
@@ -204,25 +294,39 @@ def homologar_columna(df: pd.DataFrame,
                        engine: Engine) -> tuple[pd.DataFrame, list[dict]]:
     """
     Homologa una columna completa del DataFrame.
-    Retorna (df con columna_destino añadida, lista de cuarentenas).
+    Retorna (df con columna_destino, lista de cuarentenas).
     """
     diccionario = cargar_diccionario(engine, tabla_origen)
+    catalogo    = cargar_catalogo_variedades(engine)
     cuarentenas = []
+    resultados  = []
+    cache_resoluciones: dict[str, tuple[str | None, str]] = {}
 
-    resultados = []
     for _, fila in df.iterrows():
         valor = fila.get(columna_raw)
-        homologado, estado = homologar_valor(
-            valor, tabla_origen, diccionario, engine
-        )
+        clave_cache = _clave_variedad(valor)
+        if clave_cache is None:
+            valor_token = '' if valor is None else str(valor).strip().lower()
+            clave_cache = f'__RAW__::{valor_token}'
+
+        if clave_cache in cache_resoluciones:
+            homologado, estado = cache_resoluciones[clave_cache]
+        else:
+            homologado, estado = homologar_valor(
+                valor, tabla_origen, columna_raw, diccionario, catalogo, engine
+            )
+            cache_resoluciones[clave_cache] = (homologado, estado)
+
         resultados.append(homologado)
 
         if estado == 'CUARENTENA':
             cuarentenas.append({
-                'columna':   columna_raw,
-                'valor':     valor,
-                'motivo':    'Variedad no reconocida — requiere revisión en MDM',
-                'severidad': 'ALTO',
+                'columna':           columna_raw,
+                'valor':             valor,
+                'motivo':            'Variedad no reconocida — requiere revisión en MDM',
+                'tipo_regla':        'CATALOGO',
+                'score_levenshtein': None,
+                'severidad':         'ALTO',
             })
 
     df[columna_destino] = resultados
