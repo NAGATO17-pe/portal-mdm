@@ -13,7 +13,7 @@ from datetime import date, timedelta
 
 import pandas as pd
 import streamlit as st
-from utils.formato import header_pagina, colorear_severidad
+from utils.formato import header_pagina, colorear_severidad, crear_paginacion_ui, renderizar_tabla_premium
 from utils.db import ejecutar_query
 
 
@@ -124,7 +124,7 @@ def render() -> None:
 
     k1, k2, k3, k4 = st.columns(4)
     k1.metric("📋 Total registros",   total)
-    k2.metric("⏳ Pendientes",         pendientes,  delta=f"-{resueltos} resueltos")
+    k2.metric("⏳ Pendientes",         pendientes,  delta=f"-{resueltos} resueltos" if resueltos > 0 else None)
     k3.metric("🔴 Críticos",           criticos,    delta_color="inverse")
     k4.metric("✅ Resueltos",          resueltos)
 
@@ -198,21 +198,7 @@ def render() -> None:
     columnas_vista = ["ID", "Tabla Origen", "Columna Origen",
                       "Valor Raw", "Motivo", "Severidad", "Fecha ingreso", "Estado"]
 
-    st.dataframe(
-        df[columnas_vista].style
-            .map(colorear_severidad, subset=["Severidad"])
-            .apply(lambda col: [
-                "background-color:rgba(57,73,171,0.08); color:#3949AB; font-weight:600"
-                if v == "PENDIENTE" else
-                "background-color:rgba(230,126,34,0.08); color:#E29D45; font-weight:600"
-                if v == "EN_REVISIÓN" else
-                "background-color:rgba(30,107,53,0.08); color:#1E6B35; font-weight:600"
-                if v == "RESUELTO" else ""
-                for v in col
-            ], subset=["Estado"]),
-        width="stretch",
-        hide_index=True,
-    )
+    renderizar_tabla_premium(df[columnas_vista], key="cuarentena_tabla", page_size=15)
 
     st.markdown("<hr style='margin:24px 0;'>", unsafe_allow_html=True)
 

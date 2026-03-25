@@ -126,25 +126,31 @@ div[data-testid="stDataFrame"] {{
     background: var(--secondary-background-color);
     border: 1px solid rgba(128,128,128,0.2);
     border-radius: 16px;
-    padding: 20px 24px;
+    padding: 24px;
     flex: 1;
-    min-width: 200px;
+    min-width: 220px;
     box-shadow: var(--shadow-sm);
     display: flex;
-    align-items: center;
-    gap: 16px;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    flex-direction: column;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
     border-top: 4px solid var(--bronce);
 }}
 .kpi-card:hover {{
     transform: translateY(-4px);
     box-shadow: var(--shadow-md);
+    border-top-color: var(--verde-acp);
 }}
 .kpi-icon {{
-    font-size: 2.5rem;
-    color: var(--bronce);
-    opacity: 0.9;
-    flex-shrink: 0;
+    position: absolute;
+    right: -10px;
+    bottom: -10px;
+    font-size: 5rem;
+    opacity: 0.05;
+    transform: rotate(-15deg);
+    pointer-events: none;
 }}
 .kpi-content {{
     display: flex;
@@ -233,6 +239,77 @@ div[data-testid="stDataFrame"] {{
     margin-bottom: 16px;
     box-shadow: var(--shadow-sm);
 }}
+
+/* ── Tabla Premium (Zebra Striping + Teal Header) ── */
+.tabla-premium-wrapper {{
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(128,128,128,0.25);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 8px;
+}}
+.tabla-premium {{
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.88rem;
+}}
+.tabla-premium thead tr {{
+    background: linear-gradient(135deg, #3D8B7A 0%, #2D6B5F 100%);
+}}
+.tabla-premium thead th {{
+    color: #ffffff;
+    font-weight: 700;
+    padding: 12px 16px;
+    text-align: left;
+    font-size: 0.85rem;
+    letter-spacing: 0.3px;
+    border-right: 1px solid rgba(255,255,255,0.15);
+    white-space: nowrap;
+}}
+.tabla-premium thead th:last-child {{
+    border-right: none;
+}}
+.tabla-premium tbody td {{
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(128,128,128,0.12);
+    color: var(--text-color);
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}}
+.tabla-premium tbody tr.zebra-even {{
+    background: rgba(61, 139, 122, 0.06);
+}}
+.tabla-premium tbody tr.zebra-odd {{
+    background: var(--background-color);
+}}
+.tabla-premium tbody tr:hover {{
+    background: rgba(61, 139, 122, 0.14) !important;
+    cursor: default;
+}}
+.tabla-premium tbody td input[type="checkbox"] {{
+    width: 16px;
+    height: 16px;
+    accent-color: #3D8B7A;
+}}
+
+/* ── Pagination Info Bar ── */
+.pagi-info-box {{
+    padding: 8px 0;
+}}
+.pagi-info {{
+    font-size: 0.88rem;
+    color: var(--text-color);
+    opacity: 0.75;
+    font-weight: 500;
+}}
+.paginacion-bar {{
+    text-align: center;
+    padding: 8px 0;
+    margin-bottom: 8px;
+}}
+
 </style>
 """
 
@@ -270,10 +347,16 @@ def colorear_severidad(val):
     return colores.get(val, "")
 
 def score_a_color(score: float) -> str:
-    if score >= 0.85:
-        return "🟢"
-    elif score >= 0.70:
-        return "🟡"
+    if score is None:
+        return "⚪"
+    try:
+        s = float(score)
+        if s >= 0.85:
+            return "🟢"
+        elif s >= 0.70:
+            return "🟡"
+    except (ValueError, TypeError):
+        pass
     return "🔴"
 
 def crear_tarjeta_kpi(titulo: str, valor: str, icono: str, tipo: str = "") -> str:
@@ -302,3 +385,130 @@ def load_lottieurl(url: str):
         return None
 
 
+# ── Componente de Paginación Premium ──
+def crear_paginacion_ui(count: int, page_size: int, key: str) -> tuple[int, int]:
+    """
+    Renderiza controles de paginación profesional con navegación completa
+    y retorna (start_idx, end_idx).
+    Diseño: |< < ··· Page X of Y ··· > >|  +  "X to Y of Z"
+    """
+    import math
+    total_pages = max(1, math.ceil(count / page_size)) if count > 0 else 1
+
+    st_key = f"pagi_{key}"
+    if st_key not in st.session_state:
+        st.session_state[st_key] = 1
+    if st.session_state[st_key] > total_pages:
+        st.session_state[st_key] = total_pages
+    if st.session_state[st_key] < 1:
+        st.session_state[st_key] = 1
+
+    current = st.session_state[st_key]
+    start_idx = (current - 1) * page_size
+    end_idx = min(start_idx + page_size, count)
+
+    if total_pages <= 1 and count > 0:
+        # Mostrar solo el conteo de registros sin botones
+        st.markdown(f"""
+            <div class="paginacion-bar">
+                <span class="pagi-info">{start_idx + 1} a {end_idx} de {count}</span>
+            </div>
+        """, unsafe_allow_html=True)
+        return 0, count
+
+    if count == 0:
+        return 0, 0
+
+    # Layout: Info de registros | Botones de navegación
+    col_info, col_nav = st.columns([1, 2])
+
+    with col_info:
+        st.markdown(f"""
+            <div class="pagi-info-box">
+                <span class="pagi-info">{start_idx + 1} a {end_idx} de {count}</span>
+            </div>
+        """, unsafe_allow_html=True)
+
+    with col_nav:
+        b1, b2, b3, b4, b5 = st.columns([1, 1, 3, 1, 1])
+        with b1:
+            if st.button("⏮", key=f"btn_first_{key}", disabled=current <= 1, use_container_width=True, help="Primera página"):
+                st.session_state[st_key] = 1
+                st.rerun()
+        with b2:
+            if st.button("◀", key=f"btn_prev_{key}", disabled=current <= 1, use_container_width=True, help="Anterior"):
+                st.session_state[st_key] -= 1
+                st.rerun()
+        with b3:
+            st.markdown(f"""
+                <div style="text-align:center; padding:6px 0; font-size:0.9rem; font-weight:600; color:var(--text-color);">
+                    Page {current} of {total_pages}
+                </div>
+            """, unsafe_allow_html=True)
+        with b4:
+            if st.button("▶", key=f"btn_next_{key}", disabled=current >= total_pages, use_container_width=True, help="Siguiente"):
+                st.session_state[st_key] += 1
+                st.rerun()
+        with b5:
+            if st.button("⏭", key=f"btn_last_{key}", disabled=current >= total_pages, use_container_width=True, help="Última página"):
+                st.session_state[st_key] = total_pages
+                st.rerun()
+
+    return start_idx, end_idx
+
+
+def renderizar_tabla_premium(df, key: str, page_size: int = 15,
+                              columnas_check: list = None,
+                              columnas_ocultas: list = None):
+    """
+    Renderiza un DataFrame como una tabla HTML premium con:
+    - Encabezado estilizado con el tema del portal (verde ACP)
+    - Filas con zebra-striping (alternancia de color)
+    - Paginación profesional inferior (|< < Page X of Y > >|)
+    - Contador de registros (X to Y of Z)
+
+    Args:
+        df: DataFrame a renderizar
+        key: Clave única para session_state
+        page_size: Registros por página
+        columnas_check: Lista de columnas que se muestran como checkbox
+        columnas_ocultas: Lista de columnas a ocultar
+    """
+    if df.empty:
+        st.info("No hay datos para mostrar.")
+        return
+
+    if columnas_ocultas:
+        df = df.drop(columns=[c for c in columnas_ocultas if c in df.columns], errors='ignore')
+
+    count = len(df)
+    start, end = crear_paginacion_ui(count, page_size, key)
+    df_slice = df.iloc[start:end]
+
+    # ── Generar HTML de la tabla ──
+    cols = list(df_slice.columns)
+    header_html = "".join(f"<th>{c}</th>" for c in cols)
+
+    rows_html = ""
+    for i, (_, row) in enumerate(df_slice.iterrows()):
+        row_class = "zebra-even" if i % 2 == 0 else "zebra-odd"
+        cells = ""
+        for col in cols:
+            val = row[col]
+            if columnas_check and col in columnas_check:
+                checked = "checked" if val else ""
+                cells += f'<td><input type="checkbox" {checked} disabled /></td>'
+            else:
+                display_val = "" if val is None else str(val)
+                cells += f"<td>{display_val}</td>"
+        rows_html += f'<tr class="{row_class}">{cells}</tr>'
+
+    tabla_html = f"""
+    <div class="tabla-premium-wrapper">
+        <table class="tabla-premium">
+            <thead><tr>{header_html}</tr></thead>
+            <tbody>{rows_html}</tbody>
+        </table>
+    </div>
+    """
+    st.markdown(tabla_html, unsafe_allow_html=True)

@@ -1,3 +1,6 @@
+import streamlit as st
+import pandas as pd
+from utils.formato import header_pagina, crear_paginacion_ui, renderizar_tabla_premium
 from utils.db import ejecutar_query, verificar_conexion
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -63,18 +66,9 @@ def render():
     if df.empty:
         st.info("No hay reglas de validación configuradas.")
     else:
-        st.caption("Edita **Valor min**, **Valor max** y **Activa** directamente en la tabla.")
-        edited = st.data_editor(
-            df,
-            width="stretch",
-            hide_index=True,
-            column_config={
-                "Activa": st.column_config.CheckboxColumn("Activa"),
-                "Valor min": st.column_config.NumberColumn("Valor min", format="%.2f"),
-                "Valor max": st.column_config.NumberColumn("Valor max", format="%.2f"),
-            },
-            disabled=["Tabla destino", "Columna", "Tipo validación", "Acción"],
-        )
+        st.caption("Visualización de reglas con paginación profesional.")
+        renderizar_tabla_premium(df, key="reglas_cfg", page_size=15,
+                                  columnas_check=["Activo"])
 
         if st.button("💾 Guardar cambios", key="btn_reg_guardar", type="primary"):
             st.toast("Guardado simulado: DB desconectada.", icon="💾")

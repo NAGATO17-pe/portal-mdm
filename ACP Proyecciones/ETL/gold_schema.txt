@@ -1,6 +1,0 @@
-Mart_Cosecha: Cantidad_Jabas, Condicion, Fecha_Actualizacion, Fecha_Cosecha, ID_Mart_Cosecha, Kg_Neto_Real, Kg_Proyectados, Modulo, Pct_Cumplimiento, Peso_Promedio_Jaba_kg, Semana_ISO, Turno, Variedad
-Mart_Proyecciones: Desviacion_kg, Error_MAPE, Fecha_Actualizacion, Fecha_Cutoff, Fecha_Generacion, Flag_Override, ID_Mart_Proyeccion, Kg_Proyectados, Kg_Real, Modulo, Motivo_Override, Semana_Objetivo, Turno, Variedad, Version_Escenario
-Mart_Fenologia: Brotes_Productivos, Brotes_Vegetativos, Cantidad_Bayas, Color_Cinta, Estado_Fenologico, Fecha_Actualizacion, ID_Mart_Fenologia, Modulo, Orden_Estado, Pct_Avance_Ciclo, Pct_Cosechable, Ratio_Productivo_Veg, Semana_ISO, Variedad
-Mart_Clima: Dias_Con_Lluvia, Fecha_Actualizacion, Humedad_Relativa_Prom, ID_Mart_Clima, Modulo, Precipitacion_Total_mm, Radiacion_Promedio, Semana_ISO, Temp_Max_Promedio, Temp_Media, Temp_Min_Promedio, VPD_Promedio
-Mart_Pesos_Calibres: Cant_Bayas_Muestra, Estado_DQ, Evaluador, Fecha_Actualizacion, ID_Mart_Pesos, Modulo, Peso_Promedio_Baya_g, Peso_Proyectado_Baya_g, Semana_ISO, Tendencia_Peso, Variedad
-Mart_Administrativo: Actividad, Dias_Trabajados, DNI_Personal, Fecha_Actualizacion, Horas_Trabajadas, ID_Mart_Admin, Labor, Nombre_Personal, Pct_Asertividad, Registros_Observados_SAP, Rol, Semana_ISO, Sexo, Supervisor

@@ -1,24 +1,26 @@
-"""
+﻿"""
 fact_evaluacion_pesos.py
 ========================
 Carga Silver.Fact_Evaluacion_Pesos desde Bronce.Evaluacion_Pesos.
 
 Grain: Fecha + Geo + Personal + Variedad
 FKs obligatorias: ID_Tiempo, ID_Geografia, ID_Variedad, ID_Personal
-ValidaciÃ³n crÃ­tica: Peso_Baya_g BETWEEN 0.5 AND 8.0
+ValidaciÃƒÂ³n crÃƒÂ­tica: Peso_Baya_g BETWEEN 0.5 AND 8.0
 """
 
 import pandas as pd
 from sqlalchemy.engine import Engine
 from sqlalchemy import text
 
-from utils.fechas    import procesar_fecha, obtener_id_tiempo
+from utils.fechas    import procesar_fecha, obtener_id_tiempo as construir_id_tiempo
 from utils.texto     import normalizar_modulo, es_test_block
 from utils.dni       import procesar_dni
+from utils.sql_lotes import marcar_estado_carga_por_ids
 from dq.validador    import validar_peso_baya
 from dq.cuarentena   import enviar_a_cuarentena
 from mdm.lookup      import (
-    obtener_id_geografia,
+    obtener_id_tiempo,
+    resolver_geografia,
     obtener_id_variedad,
     obtener_id_personal,
 )
@@ -67,7 +69,7 @@ def _leer_bronce(engine: Engine) -> pd.DataFrame:
 def _calcular_peso_ponderado(fila) -> float | None:
     """
     Calcula el peso promedio ponderado de baya en gramos.
-    Usa todas las categorÃ­as de bayas disponibles en el reporte horizontal.
+    Usa todas las categorÃƒÂ­as de bayas disponibles en el reporte horizontal.
     Retorna None si no hay datos suficientes para calcular.
     """
     def safe_float(val, default=0.0):
@@ -107,15 +109,21 @@ def _calcular_peso_ponderado(fila) -> float | None:
     return None
 
 
-def _marcar_procesado(engine: Engine, ids: list[int]) -> None:
-    if not ids:
-        return
-    with engine.begin() as conexion:
-        conexion.execute(text(f"""
-            UPDATE {TABLA_ORIGEN}
-            SET Estado_Carga = 'PROCESADO'
-            WHERE ID_Evaluacion_Pesos IN :ids
-        """).bindparams(ids=tuple(ids)))
+def _motivo_cuarentena_geografia(resultado_geo: dict) -> str:
+    estado = resultado_geo.get('estado')
+    if estado in ('TEST_BLOCK_NO_MAPEADO', 'TEST_BLOCK_AMBIGUO'):
+        return 'Test block (VI) sin mapeo unico en Dim_Geografia.'
+    if estado in ('PENDIENTE_CASO_ESPECIAL', 'CASO_ESPECIAL_MODULO'):
+        return 'Geografia especial requiere catalogacion o regla en MDM_Geografia.'
+    if estado in ('PENDIENTE_CAMA_GENERICA', 'CAMA_NO_RELACION'):
+        return 'Cama no relacionada a la geografia operativa.'
+    if estado in ('PENDIENTE_DIM_DUPLICADA', 'GEOGRAFIA_AMBIGUA'):
+        return 'La clave geografica tiene mas de un registro vigente en Silver.Dim_Geografia.'
+    if estado == 'CAMA_NO_VALIDA':
+        return 'Cama fuera de rango operativo permitido.'
+    if estado == 'CAMA_NO_CATALOGO':
+        return 'Cama valida pero no registrada en el catalogo operativo.'
+    return 'Geografia no encontrada en Silver.Dim_Geografia.'
 
 
 def cargar_fact_evaluacion_pesos(engine: Engine) -> dict:
@@ -131,50 +139,76 @@ def cargar_fact_evaluacion_pesos(engine: Engine) -> dict:
     # Homologar variedades
     df, cuarentenas_var = homologar_columna(
         df, 'Variedad_Raw', 'Variedad_Canonica',
-        TABLA_ORIGEN, engine
+        TABLA_ORIGEN, engine,
+        columna_id_origen='ID_Evaluacion_Pesos'
     )
     resumen['cuarentena'].extend(cuarentenas_var)
 
-    ids_procesados = []
+    ids_leidos = []
 
     with engine.begin() as conexion:
         for _, fila in df.iterrows():
+            id_origen = None
+            try:
+                id_origen = int(fila['ID_Evaluacion_Pesos'])
+                ids_leidos.append(id_origen)
+            except (ValueError, TypeError):
+                pass
 
-            # â”€â”€ Fecha â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            # Ã¢â€â‚¬Ã¢â€â‚¬ Fecha Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
             fecha, fecha_valida = procesar_fecha(fila.get('Fecha_Raw'))
             if not fecha_valida:
                 resumen['rechazados'] += 1
                 resumen['cuarentena'].append({
                     'columna':   'Fecha_Raw',
                     'valor':     fila.get('Fecha_Raw'),
-                    'motivo':    'Fecha invÃ¡lida o fuera de campaÃ±a',
+                    'motivo':    'Fecha invÃƒÂ¡lida o fuera de campaÃƒÂ±a',
                     'severidad': 'ALTO',
+                    'id_registro_origen': id_origen,
                 })
                 continue
 
-            id_tiempo = obtener_id_tiempo(fecha)
+            id_tiempo = obtener_id_tiempo(construir_id_tiempo(fecha), engine)
+            if not id_tiempo:
+                resumen['rechazados'] += 1
+                resumen['cuarentena'].append({
+                    'columna':   'Fecha_Raw',
+                    'valor':     fila.get('Fecha_Raw'),
+                    'motivo':    'Fecha valida pero fuera de Dim_Tiempo',
+                    'severidad': 'ALTO',
+                    'id_registro_origen': id_origen,
+                })
+                continue
 
-            # â”€â”€ GeografÃ­a â€” Este reporte usa Valvula como mÃ³dulo â”€â”€
+            # Ã¢â€â‚¬Ã¢â€â‚¬ GeografÃƒÂ­a Ã¢â‚¬â€ Este reporte usa Valvula como mÃƒÂ³dulo Ã¢â€â‚¬Ã¢â€â‚¬
             valvula_raw = fila.get('Valvula_Raw')
             modulo_raw  = fila.get('Modulo_Raw')
             geo_modulo_raw = modulo_raw if modulo_raw and str(modulo_raw).strip() not in ('None', '', 'nan') else valvula_raw
             modulo = None if es_test_block(geo_modulo_raw) else normalizar_modulo(geo_modulo_raw)
-            id_geo = obtener_id_geografia(
-                None, None, modulo, engine
-            )
-            id_geo = obtener_id_geografia(
+            resultado_geo = resolver_geografia(
                 None,
                 None,
                 modulo,
                 engine,
                 turno=fila.get('Turno_Raw'),
                 valvula=fila.get('Valvula_Raw'),
-            ) or id_geo
+                cama=fila.get('Cama_Raw'),
+            )
+            id_geo = resultado_geo.get('id_geografia')
             if not id_geo:
                 resumen['rechazados'] += 1
+                resumen['cuarentena'].append({
+                    'columna':   'Modulo_Raw',
+                    'valor':     f"Modulo={fila.get('Modulo_Raw')} | Turno={fila.get('Turno_Raw')} | "
+                                 f"Valvula={fila.get('Valvula_Raw')} | Cama={fila.get('Cama_Raw')}",
+                    'motivo':    _motivo_cuarentena_geografia(resultado_geo),
+                    'tipo_regla': 'MDM',
+                    'severidad': 'ALTO',
+                    'id_registro_origen': id_origen,
+                })
                 continue
 
-            # â”€â”€ Variedad â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            # Ã¢â€â‚¬Ã¢â€â‚¬ Variedad Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
             id_variedad = obtener_id_variedad(
                 fila.get('Variedad_Canonica'), engine
             )
@@ -182,11 +216,11 @@ def cargar_fact_evaluacion_pesos(engine: Engine) -> dict:
                 resumen['rechazados'] += 1
                 continue
 
-            # â”€â”€ Personal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            # Ã¢â€â‚¬Ã¢â€â‚¬ Personal Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
             dni, _ = procesar_dni(fila.get('DNI_Raw'))
             id_personal = obtener_id_personal(dni, engine)
 
-            # â”€â”€ Peso baya ponderado â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            # Ã¢â€â‚¬Ã¢â€â‚¬ Peso baya ponderado Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
             peso = _calcular_peso_ponderado(fila)
             if peso is None:
                 resumen['rechazados'] += 1
@@ -195,6 +229,7 @@ def cargar_fact_evaluacion_pesos(engine: Engine) -> dict:
                     'valor':     None,
                     'motivo':    'No se pudo calcular peso promedio de baya',
                     'severidad': 'MEDIO',
+                    'id_registro_origen': id_origen,
                 })
                 continue
 
@@ -202,10 +237,11 @@ def cargar_fact_evaluacion_pesos(engine: Engine) -> dict:
             peso_val, error_peso = validar_peso_baya(peso)
             if error_peso:
                 resumen['rechazados'] += 1
+                error_peso['id_registro_origen'] = id_origen
                 resumen['cuarentena'].append(error_peso)
                 continue
 
-            # â”€â”€ Cantidad bayas total â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            # Ã¢â€â‚¬Ã¢â€â‚¬ Cantidad bayas total Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
             def safe_int(v):
                 try:
                     return max(0, int(float(str(v)))) if v is not None and str(v).strip() not in ('', 'None', 'nan') else 0
@@ -222,7 +258,7 @@ def cargar_fact_evaluacion_pesos(engine: Engine) -> dict:
                 safe_int(fila.get('Cosechables_Raw'))
             ) or safe_int(fila.get('CantMuestra_Raw'))
 
-            # â”€â”€ INSERT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            # Ã¢â€â‚¬Ã¢â€â‚¬ INSERT Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
             conexion.execute(text("""
                 INSERT INTO Silver.Fact_Evaluacion_Pesos (
                     ID_Geografia, ID_Tiempo, ID_Variedad, ID_Personal,
@@ -243,12 +279,16 @@ def cargar_fact_evaluacion_pesos(engine: Engine) -> dict:
                 'fecha_evento': fecha,
             })
 
-            ids_procesados.append(int(fila['ID_Evaluacion_Pesos']))
             resumen['insertados'] += 1
 
-    _marcar_procesado(engine, ids_procesados)
+    if ids_leidos:
+        marcar_estado_carga_por_ids(
+            engine, TABLA_ORIGEN, 'ID_Evaluacion_Pesos', ids_leidos
+        )
 
     if resumen['cuarentena']:
         enviar_a_cuarentena(engine, TABLA_ORIGEN, resumen['cuarentena'])
 
     return resumen
+
+

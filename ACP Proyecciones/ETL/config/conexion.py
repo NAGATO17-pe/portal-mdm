@@ -7,11 +7,19 @@ Usa odbc_connect directo para evitar problemas de parsing de URL.
 
 import os
 import urllib
+import warnings
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SAWarning
 
 load_dotenv()
+
+warnings.filterwarnings(
+    'ignore',
+    message=r"Unrecognized server version info '17\..*'\.  Some SQL Server features may not function properly\.",
+    category=SAWarning,
+)
 
 
 def obtener_engine() -> Engine:

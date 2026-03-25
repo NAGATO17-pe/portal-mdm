@@ -15,7 +15,7 @@ GO
 PRINT 'Cargando Dim_Tiempo...';
 
 WITH fechas AS (
-    SELECT CAST('2025-06-01' AS DATE) AS fecha
+    SELECT CAST('2025-03-01' AS DATE) AS fecha
     UNION ALL
     SELECT DATEADD(DAY, 1, fecha)
     FROM fechas
@@ -38,7 +38,7 @@ SELECT
     YEAR(fecha)                                   AS Anio,
     MONTH(fecha)                                  AS Mes,
     DATEPART(ISO_WEEK, fecha)                     AS Semana_ISO,
-    DATEDIFF(WEEK, '2025-06-01', fecha) + 1       AS Semana_Cosecha,
+    DATEDIFF(WEEK, '2025-03-01', fecha) + 1       AS Semana_Cosecha,
     DATEPART(WEEKDAY, fecha)                      AS Dia_Semana,
     DATENAME(MONTH, fecha)                        AS Nombre_Mes,
     CASE WHEN DATEPART(WEEKDAY, fecha) IN (1,7)

@@ -13,6 +13,7 @@ from sqlalchemy import text
 
 from utils.fechas    import procesar_fecha, obtener_id_tiempo
 from utils.texto     import normalizar_modulo, es_test_block, titulo
+from utils.sql_lotes import marcar_estado_carga_por_ids
 from dq.cuarentena   import enviar_a_cuarentena
 from mdm.lookup      import obtener_id_geografia, obtener_id_variedad
 from mdm.homologador import homologar_columna
@@ -67,18 +68,6 @@ def _leer_bronce_sap(engine: Engine) -> pd.DataFrame:
             WHERE Estado_Carga = 'CARGADO'
         """))
         return pd.DataFrame(resultado.fetchall(), columns=resultado.keys())
-
-
-def _marcar_procesado(engine: Engine,
-                       tabla: str, col_id: str,
-                       ids: list[int]) -> None:
-    if not ids:
-        return
-    with engine.begin() as conexion:
-        conexion.execute(
-            text(f"UPDATE {tabla} SET Estado_Carga = 'PROCESADO' WHERE {col_id} IN :ids")
-            .bindparams(ids=tuple(ids))
-        )
 
 
 def _insertar_fila(conexion, campos: dict) -> None:
@@ -157,7 +146,9 @@ def cargar_fact_cosecha_sap(engine: Engine) -> dict:
             ids_cosecha.append(int(fila['ID_Reporte_Cosecha']))
             resumen['insertados'] += 1
 
-    _marcar_procesado(engine, TABLA_COSECHA, 'ID_Reporte_Cosecha', ids_cosecha)
+    marcar_estado_carga_por_ids(
+        engine, TABLA_COSECHA, 'ID_Reporte_Cosecha', ids_cosecha
+    )
 
     # ── Data SAP ──────────────────────────────────────────────
     df_sap = _leer_bronce_sap(engine)
@@ -212,7 +203,9 @@ def cargar_fact_cosecha_sap(engine: Engine) -> dict:
             ids_sap.append(int(fila['ID_Data_SAP']))
             resumen['insertados'] += 1
 
-    _marcar_procesado(engine, TABLA_SAP, 'ID_Data_SAP', ids_sap)
+    marcar_estado_carga_por_ids(
+        engine, TABLA_SAP, 'ID_Data_SAP', ids_sap
+    )
 
     if resumen['cuarentena']:
         enviar_a_cuarentena(engine, TABLA_COSECHA, resumen['cuarentena'])

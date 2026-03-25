@@ -15,6 +15,7 @@ from sqlalchemy import text
 
 from utils.fechas    import procesar_fecha, obtener_id_tiempo
 from utils.texto     import normalizar_modulo
+from utils.sql_lotes import marcar_estado_carga_por_ids
 from dq.validador    import normalizar_humedad
 from dq.cuarentena   import enviar_a_cuarentena
 from mdm.lookup      import obtener_id_geografia
@@ -58,18 +59,6 @@ def _a_decimal(valor) -> float | None:
         return float(str(valor).replace(',', '.'))
     except (ValueError, TypeError):
         return None
-
-
-def _marcar_procesado(engine: Engine,
-                       tabla: str, col_id: str,
-                       ids: list[int]) -> None:
-    if not ids:
-        return
-    with engine.begin() as conexion:
-        conexion.execute(
-            text(f"UPDATE {tabla} SET Estado_Carga = 'PROCESADO' WHERE {col_id} IN :ids")
-            .bindparams(ids=tuple(ids))
-        )
 
 
 def cargar_fact_telemetria_clima(engine: Engine) -> dict:
@@ -122,7 +111,9 @@ def cargar_fact_telemetria_clima(engine: Engine) -> dict:
             ids_clima.append(int(fila['ID_Reporte_Clima']))
             resumen['insertados'] += 1
 
-    _marcar_procesado(engine, TABLA_CLIMA, 'ID_Reporte_Clima', ids_clima)
+    marcar_estado_carga_por_ids(
+        engine, TABLA_CLIMA, 'ID_Reporte_Clima', ids_clima
+    )
 
     # ── Variables Meteorológicas (VPD + Radiación) ────────────
     df_vars = _leer_bronce_variables(engine)
@@ -169,7 +160,9 @@ def cargar_fact_telemetria_clima(engine: Engine) -> dict:
             ids_vars.append(int(fila['ID_Variables_Meteorologicas']))
             resumen['insertados'] += 1
 
-    _marcar_procesado(engine, TABLA_VARIABLES, 'ID_Variables_Meteorologicas', ids_vars)
+    marcar_estado_carga_por_ids(
+        engine, TABLA_VARIABLES, 'ID_Variables_Meteorologicas', ids_vars
+    )
 
     if resumen['cuarentena']:
         enviar_a_cuarentena(engine, TABLA_CLIMA, resumen['cuarentena'])

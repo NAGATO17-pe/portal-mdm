@@ -1,12 +1,9 @@
-"""
-inicio.py — Página de inicio del portal MDM.
-Dashboard con métricas del día, estado por tabla, alertas y log de cargas.
-"""
 import streamlit as st
 import pandas as pd
-from utils.formato import header_pagina, colorear_estado, crear_tarjeta_kpi
+from utils.formato import header_pagina, colorear_estado, crear_tarjeta_kpi, crear_paginacion_ui, renderizar_tabla_premium
 from utils.db import ejecutar_query, verificar_conexion
 
+# ... (_cargar_resumen_ultima_carga remains same)
 @st.cache_data(ttl=60, show_spinner=False)
 def _cargar_resumen_ultima_carga() -> pd.DataFrame:
     """
@@ -62,10 +59,10 @@ def render():
     tablas_con_error = int((df_estado['Estado'] != 'OK').sum()) if not df_estado.empty else 0
 
     html_kpis = f"""<div class="kpi-container" style="margin-bottom: 32px;">
-{crear_tarjeta_kpi("Ultima carga", ultima_carga, "RELOJ", "")}
-{crear_tarjeta_kpi("Filas OK", f"{total_ok:,}", "OK", "success")}
-{crear_tarjeta_kpi("Rechazadas", f"{total_rechaz:,}", "ERROR", "danger" if total_rechaz > 0 else "")}
-{crear_tarjeta_kpi("Tablas con error", str(tablas_con_error), "ALERTA", "warning" if tablas_con_error > 0 else "success")}
+{crear_tarjeta_kpi("Ultima carga", ultima_carga, "🕒", "info")}
+{crear_tarjeta_kpi("Filas OK", f"{total_ok:,}", "✅", "success")}
+{crear_tarjeta_kpi("Rechazadas", f"{total_rechaz:,}", "❌", "danger" if total_rechaz > 0 else "")}
+{crear_tarjeta_kpi("Tablas con error", str(tablas_con_error), "⚠️", "warning" if tablas_con_error > 0 else "success")}
 </div>"""
     st.markdown(html_kpis, unsafe_allow_html=True)
 
@@ -161,18 +158,7 @@ def render():
     if not conectado or df_estado.empty:
         st.info("No hay registros de carga en los ultimos 7 dias.")
     else:
-        def _color_estado(val):
-            if val == 'OK':
-                return 'background-color:rgba(46,139,87,0.15); color:#2E8B57; font-weight:600'
-            return 'background-color:rgba(192,57,43,0.15); color:#C0392B; font-weight:600'
-
-        st.dataframe(
-            df_estado.style
-                .map(_color_estado, subset=["Estado"])
-                .format({"Filas insertadas": "{:,}", "Filas rechazadas": "{:,}"}),
-            width="stretch",
-            hide_index=True,
-        )
+        renderizar_tabla_premium(df_estado, key="inicio_estado", page_size=10)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -185,8 +171,4 @@ def render():
             if df_log.empty:
                 st.write("El historial de cargas esta vacio.")
             else:
-                st.dataframe(
-                    df_log.style.map(_color_estado, subset=["Estado"]),
-                    width="stretch",
-                    hide_index=True,
-                )
+                renderizar_tabla_premium(df_log, key="inicio_log", page_size=10)

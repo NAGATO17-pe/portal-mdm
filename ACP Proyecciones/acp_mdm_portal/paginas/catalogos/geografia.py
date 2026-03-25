@@ -1,3 +1,6 @@
+import streamlit as st
+import pandas as pd
+from utils.formato import header_pagina, crear_paginacion_ui, renderizar_tabla_premium
 from utils.db import ejecutar_query, verificar_conexion
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -59,17 +62,9 @@ def render():
     if df.empty:
         st.info("No hay información geográfica registrada.")
     else:
-        st.caption("Edita **Es Test Block** y **Activa** directamente en la tabla.")
-        edited = st.data_editor(
-            df,
-            width="stretch",
-            hide_index=True,
-            column_config={
-                "Es Test Block": st.column_config.CheckboxColumn("Es Test Block"),
-                "Activa": st.column_config.CheckboxColumn("Activa"),
-            },
-            disabled=["Fundo", "Sector", "Módulo", "Turno"],
-        )
+        st.caption("Visualización de módulos con paginación profesional.")
+        renderizar_tabla_premium(df, key="geografia_cat", page_size=15,
+                                  columnas_check=["Es Test Block", "Activa"])
 
         if st.button("💾 Guardar cambios", key="btn_geo_guardar", type="primary"):
             st.toast("Guardado simulado: DB desconectada.", icon="💾")

@@ -14,6 +14,7 @@ from sqlalchemy import text
 
 from utils.fechas    import procesar_fecha, obtener_id_tiempo
 from utils.texto     import normalizar_modulo, es_test_block, titulo
+from utils.sql_lotes import marcar_estado_carga_por_ids
 from dq.cuarentena   import enviar_a_cuarentena
 from mdm.lookup      import obtener_id_geografia, obtener_id_variedad
 from mdm.homologador import homologar_columna
@@ -35,8 +36,9 @@ def _leer_bronce_poda(engine: Engine) -> pd.DataFrame:
     with engine.connect() as conexion:
         resultado = conexion.execute(text(f"""
             SELECT
+                ID_Evaluacion_Poda,
                 ID_Evaluacion_Calidad_Poda,
-                Fecha_Raw, Fundo_Raw, Modulo_Raw, Variedad_Raw,
+                Fecha_Raw, Fundo_Raw, Modulo_Raw, Turno_Raw, Valvula_Raw, Variedad_Raw,
                 Tipo_Evaluacion_Raw,
                 TallosPlanta_Raw, LongitudTallo_Raw, DiametroTallo_Raw,
                 RamillaPlanta_Raw, ToconesPlanta_Raw,
@@ -75,7 +77,8 @@ def cargar_fact_ciclo_poda(engine: Engine) -> dict:
     # ── Evaluacion Calidad Poda ───────────────────────────────
     df_poda = _leer_bronce_poda(engine)
     df_poda, cuar_var = homologar_columna(
-        df_poda, 'Variedad_Raw', 'Variedad_Canonica', TABLA_PODA, engine
+        df_poda, 'Variedad_Raw', 'Variedad_Canonica', TABLA_PODA, engine,
+        columna_id_origen='ID_Evaluacion_Poda'
     )
     resumen['cuarentena'].extend(cuar_var)
 
@@ -88,7 +91,15 @@ def cargar_fact_ciclo_poda(engine: Engine) -> dict:
                 continue
 
             modulo = None if es_test_block(fila.get('Modulo_Raw')) else normalizar_modulo(fila.get('Modulo_Raw'))
-            id_geo = obtener_id_geografia(fila.get('Fundo_Raw'), None, modulo, engine)
+            id_geo = obtener_id_geografia(
+                fila.get('Fundo_Raw'),
+                None,
+                modulo,
+                engine,
+                turno=fila.get('Turno_Raw'),
+                valvula=fila.get('Valvula_Raw'),
+                cama=None,
+            )
             id_var = obtener_id_variedad(fila.get('Variedad_Canonica'), engine)
 
             if not id_geo or not id_var:
@@ -109,15 +120,12 @@ def cargar_fact_ciclo_poda(engine: Engine) -> dict:
                 'altura':      _a_decimal(fila.get('AlturaPoda_Raw')),
                 'fecha_evento':fecha,
             })
-            ids_poda.append(int(fila['ID_Evaluacion_Calidad_Poda']))
+            ids_poda.append(int(fila['ID_Evaluacion_Poda']))
             resumen['insertados'] += 1
 
-    if ids_poda:
-        with engine.begin() as conexion:
-            conexion.execute(
-                text(f"UPDATE {TABLA_PODA} SET Estado_Carga = 'PROCESADO' WHERE ID_Evaluacion_Calidad_Poda IN :ids")
-                .bindparams(ids=tuple(ids_poda))
-            )
+    marcar_estado_carga_por_ids(
+        engine, TABLA_PODA, 'ID_Evaluacion_Poda', ids_poda
+    )
 
     if resumen['cuarentena']:
         enviar_a_cuarentena(engine, TABLA_PODA, resumen['cuarentena'])

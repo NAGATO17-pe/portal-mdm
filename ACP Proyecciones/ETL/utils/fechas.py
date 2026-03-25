@@ -159,7 +159,7 @@ def obtener_id_tiempo(fecha: datetime | date | None) -> Optional[int]:
 
 
 def es_fecha_valida_campana(fecha: datetime | date | None,
-                             inicio: str = '2025-06-01',
+                             inicio: str = '2025-03-01',
                              fin:    str = '2026-06-30') -> bool:
     """
     Verifica que la fecha esté dentro del rango de la campaña activa.

@@ -1,20 +1,20 @@
-"""
+﻿"""
 homologador.py
 ==============
-Homologación de texto libre via Levenshtein (rapidfuzz).
+HomologaciÃ³n de texto libre via Levenshtein (rapidfuzz).
 Resuelve aliases de variedades contra MDM.Diccionario_Homologacion.
 
 Flujo:
   1. Match exacto en el diccionario (Aprobado_Por IS NOT NULL)
-  2. Si no → Levenshtein contra valores canónicos aprobados
-  3. score >= 0.85 → homologación automática
-  4. score < 0.85 → MDM.Cuarentena para revisión humana
+  2. Si no â†’ Levenshtein contra valores canÃ³nicos aprobados
+  3. score >= 0.85 â†’ homologaciÃ³n automÃ¡tica
+  4. score < 0.85 â†’ MDM.Cuarentena para revisiÃ³n humana
 
-DDL v2 — MDM.Diccionario_Homologacion:
+DDL v2 â€” MDM.Diccionario_Homologacion:
   Columnas reales: ID_Homologacion, Texto_Crudo, Valor_Canonico,
     Tabla_Origen, Campo_Origen, Score_Levenshtein,
     Aprobado_Por NVARCHAR(20), Fecha_Aprobacion, Veces_Aplicado
-  NO existe columna Aprobado BIT — se usa Aprobado_Por para distinguir
+  NO existe columna Aprobado BIT â€” se usa Aprobado_Por para distinguir
     aprobados  : Aprobado_Por IS NOT NULL AND Aprobado_Por != 'PENDIENTE'
     pendientes : Aprobado_Por = 'PENDIENTE' o IS NULL
 """
@@ -28,7 +28,7 @@ from datetime import datetime
 from utils.texto import normalizar_variedad, quitar_tildes
 
 
-UMBRAL_AUTO = 0.85
+UMBRAL_AUTO = 0.99
 
 
 def _clave_variedad(valor: str | None) -> str | None:
@@ -168,8 +168,8 @@ def registrar_homologacion(engine: Engine,
                             aprobado: bool = True) -> None:
     """
     Registra o actualiza una entrada en MDM.Diccionario_Homologacion.
-    aprobado=True  → Aprobado_Por = 'SISTEMA'
-    aprobado=False → Aprobado_Por = 'PENDIENTE' (requiere revisión humana)
+    aprobado=True  â†’ Aprobado_Por = 'SISTEMA'
+    aprobado=False â†’ Aprobado_Por = 'PENDIENTE' (requiere revisiÃ³n humana)
     """
     aprobado_por = 'SISTEMA' if aprobado else 'PENDIENTE'
 
@@ -250,12 +250,12 @@ def homologar_valor(valor: str | None,
                     catalogo: pd.DataFrame,
                     engine: Engine) -> tuple[str | None, str]:
     """
-    Homologa un valor contra el diccionario canónico.
+    Homologa un valor contra el diccionario canÃ³nico.
     Retorna (valor_homologado, estado):
-      'EXACTO'      → match exacto en diccionario aprobado
-      'LEVENSHTEIN' → similitud >= 0.85, auto-aprobado
-      'CUARENTENA'  → sin match → revisión humana
-      'NULO'        → valor vacío o None
+      'EXACTO'      â†’ match exacto en diccionario aprobado
+      'LEVENSHTEIN' â†’ similitud >= 0.85, auto-aprobado
+      'CUARENTENA'  â†’ sin match â†’ revisiÃ³n humana
+      'NULO'        â†’ valor vacÃ­o o None
     """
     if not valor or not str(valor).strip():
         return None, 'NULO'
@@ -291,7 +291,8 @@ def homologar_columna(df: pd.DataFrame,
                        columna_raw: str,
                        columna_destino: str,
                        tabla_origen: str,
-                       engine: Engine) -> tuple[pd.DataFrame, list[dict]]:
+                       engine: Engine,
+                       columna_id_origen: str | None = None) -> tuple[pd.DataFrame, list[dict]]:
     """
     Homologa una columna completa del DataFrame.
     Retorna (df con columna_destino, lista de cuarentenas).
@@ -320,6 +321,15 @@ def homologar_columna(df: pd.DataFrame,
         resultados.append(homologado)
 
         if estado == 'CUARENTENA':
+            id_registro_origen = None
+            if columna_id_origen:
+                valor_id = fila.get(columna_id_origen)
+                if pd.notna(valor_id):
+                    try:
+                        id_registro_origen = int(valor_id)
+                    except (TypeError, ValueError):
+                        id_registro_origen = None
+
             cuarentenas.append({
                 'columna':           columna_raw,
                 'valor':             valor,
@@ -327,7 +337,9 @@ def homologar_columna(df: pd.DataFrame,
                 'tipo_regla':        'CATALOGO',
                 'score_levenshtein': None,
                 'severidad':         'ALTO',
+                'id_registro_origen': id_registro_origen,
             })
 
     df[columna_destino] = resultados
     return df, cuarentenas
+

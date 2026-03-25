@@ -46,34 +46,33 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 # ── Enrutamiento ──────────────────────────────────────────────────────────
-def header_pagina(emoji, titulo, subtitulo=None):
-    st.markdown(f"""
-        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
-            <div style="font-size: 3.5rem; filter: drop-shadow(0 4px 6px rgba(45,90,39,0.3));">{emoji}</div>
-            <div>
-                <h1 style="margin: 0; padding: 0; font-size: 2.5rem; line-height: 1.2;">{titulo}</h1>
-                {"<p style='margin: 0; padding: 0; font-size: 1rem; color: #666;'>"+subtitulo+"</p>" if subtitulo else ""}
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
 
+# Limpiar cache al cambiar de página para evitar "state leaks"
+if "current_page" not in st.session_state:
+    st.session_state.current_page = pagina
+
+if st.session_state.current_page != pagina:
+    st.cache_data.clear()
+    st.session_state.current_page = pagina
+
+# Enrutamiento dinámico
 if pagina == "Inicio":
-    from paginas.inicio import render
+    import paginas.inicio as pg
 elif pagina == "Cuarentena":
-    from paginas.cuarentena import render
+    import paginas.cuarentena as pg
 elif pagina == "Homologación":
-    from paginas.homologacion import render
+    import paginas.homologacion as pg
 elif pagina == "Variedades":
-    from paginas.catalogos.variedades import render
+    import paginas.catalogos.variedades as pg
 elif pagina == "Geografía":
-    from paginas.catalogos.geografia import render
+    import paginas.catalogos.geografia as pg
 elif pagina == "Personal":
-    from paginas.catalogos.personal import render
+    import paginas.catalogos.personal as pg
 elif pagina == "Reglas de Validación":
-    from paginas.configuracion.reglas_validacion import render
+    import paginas.configuracion.reglas_validacion as pg
 elif pagina == "Parámetros Pipeline":
-    from paginas.configuracion.parametros_pipeline import render
+    import paginas.configuracion.parametros_pipeline as pg
 else:
-    from paginas.inicio import render
+    import paginas.inicio as pg
 
-render()
+pg.render()

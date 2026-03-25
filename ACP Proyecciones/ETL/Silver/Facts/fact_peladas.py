@@ -14,6 +14,7 @@ from sqlalchemy import text
 from utils.fechas    import procesar_fecha, obtener_id_tiempo
 from utils.texto     import normalizar_modulo, es_test_block
 from utils.dni       import procesar_dni
+from utils.sql_lotes import marcar_estado_carga_por_ids
 from dq.validador    import validar_muestras
 from dq.cuarentena   import enviar_a_cuarentena
 from mdm.lookup      import obtener_id_geografia, obtener_id_variedad, obtener_id_personal
@@ -49,16 +50,6 @@ def _a_int(valor, default: int = 0) -> int:
         return max(0, int(float(str(valor))))
     except (ValueError, TypeError):
         return default
-
-
-def _marcar_procesado(engine: Engine, ids: list[int]) -> None:
-    if not ids:
-        return
-    with engine.begin() as conexion:
-        conexion.execute(
-            text(f"UPDATE {TABLA_ORIGEN} SET Estado_Carga = 'PROCESADO' WHERE ID_Peladas IN :ids")
-            .bindparams(ids=tuple(ids))
-        )
 
 
 def cargar_fact_peladas(engine: Engine) -> dict:
@@ -150,7 +141,9 @@ def cargar_fact_peladas(engine: Engine) -> dict:
             ids_procesados.append(int(fila['ID_Peladas']))
             resumen['insertados'] += 1
 
-    _marcar_procesado(engine, ids_procesados)
+    marcar_estado_carga_por_ids(
+        engine, TABLA_ORIGEN, 'ID_Peladas', ids_procesados
+    )
 
     if resumen['cuarentena']:
         enviar_a_cuarentena(engine, TABLA_ORIGEN, resumen['cuarentena'])

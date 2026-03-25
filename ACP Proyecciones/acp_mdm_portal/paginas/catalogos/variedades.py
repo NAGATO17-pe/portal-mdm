@@ -1,3 +1,6 @@
+import streamlit as st
+import pandas as pd
+from utils.formato import header_pagina, crear_paginacion_ui, renderizar_tabla_premium
 from utils.db import ejecutar_query, verificar_conexion
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -7,14 +10,14 @@ def cargar_variedades_db() -> pd.DataFrame:
         SELECT 
             Nombre_Canonico AS [Nombre canónico], 
             Breeder, 
-            Es_Activo       AS [Activa]
+            Es_Activa        AS [Activa]
         FROM MDM.Catalogo_Variedades
         ORDER BY Nombre_Canonico
     """)
 
 def render():
     conectado = verificar_conexion()
-    header_pagina("VARIEDAD", "Catálogos · Variedades", "Gestión del catálogo oficial de variedades")
+    header_pagina("🍇", "Catálogos · Variedades", "Gestión del catálogo oficial de variedades")
 
     if conectado:
         df = cargar_variedades_db()
@@ -43,21 +46,14 @@ def render():
 
     st.markdown("---")
 
-    # ── Tabla editable ───────────────────────────────────────────────────
+    # ── Tabla premium ───────────────────────────────────────────────────
     st.markdown("### 📋 Variedades registradas")
     if df.empty:
         st.info("No hay variedades registradas en el catálogo.")
     else:
-        st.caption("Puedes editar el toggle **Activa** directamente en la tabla.")
-        edited = st.data_editor(
-            df,
-            width="stretch",
-            hide_index=True,
-            column_config={
-                "Activa": st.column_config.CheckboxColumn("Activa", help="Desactivar = Es_Activa = 0"),
-            },
-            disabled=["Nombre canónico", "Breeder"],
-        )
+        st.caption("Visualización del catálogo con paginación profesional.")
+        renderizar_tabla_premium(df, key="variedades_cat", page_size=15,
+                                  columnas_check=["Activa"])
 
         if st.button("💾 Guardar cambios", key="btn_var_guardar", type="primary"):
             st.toast("Guardado simulado: DB desconectada.", icon="💾")

@@ -49,6 +49,7 @@ _ALIAS_COLUMNAS: dict[str, str] = {
     'Valvula':                    'Valvula',
     'Cama':                       'Cama',
     'N_cama':                     'Cama',
+    'N_de_cama':                  'Cama',
     # Turno
     'Turno':                      'Turno',
     'turno':                      'Turno',

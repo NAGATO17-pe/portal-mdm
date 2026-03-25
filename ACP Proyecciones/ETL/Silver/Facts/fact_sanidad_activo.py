@@ -12,6 +12,7 @@ from sqlalchemy import text
 
 from utils.fechas  import procesar_fecha, obtener_id_tiempo
 from utils.texto   import normalizar_modulo, es_test_block
+from utils.sql_lotes import marcar_estado_carga_por_ids
 from dq.validador  import validar_total_plantas
 from dq.cuarentena import enviar_a_cuarentena
 from mdm.lookup    import obtener_id_geografia, obtener_id_variedad
@@ -98,12 +99,9 @@ def cargar_fact_sanidad_activo(engine: Engine) -> dict:
             ids_procesados.append(int(fila['ID_Seguimiento_Errores']))
             resumen['insertados'] += 1
 
-    if ids_procesados:
-        with engine.begin() as conexion:
-            conexion.execute(
-                text(f"UPDATE {TABLA_ORIGEN} SET Estado_Carga = 'PROCESADO' WHERE ID_Seguimiento_Errores IN :ids")
-                .bindparams(ids=tuple(ids_procesados))
-            )
+    marcar_estado_carga_por_ids(
+        engine, TABLA_ORIGEN, 'ID_Seguimiento_Errores', ids_procesados
+    )
 
     if resumen['cuarentena']:
         enviar_a_cuarentena(engine, TABLA_ORIGEN, resumen['cuarentena'])

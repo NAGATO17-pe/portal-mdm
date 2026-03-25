@@ -1,3 +1,6 @@
+import streamlit as st
+import pandas as pd
+from utils.formato import header_pagina, crear_paginacion_ui
 from utils.db import ejecutar_query, verificar_conexion
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -36,7 +39,11 @@ def render():
     if df.empty:
         st.info("No hay parámetros configurados.")
     else:
-        for _, row in df.iterrows():
+        # Paginación (aunque suelen ser pocos, mantenemos consistencia)
+        start, end = crear_paginacion_ui(len(df), 10, "params_cfg")
+        df_slice = df.iloc[start:end]
+
+        for _, row in df_slice.iterrows():
             with st.container():
                 p1, p2, p3 = st.columns([2.5, 2, 4])
                 with p1:

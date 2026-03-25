@@ -1,4 +1,4 @@
-"""
+﻿"""
 cuarentena.py
 =============
 Envía filas rechazadas por DQ a MDM.Cuarentena.
@@ -9,33 +9,38 @@ from datetime import datetime
 from sqlalchemy.engine import Engine
 from sqlalchemy import text
 
+from utils.sql_lotes import ejecutar_en_lotes_con_engine
 
-def enviar_a_cuarentena(engine: Engine,
-                         tabla_origen: str,
-                         filas: list[dict]) -> int:
+
+def enviar_a_cuarentena(
+    engine: Engine,
+    tabla_origen: str,
+    filas: list[dict],
+) -> int:
     """
     Inserta filas rechazadas en MDM.Cuarentena.
     Retorna el número de filas enviadas.
 
-    Columnas DDL v2:
-      Campo_Origen    (no Columna_Error)
-      Valor_Recibido  (no Valor_Raw)
-      Motivo          (no Motivo_Rechazo)
-      Estado          (no Revisado — BIT)
+    Compatibilidad:
+    - Si una fila no trae id_registro_origen, se inserta NULL.
     """
     if not filas:
         return 0
 
     ahora = datetime.now()
-    payload = [{
-        'tabla_origen':   tabla_origen,
-        'campo_origen':   fila.get('columna', 'DESCONOCIDA'),
-        'valor_recibido': str(fila.get('valor', '')),
-        'motivo':         fila.get('motivo', 'Sin motivo'),
-        'tipo_regla':     fila.get('tipo_regla', 'DQ'),
-        'score':          fila.get('score_levenshtein', None),
-        'fecha_ingreso':  ahora,
-    } for fila in filas]
+    payload = [
+        {
+            'tabla_origen': tabla_origen,
+            'campo_origen': fila.get('columna', 'DESCONOCIDA'),
+            'valor_recibido': str(fila.get('valor', '')),
+            'motivo': fila.get('motivo', 'Sin motivo'),
+            'tipo_regla': fila.get('tipo_regla', 'DQ'),
+            'score': fila.get('score_levenshtein', None),
+            'id_registro_origen': fila.get('id_registro_origen', None),
+            'fecha_ingreso': ahora,
+        }
+        for fila in filas
+    ]
 
     sentencia = text("""
         INSERT INTO MDM.Cuarentena (
@@ -46,6 +51,7 @@ def enviar_a_cuarentena(engine: Engine,
             Tipo_Regla,
             Score_Levenshtein,
             Estado,
+            ID_Registro_Origen,
             Fecha_Ingreso
         ) VALUES (
             :tabla_origen,
@@ -55,13 +61,10 @@ def enviar_a_cuarentena(engine: Engine,
             :tipo_regla,
             :score,
             'PENDIENTE',
+            :id_registro_origen,
             :fecha_ingreso
         )
     """)
 
-    tam_lote = 2000
-    with engine.begin() as conexion:
-        for inicio in range(0, len(payload), tam_lote):
-            conexion.execute(sentencia, payload[inicio:inicio + tam_lote])
-
+    ejecutar_en_lotes_con_engine(engine, sentencia, payload)
     return len(filas)
