@@ -1,49 +1,76 @@
-import streamlit as st
-import pandas as pd
-from utils.formato import header_pagina, crear_paginacion_ui, renderizar_tabla_premium
-from utils.db import ejecutar_query, verificar_conexion
+"""
+paginas/catalogos/personal.py — Catálogo de Personal (Enterprise)
+Paginación delegada a SQL Server via OFFSET/FETCH.
+"""
 
-# ... (cargar_personal_db remains same)
-@st.cache_data(ttl=60, show_spinner=False)
-def cargar_personal_db() -> pd.DataFrame:
-    """Obtiene la dimension personal desde Silver."""
-    return ejecutar_query("""
-        SELECT 
-            DNI, 
-            Nombre_Completo AS [Nombre], 
-            Rol, 
-            Sexo, 
-            ID_Planilla     AS [Sede], 
-            Pct_Asertividad AS [Productividad],
-            Dias_Ausentismo AS [Faltas]
-        FROM Silver.Dim_Personal
-        ORDER BY Nombre_Completo
-    """)
+import streamlit as st
+
+from utils.componentes import (
+    health_status_panel,
+    mostrar_kpis,
+    seccion_tabla_sql_paginada,
+)
+from utils.db import ejecutar_query
+from utils.formato import header_pagina
+
+
+_KPI_QUERY = """
+    SELECT
+        COUNT(*)                     AS total,
+        SUM(CASE WHEN Rol <> 'Administrativo' THEN 1 ELSE 0 END) AS campo,
+        ROUND(AVG(Pct_Asertividad), 1) AS prod_avg
+    FROM Silver.Dim_Personal
+"""
+
+_TABLA_QUERY = """
+    SELECT
+        DNI,
+        Nombre_Completo AS [Nombre],
+        Rol,
+        Sexo,
+        ID_Planilla     AS [Sede],
+        Pct_Asertividad AS [Productividad],
+        Dias_Ausentismo AS [Faltas]
+    FROM Silver.Dim_Personal
+"""
+
+_ORDER_BY = "Nombre_Completo"
+
 
 def render():
-    conectado = verificar_conexion()
     header_pagina("👤", "Catálogos · Personal", "Gestión de trabajadores y roles")
 
-    if conectado:
-        df = cargar_personal_db()
-    else:
-        df = pd.DataFrame(columns=["DNI", "Nombre", "Cargo", "Actividad", "Sede", "Activo"])
+    conectado = health_status_panel()
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Personal total", len(df))
-    campus = len(df[df["Rol"] != "Administrativo"]) if not df.empty else 0
-    c2.metric("En campo", campus)
-    prod_avg = df["Productividad"].mean() if not df.empty else 0
-    c3.metric("Productividad avg", f"{prod_avg:.1f}%")
+    # ── KPIs ──
+    total = campo = 0
+    prod_avg = 0.0
+    if conectado:
+        try:
+            row = ejecutar_query(_KPI_QUERY)
+            if not row.empty:
+                total    = int(row["total"].iloc[0])
+                campo    = int(row["campo"].iloc[0])
+                prod_avg = float(row["prod_avg"].iloc[0] or 0)
+        except Exception:
+            pass
+
+    mostrar_kpis([
+        {"label": "Personal total",     "value": total},
+        {"label": "En campo",           "value": campo},
+        {"label": "Productividad avg",  "value": f"{prod_avg}%"},
+    ])
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    st.markdown("### 📋 Personal registrado")
-    if df.empty:
-        st.info("No hay personal registrado en el catálogo.")
-    else:
-        st.caption("Visualización del personal con paginación profesional.")
-        renderizar_tabla_premium(df, key="personal_cat", page_size=15)
-
-        if st.button("💾 Guardar cambios", key="btn_per_guardar", type="primary"):
-            st.toast("Guardado simulado: DB desconectada.", icon="💾")
+    # ── Tabla con paginación SQL ──
+    if conectado:
+        seccion_tabla_sql_paginada(
+            query_base=_TABLA_QUERY,
+            order_by=_ORDER_BY,
+            key="personal_cat",
+            titulo="📋 Personal registrado",
+            page_size=15,
+            btn_key="btn_per_guardar",
+            caption="Paginación SQL Server · solo viajan 15 registros por request.",
+        )

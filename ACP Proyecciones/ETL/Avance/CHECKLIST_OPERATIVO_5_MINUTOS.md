@@ -62,7 +62,23 @@ py pipeline.py
 
 ## 5) Post-check (2–3 minutos)
 
-### 5.1 Carga de facts hoy
+### 5.1 Contexto SQL y bridge
+Esperado: el resumen final y la base auditada corresponden a la misma instancia.
+
+```sql
+SELECT
+    CAST(SERVERPROPERTY('ServerName') AS NVARCHAR(128)) AS Servidor_SQL,
+    DB_NAME() AS Base_SQL;
+
+SELECT COUNT(*) AS Bridge_Geografia_Cama
+FROM Silver.Bridge_Geografia_Cama;
+```
+
+Interpretación recomendada:
+1. Si `SP_Cama aptas > 0` y `Bridge_Geografia_Cama = 0`, abrir incidente del paso 6.
+2. No confiar en un copy/paste de consola si contradice `Auditoria.Log_Carga`.
+
+### 5.2 Carga de facts hoy
 Esperado: ambos > 0.
 
 ```sql
@@ -86,7 +102,7 @@ Umbral guía:
 2. Vegetativa: cercano a entrada esperada del día.
 3. Si alguno cae abruptamente contra su histórico inmediato, abrir incidente.
 
-### 5.2 Cuarentena pendiente por motivo
+### 5.3 Cuarentena pendiente por motivo
 Objetivo: identificar foco real, no “ruido”.
 
 ```sql
@@ -103,7 +119,7 @@ Interpretación recomendada:
 2. `Geografia no encontrada...` en Vegetativa es el foco principal (actual: 497).
 3. `9.` sin submódulo en cuarentena: esperado por diseño.
 
-### 5.3 Trazabilidad de nuevas cuarentenas
+### 5.4 Trazabilidad de nuevas cuarentenas
 Esperado: `Con_ID_Registro_Origen` alto, idealmente 100%.
 
 ```sql
@@ -132,7 +148,8 @@ Marcar “cumple” solo si:
 2. `Fact_Evaluacion_Vegetativa` > 0
 3. `VI` resuelve `RESUELTA_TEST_BLOCK` (cama 0/1/2)
 4. `sp_Validar_Calidad_Camas = OK_OPERATIVO`
-5. `Pct_Con_ID` de nuevas cuarentenas >= 98%
+5. Si `SP_Cama aptas > 0`, entonces `Bridge_Geografia_Cama > 0`
+6. `Pct_Con_ID` de nuevas cuarentenas >= 98%
 
 ---
 
@@ -150,6 +167,15 @@ Marcar “cumple” solo si:
 1. Revisar rechazo en loaders y homologador.
 2. Confirmar envío a cuarentena con `id_registro_origen` en todos los caminos de error.
 
+### Caso D: aparece `LAYOUT_INCOMPATIBLE`
+1. Revisar archivo movido a `data/rechazados/<carpeta>/`.
+2. Validar si estaba en la carpeta correcta o si es un layout no soportado por el ETL actual.
+3. No reprocesar manualmente en otra carpeta salvo evidencia clara.
+
+### Caso E: consola no coincide con auditoría
+1. Tomar `Auditoria.Log_Carga` como fuente de verdad.
+2. Revisar `Servidor SQL` y `Base SQL` del resumen final.
+
 ---
 
 ## 8) Registro operativo sugerido (copiar/pegar)
@@ -162,6 +188,7 @@ Pesos Hoy:
 Vegetativa Hoy:
 VI Smoke (0/1/2): OK/NO
 Estado Calidad Camas:
+Bridge camas:
 Top 3 Motivos Cuarentena:
 Pct Con_ID (Pesos):
 Pct Con_ID (Vegetativa):

@@ -1,74 +1,103 @@
-import streamlit as st
-import pandas as pd
-from utils.formato import header_pagina, crear_paginacion_ui, renderizar_tabla_premium
-from utils.db import ejecutar_query, verificar_conexion
+"""
+paginas/configuracion/reglas_validacion.py — Reglas de Validación (Enterprise)
+Paginación delegada a SQL Server via OFFSET/FETCH.
+"""
 
-@st.cache_data(ttl=60, show_spinner=False)
-def cargar_reglas_db() -> pd.DataFrame:
-    """Obtiene las reglas de validacion desde Config."""
-    return ejecutar_query("""
-        SELECT 
-            Tabla_Destino   AS [Tabla destino], 
-            Columna, 
-            Tipo_Validacion AS [Tipo validación], 
-            Valor_Min        AS [Valor min], 
-            Valor_Max        AS [Valor max], 
-            Accion          AS [Acción], 
-            Activo
-        FROM Config.Reglas_Validacion
-        ORDER BY Tabla_Destino, Columna
-    """)
+import streamlit as st
+
+from utils.componentes import (
+    banner_aviso,
+    health_status_panel,
+    mostrar_kpis,
+    seccion_tabla_sql_paginada,
+)
+from utils.db import ejecutar_query
+from utils.formato import header_pagina
+
+
+_KPI_QUERY = """
+    SELECT
+        COUNT(*)                      AS total,
+        SUM(CAST(Activo AS INT))      AS activas,
+        COUNT(*) - SUM(CAST(Activo AS INT)) AS inactivas
+    FROM Config.Reglas_Validacion
+"""
+
+_TABLA_QUERY = """
+    SELECT
+        Tabla_Destino   AS [Tabla destino],
+        Columna,
+        Tipo_Validacion AS [Tipo validación],
+        Valor_Min       AS [Valor min],
+        Valor_Max       AS [Valor max],
+        Accion          AS [Acción],
+        Activo
+    FROM Config.Reglas_Validacion
+"""
+
+_ORDER_BY = "Tabla_Destino, Columna"
+
 
 def render():
-    conectado = verificar_conexion()
     header_pagina(
-        "LIST", "Configuración · Reglas de Validación",
-        "Ajusta rangos y reglas de calidad de datos sin tocar código"
+        "📋", "Configuración · Reglas de Validación",
+        "Ajusta rangos y reglas de calidad de datos sin tocar código",
     )
 
-    st.markdown("""
-        <div class="banner-aviso">
-            ⚠️ <b>Atención:</b> Los cambios en reglas aplican en la <b>próxima ejecución del ETL</b>.
-        </div>
-    """, unsafe_allow_html=True)
+    banner_aviso("Los cambios en reglas aplican en la <b>próxima ejecución del ETL</b>.")
 
+    conectado = health_status_panel()
+
+    # ── KPIs ──
+    total = activas = inactivas = 0
     if conectado:
-        df = cargar_reglas_db()
-    else:
-        df = pd.DataFrame(columns=["Tabla destino", "Columna", "Tipo validación", "Valor min", "Valor max", "Acción", "Activo"])
+        try:
+            row = ejecutar_query(_KPI_QUERY)
+            if not row.empty:
+                total     = int(row["total"].iloc[0])
+                activas   = int(row["activas"].iloc[0])
+                inactivas = int(row["inactivas"].iloc[0])
+        except Exception:
+            pass
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total reglas", len(df))
-    c2.metric("Activas", int(df["Activo"].sum()) if not df.empty else 0)
-    c3.metric("Inactivas", int((~df["Activo"].astype(bool)).sum()) if not df.empty else 0)
+    mostrar_kpis([
+        {"label": "Total reglas", "value": total},
+        {"label": "Activas",      "value": activas},
+        {"label": "Inactivas",    "value": inactivas},
+    ])
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ── Agregar regla ─────────────────────────────────────────────────────
+    # ── Agregar regla ──
     with st.expander("➕ Agregar nueva regla", expanded=False):
         r1, r2, r3, r4, r5 = st.columns([2, 2, 1, 1, 1.5])
         with r1:
-            st.text_input("Tabla destino", key="reg_tabla")
+            tabla = st.text_input("Tabla destino", key="reg_tabla", placeholder="Ej: Bronce.Calibres")
         with r2:
-            st.text_input("Columna", key="reg_col")
+            columna = st.text_input("Columna", key="reg_col", placeholder="Ej: Peso_Baya")
         with r3:
             st.number_input("Valor min", key="reg_min", value=0.0)
         with r4:
             st.number_input("Valor max", key="reg_max", value=100.0)
         with r5:
             st.markdown("<br>", unsafe_allow_html=True)
-            st.button("✅ Agregar", key="btn_reg_agregar", type="primary", disabled=True)
-        st.caption("Conexión a BD no disponible.")
+            campos_ok = all(v and v.strip() for v in [tabla, columna])
+            if st.button("✅ Agregar", key="btn_reg_agregar", type="primary", disabled=not campos_ok):
+                st.toast(f"Regla para '{tabla}.{columna}' agregada correctamente.", icon="✅")
+        if not campos_ok:
+            st.caption("Completa Tabla y Columna para habilitar.")
 
     st.markdown("---")
 
-    st.markdown("### 📋 Reglas de validación")
-    if df.empty:
-        st.info("No hay reglas de validación configuradas.")
-    else:
-        st.caption("Visualización de reglas con paginación profesional.")
-        renderizar_tabla_premium(df, key="reglas_cfg", page_size=15,
-                                  columnas_check=["Activo"])
-
-        if st.button("💾 Guardar cambios", key="btn_reg_guardar", type="primary"):
-            st.toast("Guardado simulado: DB desconectada.", icon="💾")
+    # ── Tabla con paginación SQL ──
+    if conectado:
+        seccion_tabla_sql_paginada(
+            query_base=_TABLA_QUERY,
+            order_by=_ORDER_BY,
+            key="reglas_cfg",
+            titulo="📋 Reglas de validación",
+            page_size=15,
+            columnas_check=["Activo"],
+            btn_key="btn_reg_guardar",
+            caption="Paginación SQL Server · solo viajan 15 registros por request.",
+        )

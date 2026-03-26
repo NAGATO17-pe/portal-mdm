@@ -22,7 +22,6 @@ from mdm.lookup import (
     obtener_id_variedad,
     obtener_id_personal,
     obtener_id_estado_fenologico,
-    obtener_id_cinta,
 )
 from mdm.homologador import homologar_columna
 from dq.cuarentena import enviar_a_cuarentena
@@ -30,15 +29,6 @@ from dq.cuarentena import enviar_a_cuarentena
 
 TABLA_ORIGEN = 'Bronce.Conteo_Fruta'
 TABLA_DESTINO = 'Silver.Fact_Conteo_Fenologico'
-
-MAPA_PUNTO_COLOR = {
-    1: 'Roja',
-    2: 'Azul',
-    3: 'Verde',
-    4: 'Amarilla',
-    5: 'Blanca',
-    6: 'Naranja',
-}
 
 MAPA_ESTADOS_WIDE = {
     'Botones_Florales_Raw': 'Boton Floral',
@@ -103,24 +93,6 @@ def _normalizar_cantidad(valor) -> int:
         return int(float(str(valor)))
     except (ValueError, TypeError):
         return 0
-
-
-def _resolver_color_cinta(fila: pd.Series) -> str | None:
-    color = fila.get('Color_Cinta_Raw')
-    if color is not None and str(color).strip():
-        return str(color).strip()
-
-    valores = _parsear_valores_raw(fila.get('Valores_Raw'))
-    punto = valores.get('Punto_Raw')
-    if punto is None or str(punto).strip() == '':
-        return None
-
-    try:
-        punto_int = int(float(str(punto)))
-    except (ValueError, TypeError):
-        return None
-
-    return MAPA_PUNTO_COLOR.get(punto_int)
 
 
 def _extraer_estados_desde_fila(fila: pd.Series) -> list[tuple[str, int]]:
@@ -216,19 +188,6 @@ def cargar_fact_conteo_fenologico(engine: Engine) -> dict:
             dni, _ = procesar_dni(fila.get('Evaluador_Raw'))
             id_personal = obtener_id_personal(dni, engine)
 
-            color_cinta = _resolver_color_cinta(fila)
-            id_cinta = obtener_id_cinta(color_cinta, engine)
-            if not id_cinta:
-                resumen['rechazados'] += 1
-                resumen['cuarentena'].append({
-                    'columna': 'Color_Cinta_Raw',
-                    'valor': color_cinta if color_cinta is not None else fila.get('Valores_Raw'),
-                    'motivo': 'Cinta no reconocida o no disponible',
-                    'severidad': 'MEDIO',
-                    'id_registro_origen': id_origen,
-                })
-                continue
-
             estados_cantidades = _extraer_estados_desde_fila(fila)
             if not estados_cantidades:
                 resumen['rechazados'] += 1
@@ -257,12 +216,12 @@ def cargar_fact_conteo_fenologico(engine: Engine) -> dict:
                 conexion.execute(text("""
                     INSERT INTO Silver.Fact_Conteo_Fenologico (
                         ID_Geografia, ID_Tiempo, ID_Variedad,
-                        ID_Personal, ID_Cinta, ID_Estado_Fenologico,
+                        ID_Personal, ID_Estado_Fenologico,
                         Cantidad_Organos,
                         Fecha_Evento, Fecha_Sistema, Estado_DQ
                     ) VALUES (
                         :id_geo, :id_tiempo, :id_variedad,
-                        :id_personal, :id_cinta, :id_estado,
+                        :id_personal, :id_estado,
                         :cantidad,
                         :fecha_evento, SYSDATETIME(), 'OK'
                     )
@@ -271,7 +230,6 @@ def cargar_fact_conteo_fenologico(engine: Engine) -> dict:
                     'id_tiempo': id_tiempo,
                     'id_variedad': id_variedad,
                     'id_personal': id_personal,
-                    'id_cinta': id_cinta,
                     'id_estado': id_estado,
                     'cantidad': cantidad,
                     'fecha_evento': fecha,

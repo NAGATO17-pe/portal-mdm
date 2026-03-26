@@ -16,6 +16,9 @@ CARPETA_ENTRADA = Path(__file__).parent.parent / 'data' / 'entrada'
 # Carpeta donde se archivan los Excel ya procesados
 CARPETA_PROCESADOS = Path(__file__).parent.parent / 'data' / 'procesados'
 
+# Carpeta donde se mueven archivos rechazados por layout o enrutamiento.
+CARPETA_RECHAZADOS = Path(__file__).parent.parent / 'data' / 'rechazados'
+
 
 # Mapeo carpeta → tabla Bronce
 # Clave   : nombre exacto de la subcarpeta en data/entrada/
@@ -176,5 +179,6 @@ def crear_estructura_carpetas() -> None:
     for nombre_carpeta in RUTAS:
         (CARPETA_ENTRADA / nombre_carpeta).mkdir(parents=True, exist_ok=True)
         (CARPETA_PROCESADOS / nombre_carpeta).mkdir(parents=True, exist_ok=True)
+        (CARPETA_RECHAZADOS / nombre_carpeta).mkdir(parents=True, exist_ok=True)
 
     print(f'Estructura de carpetas creada en: {CARPETA_ENTRADA}')

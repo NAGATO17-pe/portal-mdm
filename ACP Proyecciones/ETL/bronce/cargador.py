@@ -2,27 +2,160 @@
 cargador.py
 ===========
 Lee archivos Excel de campo e inserta en Bronce como NVARCHAR raw.
-Sin transformaciones. Sin validaciones. Solo guardar el dato crudo.
+Aplica validacion de layout critico cuando la operacion lo exige.
 """
 
 import shutil
 import numpy as np
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 from sqlalchemy import text
 
 from bronce.rutas import (
     CARPETA_PROCESADOS,
+    CARPETA_RECHAZADOS,
     listar_carpetas_con_archivos,
-    obtener_archivo_mas_reciente,
 )
 from config.conexion import obtener_engine
 from auditoria.log import registrar_inicio, registrar_fin
 
 
 _CACHE_COLUMNAS_BRONCE: dict[str, set[str]] = {}
+
+
+_FIRMAS_LAYOUT_CRITICO: dict[str, dict[str, Any]] = {
+    'Bronce.Evaluacion_Vegetativa': {
+        'ruta_canonica': 'evaluacion_vegetativa',
+        'columnas_obligatorias': {
+            'Fecha_Raw',
+            'DNI_Raw',
+            'Modulo_Raw',
+            'Turno_Raw',
+            'Valvula_Raw',
+            'Cama_Raw',
+            'Descripcion_Raw',
+            'Evaluacion_Raw',
+            'N_Plantas_Evaluadas_Raw',
+            'N_Plantas_en_Floracion_Raw',
+        },
+        'columnas_incompatibles': {
+            'Altura_Raw',
+            'Tallos_basales_Raw',
+            'Tallos_basales_nuevos_Raw',
+            'Brotes_Generales_1_Raw',
+            'Brotes_Generales_2_Raw',
+            'Brotes_Generales_3_Raw',
+            'Brotes_Generales_4_Raw',
+            'Brotes_Productivos_Totales_Raw',
+            'Brotes_Productivos_1_Raw',
+            'Brotes_Productivos_2_Raw',
+            'Brotes_Productivos_3_Raw',
+            'Brotes_Productivos_4_Raw',
+            'Diametro_brote1_Raw',
+            'Diametro_brote2_Raw',
+        },
+        'motivo': (
+            'El layout recibido no corresponde al fact actual de Evaluacion Vegetativa. '
+            'Faltan columnas de plantas y aparecen metricas de brotes/altura/diametro.'
+        ),
+    },
+    'Bronce.Fisiologia': {
+        'ruta_canonica': 'fisiologia',
+        'columnas_obligatorias': {
+            'Fecha_Raw',
+            'Fundo_Raw',
+            'Modulo_Raw',
+            'Variedad_Raw',
+            'Tercio_Raw',
+            'Hinchadas_Raw',
+            'Productivas_Raw',
+            'Total_Org_Raw',
+            'Brote_Raw',
+        },
+        'columnas_incompatibles': {
+            'DNI_Raw',
+            'Turno_Raw',
+            'Valvula_Raw',
+            'Cama_Raw',
+            'Descripcion_Raw',
+            'Evaluacion_Raw',
+            'Altura_Raw',
+            'Tallos_basales_Raw',
+            'Tallos_basales_nuevos_Raw',
+            'Brotes_Generales_1_Raw',
+            'Brotes_Generales_2_Raw',
+            'Brotes_Generales_3_Raw',
+            'Brotes_Generales_4_Raw',
+            'Brotes_Productivos_Totales_Raw',
+            'Brotes_Productivos_1_Raw',
+            'Brotes_Productivos_2_Raw',
+            'Brotes_Productivos_3_Raw',
+            'Brotes_Productivos_4_Raw',
+            'Diametro_brote1_Raw',
+            'Diametro_brote2_Raw',
+        },
+        'motivo': (
+            'El layout recibido no corresponde al fact actual de Fisiologia. '
+            'Se detectaron columnas de evaluacion vegetativa o geografia operativa no compatibles.'
+        ),
+    },
+}
+
+_FIRMAS_RUTA_SUGERIDA: dict[str, dict[str, Any]] = {
+    'evaluacion_vegetativa': {
+        'tabla_destino': 'Bronce.Evaluacion_Vegetativa',
+        'columnas_clave': {
+            'Fecha_Raw',
+            'DNI_Raw',
+            'Modulo_Raw',
+            'Turno_Raw',
+            'Valvula_Raw',
+            'Cama_Raw',
+            'Descripcion_Raw',
+            'Evaluacion_Raw',
+            'N_Plantas_Evaluadas_Raw',
+            'N_Plantas_en_Floracion_Raw',
+        },
+    },
+    'evaluacion_pesos': {
+        'tabla_destino': 'Bronce.Evaluacion_Pesos',
+        'columnas_clave': {
+            'Fecha_Raw',
+            'DNI_Raw',
+            'Modulo_Raw',
+            'Turno_Raw',
+            'Valvula_Raw',
+            'Cama_Raw',
+            'Variedad_Raw',
+            'BayasPequenas_Raw',
+            'PesoBayasPequenas_Raw',
+            'Cosechables_Raw',
+            'PesoCosechables_Raw',
+        },
+    },
+    'evaluacion_calidad_poda': {
+        'tabla_destino': 'Bronce.Evaluacion_Calidad_Poda',
+        'columnas_clave': {
+            'Fecha_Raw',
+            'Fundo_Raw',
+            'Modulo_Raw',
+            'Turno_Raw',
+            'Valvula_Raw',
+            'Variedad_Raw',
+            'Tipo_Evaluacion_Raw',
+            'TallosPlanta_Raw',
+            'LongitudTallo_Raw',
+            'DiametroTallo_Raw',
+            'RamillaPlanta_Raw',
+            'ToconesPlanta_Raw',
+            'CortesDefectuosos_Raw',
+            'AlturaPoda_Raw',
+        },
+    },
+}
 
 
 # Mapeo de nombres de columnas comunes del Excel a nombres estándar del ETL.
@@ -187,6 +320,22 @@ def archivar_archivo(ruta_archivo: Path, nombre_carpeta: str) -> None:
     shutil.move(str(ruta_archivo), str(destino))
 
 
+def archivar_archivo_rechazado(ruta_archivo: Path,
+                               nombre_carpeta: str,
+                               codigo_rechazo: str) -> Path:
+    """
+    Mueve el archivo rechazado a data/rechazados/nombre_carpeta/
+    preservando trazabilidad del motivo en el nombre.
+    """
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    sufijo = str(codigo_rechazo or 'RECHAZADO').strip().replace(' ', '_')
+    nombre_nuevo = f'{ruta_archivo.stem}_{sufijo}_{timestamp}{ruta_archivo.suffix}'
+    destino = CARPETA_RECHAZADOS / nombre_carpeta / nombre_nuevo
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(ruta_archivo), str(destino))
+    return destino
+
+
 def _obtener_columnas_bronce(tabla_destino: str, engine) -> set[str]:
     """
     Devuelve columnas fisicas de la tabla Bronce destino.
@@ -330,6 +479,121 @@ def _alinear_dataframe_a_tabla(
     return df[columnas_insertables], columnas_extra
 
 
+def _detectar_ruta_sugerida(
+    columnas_detectadas: set[str],
+    nombre_carpeta_actual: str,
+) -> tuple[str | None, float]:
+    mejor_ruta = None
+    mejor_score = 0.0
+
+    for ruta, firma in _FIRMAS_RUTA_SUGERIDA.items():
+        if ruta == nombre_carpeta_actual:
+            continue
+
+        columnas_clave = set(firma.get('columnas_clave', set()))
+        if not columnas_clave:
+            continue
+
+        coincidencias = len(columnas_detectadas & columnas_clave)
+        score = coincidencias / len(columnas_clave)
+        if score >= 0.8 and coincidencias >= 6 and score > mejor_score:
+            mejor_ruta = ruta
+            mejor_score = score
+
+    return mejor_ruta, mejor_score
+
+
+def _score_ruta_actual(
+    columnas_detectadas: set[str],
+    nombre_carpeta_actual: str,
+) -> float:
+    firma = _FIRMAS_RUTA_SUGERIDA.get(nombre_carpeta_actual)
+    if not firma:
+        return 0.0
+
+    columnas_clave = set(firma.get('columnas_clave', set()))
+    if not columnas_clave:
+        return 0.0
+
+    coincidencias = len(columnas_detectadas & columnas_clave)
+    return coincidencias / len(columnas_clave)
+
+
+def _validar_layout_critico(
+    nombre_carpeta: str,
+    tabla_destino: str,
+    columnas_detectadas: set[str],
+) -> dict | None:
+    firma = _FIRMAS_LAYOUT_CRITICO.get(tabla_destino)
+    if not firma:
+        return None
+
+    columnas_obligatorias = set(firma.get('columnas_obligatorias', set()))
+    faltantes = sorted(columnas_obligatorias - columnas_detectadas)
+    columnas_incompatibles = sorted(columnas_detectadas & set(firma.get('columnas_incompatibles', set())))
+
+    if not faltantes:
+        return None
+
+    if not columnas_incompatibles:
+        return None
+
+    ruta_sugerida, _ = _detectar_ruta_sugerida(columnas_detectadas, nombre_carpeta)
+    columnas_clave = sorted(
+        columnas_detectadas & (columnas_obligatorias | set(firma.get('columnas_incompatibles', set())))
+    )
+    detalle_ruta = (
+        f'Ruta sugerida: {ruta_sugerida}'
+        if ruta_sugerida
+        else 'Ruta sugerida: sin ruta compatible conocida en el ETL actual'
+    )
+
+    return {
+        'codigo': 'LAYOUT_INCOMPATIBLE',
+        'tabla': tabla_destino,
+        'ruta_recibida': nombre_carpeta,
+        'faltantes': faltantes,
+        'columnas_detectadas_clave': columnas_clave,
+        'ruta_sugerida': ruta_sugerida,
+        'mensaje': (
+            f'LAYOUT_INCOMPATIBLE | archivo incompatible con {nombre_carpeta} -> {tabla_destino}. '
+            f'Faltantes: {", ".join(faltantes)} | '
+            f'Detectadas clave: {", ".join(columnas_clave) if columnas_clave else "ninguna"} | '
+            f'Motivo: {firma["motivo"]} | {detalle_ruta}'
+        ),
+    }
+
+
+def _validar_enrutamiento_global(
+    nombre_carpeta: str,
+    tabla_destino: str,
+    columnas_detectadas: set[str],
+) -> dict | None:
+    ruta_sugerida, score_sugerida = _detectar_ruta_sugerida(columnas_detectadas, nombre_carpeta)
+    if not ruta_sugerida:
+        return None
+
+    score_actual = _score_ruta_actual(columnas_detectadas, nombre_carpeta)
+    if score_actual >= 0.5:
+        return None
+
+    columnas_clave_sugeridas = sorted(
+        columnas_detectadas & set(_FIRMAS_RUTA_SUGERIDA[ruta_sugerida].get('columnas_clave', set()))
+    )
+    return {
+        'codigo': 'RUTA_CONTENIDO_INCOMPATIBLE',
+        'tabla': tabla_destino,
+        'ruta_recibida': nombre_carpeta,
+        'ruta_sugerida': ruta_sugerida,
+        'mensaje': (
+            f'RUTA_CONTENIDO_INCOMPATIBLE | archivo recibido en {nombre_carpeta} -> {tabla_destino}, '
+            f'pero su contenido coincide con alta confianza con la ruta {ruta_sugerida}. '
+            f'Score actual: {score_actual:.2f} | Score sugerido: {score_sugerida:.2f} | '
+            f'Columnas clave detectadas: {", ".join(columnas_clave_sugeridas) if columnas_clave_sugeridas else "ninguna"}'
+        ),
+    }
+
+
 def cargar_archivo(nombre_carpeta: str,
                    ruta_archivo: Path,
                    tabla_destino: str,
@@ -358,6 +622,33 @@ def cargar_archivo(nombre_carpeta: str,
 
         # Normalizar columnas → agregar _Raw
         df = normalizar_columnas(df)
+
+        validacion_layout = _validar_layout_critico(
+            nombre_carpeta,
+            tabla_destino,
+            {str(col) for col in df.columns},
+        )
+        if not validacion_layout:
+            validacion_layout = _validar_enrutamiento_global(
+                nombre_carpeta,
+                tabla_destino,
+                {str(col) for col in df.columns},
+            )
+        if validacion_layout:
+            ruta_rechazada = archivar_archivo_rechazado(
+                ruta_archivo,
+                nombre_carpeta,
+                validacion_layout['codigo'],
+            )
+            resultado['estado'] = 'ERROR'
+            resultado['critico'] = True
+            resultado['codigo'] = validacion_layout['codigo']
+            resultado['ruta_sugerida'] = validacion_layout['ruta_sugerida']
+            resultado['mensaje'] = (
+                f'{validacion_layout["mensaje"]} | '
+                f'Archivo movido a rechazados: {ruta_rechazada}'
+            )
+            return resultado
 
         # Castear todo a texto (NVARCHAR)
         df = castear_todo_a_texto(df)

@@ -1,141 +1,207 @@
+"""
+utils/formato.py — Sistema de diseño visual del Portal MDM ACP (Enterprise)
+=============================================================================
+CSS Premium + Componentes de renderizado HTML.
+
+Cambios v2 Enterprise:
+  - Google Fonts Inter via @import (tipografía profesional)
+  - Glassmorphism refinado en sidebar y paneles
+  - Micro-animaciones @keyframes (fadeIn, slideUp, pulse)
+  - Navegación sidebar con secciones agrupadas visualmente
+  - renderizar_tabla_premium_raw() — tabla sin paginación propia (para SQL paginado)
+  - Eliminada función load_lottieurl (dependencia removida)
+"""
+
+import math
+
 import streamlit as st
 
 # ── Organic Premium Palette (Theme Aware) ──
-VERDE_ACP    = "#2D5A27" # Forest Green variant
-VERDE_CLARO  = "#43843C" 
-BRONCE       = "#C38D4F" # Soft Copper
+VERDE_ACP   = "#2D5A27"
+VERDE_CLARO = "#43843C"
+BRONCE      = "#C38D4F"
 
 CSS_PORTAL = f"""
 <style>
+/* ── Google Fonts ── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 /* ── Variables & Typography ── */
 :root {{
     --verde-acp: {VERDE_ACP};
     --verde-claro: {VERDE_CLARO};
     --bronce: {BRONCE};
-    --shadow-sm: 0 2px 8px rgba(0,0,0,0.08);
-    --shadow-md: 0 4px 16px rgba(0,0,0,0.12);
+    --shadow-sm: 0 2px 8px rgba(0,0,0,0.06);
+    --shadow-md: 0 6px 20px rgba(0,0,0,0.10);
+    --shadow-lg: 0 12px 40px rgba(0,0,0,0.14);
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 20px;
 }}
 
-/* System font stack favoring clean rendering */
 html, body, [class*="css"] {{
     font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    /* Removed hardcoded color, trust Streamlit var(--text-color) */
 }}
 
-/* Fast smooth transitions globally */
+/* ── Micro-animations ── */
+@keyframes fadeIn {{
+    from {{ opacity: 0; transform: translateY(8px); }}
+    to {{ opacity: 1; transform: translateY(0); }}
+}}
+@keyframes slideUp {{
+    from {{ opacity: 0; transform: translateY(16px); }}
+    to {{ opacity: 1; transform: translateY(0); }}
+}}
+@keyframes pulseGlow {{
+    0%, 100% {{ box-shadow: 0 0 0 0 rgba(45,90,39,0.15); }}
+    50% {{ box-shadow: 0 0 12px 4px rgba(45,90,39,0.12); }}
+}}
+
+/* Global smooth transitions */
 * {{
-    transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+    transition: background-color 0.2s ease, border-color 0.2s ease,
+                box-shadow 0.2s ease, transform 0.15s ease, opacity 0.2s ease;
 }}
 
 /* ── App Background ── */
 .stApp {{
-    /* Let Streamlit handle base background color */
-    background-image: radial-gradient(circle at top right, rgba(195, 141, 79, 0.08), transparent 40%),
-                      radial-gradient(circle at bottom left, rgba(45, 90, 39, 0.08), transparent 40%);
+    background-image:
+        radial-gradient(ellipse at 10% 0%, rgba(45,90,39,0.06), transparent 50%),
+        radial-gradient(ellipse at 90% 100%, rgba(195,141,79,0.06), transparent 50%);
     background-attachment: fixed;
 }}
 
-/* ── Sidebar Glassmorphism & Fixed Dark Theme ── */
+/* ── Sidebar — Dark Green Glassmorphism ── */
 section[data-testid="stSidebar"] {{
-    background-color: transparent !important; 
-    border-right: 1px solid rgba(128, 128, 128, 0.2);
+    background-color: transparent !important;
+    border-right: 1px solid rgba(128,128,128,0.15);
 }}
-/* Force the Dark Green Gradient ALWAYS, even in light mode */
 section[data-testid="stSidebar"] > div:first-child {{
-    background: linear-gradient(180deg, rgba(45,90,39,1) 0%, rgba(20,50,25,1) 100%) !important;
+    background: linear-gradient(180deg, rgba(45,90,39,0.98) 0%, rgba(18,42,22,0.99) 100%) !important;
+    backdrop-filter: blur(12px);
 }}
-/* Force all text inside sidebar to be white */
 section[data-testid="stSidebar"] * {{
     color: #ffffff !important;
+}}
+
+/* Sidebar nav items — hover glow */
+section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label {{
+    padding: 10px 14px;
+    border-radius: var(--radius-sm);
+    margin-bottom: 2px;
+    background: transparent;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+}}
+section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label:hover {{
+    background: rgba(255,255,255,0.08) !important;
+    border-left-color: var(--bronce);
 }}
 section[data-testid="stSidebar"] .stRadio p,
 section[data-testid="stSidebar"] .stRadio span,
 section[data-testid="stSidebar"] .stRadio div[data-testid="stMarkdownContainer"] {{
     color: #ffffff !important;
-    font-size: 0.95rem;
+    font-size: 0.93rem;
     font-weight: 500;
-}}
-section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label {{
-    padding: 8px 12px;
-    border-radius: 8px;
-    margin-bottom: 2px;
-    background: transparent;
-    cursor: pointer;
-}}
-section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label:hover {{
-    background: rgba(255,255,255,0.1) !important;
+    letter-spacing: 0.2px;
 }}
 
-/* Logo / título en sidebar (force light text because sidebar bg is dark green) */
+/* Sidebar section dividers */
+.sidebar-section {{
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: rgba(255,255,255,0.35) !important;
+    padding: 16px 14px 4px 14px;
+    font-weight: 700;
+}}
+
+/* Logo */
 .sidebar-logo {{
     text-align: center;
-    padding: 24px 8px;
-    border-bottom: 1px solid rgba(255,255,255,0.1);
-    margin-bottom: 16px;
+    padding: 28px 12px 20px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 8px;
 }}
-.sidebar-logo h2, .sidebar-logo p {{
-    color: #ffffff;
-}}
+.sidebar-logo h2, .sidebar-logo p {{ color: #ffffff; }}
 .sidebar-logo h2 {{
     color: var(--bronce);
-    font-size: 1.15rem;
+    font-size: 1.2rem;
     font-weight: 700;
-    margin: 8px 0 0 0;
+    margin: 10px 0 2px 0;
     letter-spacing: 0.5px;
 }}
+.sidebar-logo p {{
+    font-size: 0.78rem;
+    opacity: 0.6;
+    margin: 0;
+}}
 
-/* ── Encabezado de página Premium ── */
+/* Sidebar footer */
+.sidebar-footer {{
+    text-align: center;
+    padding: 20px 12px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    margin-top: 20px;
+    font-size: 0.72rem;
+    opacity: 0.4;
+    letter-spacing: 0.3px;
+}}
+
+/* ── Page Header Premium ── */
 .page-header {{
     background: var(--secondary-background-color);
-    border: 1px solid rgba(128,128,128,0.2);
+    border: 1px solid rgba(128,128,128,0.15);
     border-left: 6px solid var(--verde-acp);
-    padding: 24px 30px;
-    border-radius: 16px;
-    margin-bottom: 24px;
+    padding: 26px 32px;
+    border-radius: var(--radius-lg);
+    margin-bottom: 28px;
     box-shadow: var(--shadow-md);
+    animation: fadeIn 0.4s ease;
 }}
 .page-header h1 {{
     margin: 0;
-    font-size: 1.75rem;
+    font-size: 1.65rem;
     font-weight: 700;
     color: var(--verde-acp);
     letter-spacing: -0.5px;
 }}
 .page-header p {{
-    margin: 4px 0 0 0;
-    font-size: 0.95rem;
+    margin: 6px 0 0 0;
+    font-size: 0.92rem;
     color: var(--text-color);
-    opacity: 0.8;
+    opacity: 0.7;
 }}
 
-/* ── Dataframes & Metrics ── */
+/* ── Dataframes (nativo Streamlit) ── */
 div[data-testid="stDataFrame"] {{
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     overflow: hidden;
-    border: 1px solid rgba(128,128,128,0.2);
+    border: 1px solid rgba(128,128,128,0.15);
     box-shadow: var(--shadow-sm);
 }}
 
-/* Custom HTML KPI Cards */
+/* ── KPI Cards ── */
 .kpi-container {{
     display: flex;
     gap: 16px;
     flex-wrap: wrap;
+    animation: slideUp 0.5s ease;
 }}
 .kpi-card {{
     background: var(--secondary-background-color);
-    border: 1px solid rgba(128,128,128,0.2);
-    border-radius: 16px;
+    border: 1px solid rgba(128,128,128,0.15);
+    border-radius: var(--radius-lg);
     padding: 24px;
     flex: 1;
-    min-width: 220px;
+    min-width: 200px;
     box-shadow: var(--shadow-sm);
     display: flex;
     flex-direction: column;
     justify-content: center;
     position: relative;
     overflow: hidden;
-    transition: all 0.3s ease;
     border-top: 4px solid var(--bronce);
 }}
 .kpi-card:hover {{
@@ -145,28 +211,25 @@ div[data-testid="stDataFrame"] {{
 }}
 .kpi-icon {{
     position: absolute;
-    right: -10px;
-    bottom: -10px;
-    font-size: 5rem;
-    opacity: 0.05;
-    transform: rotate(-15deg);
+    right: -8px;
+    bottom: -8px;
+    font-size: 4.5rem;
+    opacity: 0.04;
+    transform: rotate(-12deg);
     pointer-events: none;
 }}
-.kpi-content {{
-    display: flex;
-    flex-direction: column;
-}}
+.kpi-content {{ display: flex; flex-direction: column; }}
 .kpi-title {{
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.6px;
     color: var(--text-color);
-    opacity: 0.7;
-    margin-bottom: 4px;
+    opacity: 0.6;
+    margin-bottom: 6px;
     font-weight: 600;
 }}
 .kpi-value {{
-    font-size: 1.8rem;
+    font-size: 1.75rem;
     font-weight: 700;
     color: var(--verde-acp);
     line-height: 1;
@@ -178,37 +241,35 @@ div[data-testid="stDataFrame"] {{
 .kpi-card.danger {{ border-top-color: #D35D47; }}
 .kpi-card.danger .kpi-icon, .kpi-card.danger .kpi-value {{ color: #D35D47; }}
 
-
-/* ── Panel decisión ── */
+/* ── Decision Panel (cuarentena) ── */
 .decision-panel {{
     background: var(--secondary-background-color);
-    border: 1px solid rgba(128,128,128,0.2);
+    border: 1px solid rgba(128,128,128,0.15);
     border-left: 4px solid var(--verde-claro);
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     padding: 20px 24px;
     margin-top: 12px;
     box-shadow: var(--shadow-sm);
+    animation: fadeIn 0.3s ease;
 }}
-.decision-panel h4 {{
-    color: var(--verde-acp);
-    margin: 0 0 12px 0;
-    font-size: 1.1rem;
-}}
+.decision-panel h4 {{ color: var(--verde-acp); margin: 0 0 12px 0; font-size: 1.05rem; }}
 .decision-info {{
     background: var(--background-color);
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     padding: 12px 16px;
     margin-bottom: 14px;
-    border: 1px solid rgba(128,128,128,0.3);
-    font-size: 0.9rem;
+    border: 1px solid rgba(128,128,128,0.2);
+    font-size: 0.88rem;
 }}
 
-/* ── Botones Premium ── */
+/* ── Buttons Premium ── */
 .stButton > button {{
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     font-weight: 600;
+    font-size: 0.88rem;
     border: 1px solid transparent;
     box-shadow: var(--shadow-sm);
+    letter-spacing: 0.2px;
 }}
 .stButton > button[kind="primary"] {{
     background: linear-gradient(135deg, var(--verde-acp) 0%, var(--verde-claro) 100%);
@@ -218,7 +279,7 @@ div[data-testid="stDataFrame"] {{
 .stButton > button[kind="primary"]:hover {{
     background: linear-gradient(135deg, var(--verde-claro) 0%, var(--verde-acp) 100%);
     transform: translateY(-2px);
-    box-shadow: 0 6px 14px rgba(45,90,39,0.25);
+    box-shadow: 0 8px 20px rgba(45,90,39,0.20);
     border: none;
 }}
 .stButton > button[kind="secondary"]:hover {{
@@ -230,28 +291,30 @@ div[data-testid="stDataFrame"] {{
 /* ── Banner aviso ── */
 .banner-aviso {{
     background: var(--secondary-background-color);
-    border: 1px solid var(--bronce);
+    border: 1px solid rgba(195,141,79,0.4);
     border-left: 4px solid var(--bronce);
-    border-radius: 8px;
-    padding: 12px 20px;
-    font-size: 0.9rem;
+    border-radius: var(--radius-sm);
+    padding: 14px 20px;
+    font-size: 0.88rem;
     color: var(--text-color);
-    margin-bottom: 16px;
+    margin-bottom: 20px;
     box-shadow: var(--shadow-sm);
+    animation: fadeIn 0.3s ease;
 }}
 
-/* ── Tabla Premium (Zebra Striping + Teal Header) ── */
+/* ── Tabla Premium (Zebra + Teal Header) ── */
 .tabla-premium-wrapper {{
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     overflow: hidden;
-    border: 1px solid rgba(128,128,128,0.25);
+    border: 1px solid rgba(128,128,128,0.18);
     box-shadow: var(--shadow-sm);
     margin-bottom: 8px;
+    animation: fadeIn 0.35s ease;
 }}
 .tabla-premium {{
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.88rem;
+    font-size: 0.86rem;
 }}
 .tabla-premium thead tr {{
     background: linear-gradient(135deg, #3D8B7A 0%, #2D6B5F 100%);
@@ -259,49 +322,40 @@ div[data-testid="stDataFrame"] {{
 .tabla-premium thead th {{
     color: #ffffff;
     font-weight: 700;
-    padding: 12px 16px;
+    padding: 13px 16px;
     text-align: left;
-    font-size: 0.85rem;
-    letter-spacing: 0.3px;
-    border-right: 1px solid rgba(255,255,255,0.15);
+    font-size: 0.82rem;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    border-right: 1px solid rgba(255,255,255,0.12);
     white-space: nowrap;
 }}
-.tabla-premium thead th:last-child {{
-    border-right: none;
-}}
+.tabla-premium thead th:last-child {{ border-right: none; }}
 .tabla-premium tbody td {{
-    padding: 10px 16px;
-    border-bottom: 1px solid rgba(128,128,128,0.12);
+    padding: 11px 16px;
+    border-bottom: 1px solid rgba(128,128,128,0.10);
     color: var(--text-color);
-    max-width: 280px;
+    max-width: 300px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }}
-.tabla-premium tbody tr.zebra-even {{
-    background: rgba(61, 139, 122, 0.06);
-}}
-.tabla-premium tbody tr.zebra-odd {{
-    background: var(--background-color);
-}}
+.tabla-premium tbody tr.zebra-even {{ background: rgba(61,139,122,0.05); }}
+.tabla-premium tbody tr.zebra-odd  {{ background: var(--background-color); }}
 .tabla-premium tbody tr:hover {{
-    background: rgba(61, 139, 122, 0.14) !important;
+    background: rgba(61,139,122,0.12) !important;
     cursor: default;
 }}
 .tabla-premium tbody td input[type="checkbox"] {{
-    width: 16px;
-    height: 16px;
-    accent-color: #3D8B7A;
+    width: 16px; height: 16px; accent-color: #3D8B7A;
 }}
 
 /* ── Pagination Info Bar ── */
-.pagi-info-box {{
-    padding: 8px 0;
-}}
+.pagi-info-box {{ padding: 8px 0; }}
 .pagi-info {{
-    font-size: 0.88rem;
+    font-size: 0.86rem;
     color: var(--text-color);
-    opacity: 0.75;
+    opacity: 0.7;
     font-weight: 500;
 }}
 .paginacion-bar {{
@@ -309,6 +363,47 @@ div[data-testid="stDataFrame"] {{
     padding: 8px 0;
     margin-bottom: 8px;
 }}
+
+/* ── Streamlit metric cards enhancement ── */
+div[data-testid="stMetric"] {{
+    background: var(--secondary-background-color);
+    border: 1px solid rgba(128,128,128,0.12);
+    border-radius: var(--radius-md);
+    padding: 16px 20px;
+    box-shadow: var(--shadow-sm);
+    animation: fadeIn 0.4s ease;
+}}
+div[data-testid="stMetric"]:hover {{
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+}}
+
+/* ── Expanders ── */
+details[data-testid="stExpander"] {{
+    border: 1px solid rgba(128,128,128,0.15) !important;
+    border-radius: var(--radius-md) !important;
+    box-shadow: var(--shadow-sm);
+}}
+details[data-testid="stExpander"] summary {{
+    font-weight: 600;
+    font-size: 0.95rem;
+}}
+
+/* ── Tabs ── */
+button[data-baseweb="tab"] {{
+    font-weight: 600 !important;
+    font-size: 0.92rem !important;
+    letter-spacing: 0.2px;
+}}
+
+/* ── Scroll bars premium ── */
+::-webkit-scrollbar {{ width: 6px; height: 6px; }}
+::-webkit-scrollbar-track {{ background: transparent; }}
+::-webkit-scrollbar-thumb {{
+    background: rgba(128,128,128,0.25);
+    border-radius: 4px;
+}}
+::-webkit-scrollbar-thumb:hover {{ background: rgba(128,128,128,0.4); }}
 
 </style>
 """
@@ -328,21 +423,23 @@ def header_pagina(icono: str, titulo: str, descripcion: str):
         </div>
     """, unsafe_allow_html=True)
 
+
+# ── Funciones de color (legacy — usados por pandas .style) ────────────────────
+
 def colorear_estado(val):
-    # Utilizamos rgba(..., 0.15) para el fondo, de modo que se vea bien tanto en modo oscuro como claro
     colores = {
-        "✅ OK":        "background-color:rgba(46, 139, 87, 0.15); color:#2E8B57; font-weight:600",
-        "⚠️ Con errores": "background-color:rgba(230, 126, 34, 0.15); color:#E67E22; font-weight:600",
-        "❌ Falló":     "background-color:rgba(192, 57, 43, 0.15); color:#C0392B; font-weight:600",
-        "Pendiente":    "background-color:rgba(57, 73, 171, 0.15); color:#3949AB; font-weight:600",
+        "✅ OK":          "background-color:rgba(46,139,87,0.15); color:#2E8B57; font-weight:600",
+        "⚠️ Con errores": "background-color:rgba(230,126,34,0.15); color:#E67E22; font-weight:600",
+        "❌ Falló":       "background-color:rgba(192,57,43,0.15); color:#C0392B; font-weight:600",
+        "Pendiente":      "background-color:rgba(57,73,171,0.15); color:#3949AB; font-weight:600",
     }
     return colores.get(val, "")
 
 def colorear_severidad(val):
     colores = {
-        "CRÍTICO": "background-color:rgba(192, 57, 43, 0.15); color:#C0392B; font-weight:bold",
-        "ALTO":    "background-color:rgba(230, 126, 34, 0.15); color:#E67E22; font-weight:bold",
-        "MEDIO":   "background-color:rgba(46, 139, 87, 0.15); color:#2E8B57; font-weight:bold",
+        "CRÍTICO": "background-color:rgba(192,57,43,0.15); color:#C0392B; font-weight:bold",
+        "ALTO":    "background-color:rgba(230,126,34,0.15); color:#E67E22; font-weight:bold",
+        "MEDIO":   "background-color:rgba(46,139,87,0.15); color:#2E8B57; font-weight:bold",
     }
     return colores.get(val, "")
 
@@ -360,10 +457,7 @@ def score_a_color(score: float) -> str:
     return "🔴"
 
 def crear_tarjeta_kpi(titulo: str, valor: str, icono: str, tipo: str = "") -> str:
-    """
-    Renderiza una tarjeta HTML personalizada para métricas.
-    tipos esperados: "", "success", "warning", "danger"
-    """
+    """Renderiza una tarjeta KPI HTML."""
     clase_tipo = f" {tipo}" if tipo else ""
     return f"""<div class="kpi-card{clase_tipo}">
 <div class="kpi-icon">{icono}</div>
@@ -373,42 +467,26 @@ def crear_tarjeta_kpi(titulo: str, valor: str, icono: str, tipo: str = "") -> st
 </div>
 </div>"""
 
-@st.cache_data
-def load_lottieurl(url: str):
-    import requests
-    try:
-        r = requests.get(url, timeout=5)
-        if r.status_code != 200:
-            return None
-        return r.json()
-    except Exception:
-        return None
 
+# ── Componente de Paginación Premium (local — para DataFrames en memoria) ─────
 
-# ── Componente de Paginación Premium ──
 def crear_paginacion_ui(count: int, page_size: int, key: str) -> tuple[int, int]:
     """
-    Renderiza controles de paginación profesional con navegación completa
-    y retorna (start_idx, end_idx).
-    Diseño: |< < ··· Page X of Y ··· > >|  +  "X to Y of Z"
+    Renderiza controles de paginación local y retorna (start_idx, end_idx).
+    Para paginación SQL usar seccion_tabla_sql_paginada() de componentes.py.
     """
-    import math
     total_pages = max(1, math.ceil(count / page_size)) if count > 0 else 1
 
     st_key = f"pagi_{key}"
     if st_key not in st.session_state:
         st.session_state[st_key] = 1
-    if st.session_state[st_key] > total_pages:
-        st.session_state[st_key] = total_pages
-    if st.session_state[st_key] < 1:
-        st.session_state[st_key] = 1
+    st.session_state[st_key] = max(1, min(st.session_state[st_key], total_pages))
 
     current = st.session_state[st_key]
     start_idx = (current - 1) * page_size
     end_idx = min(start_idx + page_size, count)
 
     if total_pages <= 1 and count > 0:
-        # Mostrar solo el conteo de registros sin botones
         st.markdown(f"""
             <div class="paginacion-bar">
                 <span class="pagi-info">{start_idx + 1} a {end_idx} de {count}</span>
@@ -419,7 +497,6 @@ def crear_paginacion_ui(count: int, page_size: int, key: str) -> tuple[int, int]
     if count == 0:
         return 0, 0
 
-    # Layout: Info de registros | Botones de navegación
     col_info, col_nav = st.columns([1, 2])
 
     with col_info:
@@ -442,7 +519,7 @@ def crear_paginacion_ui(count: int, page_size: int, key: str) -> tuple[int, int]
         with b3:
             st.markdown(f"""
                 <div style="text-align:center; padding:6px 0; font-size:0.9rem; font-weight:600; color:var(--text-color);">
-                    Page {current} of {total_pages}
+                    Pág {current} de {total_pages}
                 </div>
             """, unsafe_allow_html=True)
         with b4:
@@ -457,40 +534,18 @@ def crear_paginacion_ui(count: int, page_size: int, key: str) -> tuple[int, int]
     return start_idx, end_idx
 
 
-def renderizar_tabla_premium(df, key: str, page_size: int = 15,
-                              columnas_check: list = None,
-                              columnas_ocultas: list = None):
-    """
-    Renderiza un DataFrame como una tabla HTML premium con:
-    - Encabezado estilizado con el tema del portal (verde ACP)
-    - Filas con zebra-striping (alternancia de color)
-    - Paginación profesional inferior (|< < Page X of Y > >|)
-    - Contador de registros (X to Y of Z)
+# ── Generador de HTML de tabla (núcleo compartido) ────────────────────────────
 
-    Args:
-        df: DataFrame a renderizar
-        key: Clave única para session_state
-        page_size: Registros por página
-        columnas_check: Lista de columnas que se muestran como checkbox
-        columnas_ocultas: Lista de columnas a ocultar
-    """
-    if df.empty:
-        st.info("No hay datos para mostrar.")
-        return
-
+def _generar_html_tabla(df, columnas_check=None, columnas_ocultas=None) -> str:
+    """Genera HTML de tabla premium a partir de un DataFrame (slice ya cortado)."""
     if columnas_ocultas:
         df = df.drop(columns=[c for c in columnas_ocultas if c in df.columns], errors='ignore')
 
-    count = len(df)
-    start, end = crear_paginacion_ui(count, page_size, key)
-    df_slice = df.iloc[start:end]
-
-    # ── Generar HTML de la tabla ──
-    cols = list(df_slice.columns)
+    cols = list(df.columns)
     header_html = "".join(f"<th>{c}</th>" for c in cols)
 
     rows_html = ""
-    for i, (_, row) in enumerate(df_slice.iterrows()):
+    for i, (_, row) in enumerate(df.iterrows()):
         row_class = "zebra-even" if i % 2 == 0 else "zebra-odd"
         cells = ""
         for col in cols:
@@ -503,7 +558,7 @@ def renderizar_tabla_premium(df, key: str, page_size: int = 15,
                 cells += f"<td>{display_val}</td>"
         rows_html += f'<tr class="{row_class}">{cells}</tr>'
 
-    tabla_html = f"""
+    return f"""
     <div class="tabla-premium-wrapper">
         <table class="tabla-premium">
             <thead><tr>{header_html}</tr></thead>
@@ -511,4 +566,43 @@ def renderizar_tabla_premium(df, key: str, page_size: int = 15,
         </table>
     </div>
     """
-    st.markdown(tabla_html, unsafe_allow_html=True)
+
+
+def renderizar_tabla_premium(df, key: str, page_size: int = 15,
+                              columnas_check: list = None,
+                              columnas_ocultas: list = None):
+    """
+    Tabla HTML premium con paginación LOCAL (datos en memoria).
+    Para tablas grandes, usar seccion_tabla_sql_paginada() de componentes.py.
+    """
+    if df.empty:
+        st.info("No hay datos para mostrar.")
+        return
+
+    if columnas_ocultas:
+        df = df.drop(columns=[c for c in columnas_ocultas if c in df.columns], errors='ignore')
+
+    count = len(df)
+    start, end = crear_paginacion_ui(count, page_size, key)
+    df_slice = df.iloc[start:end]
+
+    st.markdown(
+        _generar_html_tabla(df_slice, columnas_check=columnas_check),
+        unsafe_allow_html=True,
+    )
+
+
+def renderizar_tabla_premium_raw(df, columnas_check=None, columnas_ocultas=None):
+    """
+    Tabla HTML premium SIN paginación propia.
+    Diseñada para usarse con seccion_tabla_sql_paginada() donde
+    los datos ya vienen cortados desde SQL Server.
+    """
+    if df.empty:
+        st.info("No hay datos para mostrar.")
+        return
+
+    st.markdown(
+        _generar_html_tabla(df, columnas_check=columnas_check, columnas_ocultas=columnas_ocultas),
+        unsafe_allow_html=True,
+    )

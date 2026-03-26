@@ -11,6 +11,8 @@ from sqlalchemy.engine import Engine
 from sqlalchemy import text
 import re
 
+from utils.texto import normalizar_componente_geografico
+
 
 _cache: dict[str, pd.DataFrame] = {}
 _cache_mapas: dict[str, dict] = {}
@@ -205,7 +207,7 @@ def _geo_token(valor) -> str | None:
     if isinstance(valor, float) and pd.isna(valor):
         return None
 
-    texto = str(valor).strip()
+    texto = normalizar_componente_geografico(str(valor))
     if texto in ('', 'None', 'nan'):
         return None
 
@@ -215,7 +217,7 @@ def _geo_token(valor) -> str | None:
     if re.fullmatch(r'[+-]?\d+\.0+', texto):
         return str(int(texto.split('.', 1)[0]))
 
-    return texto.lower()
+    return str(texto).lower()
 
 def _cargar_dim_geografia(engine: Engine) -> pd.DataFrame:
     clave_cache = 'Silver.Dim_Geografia'
@@ -291,6 +293,11 @@ def _resolver_geografia_sp(fundo: str | None,
     if clave_busqueda in mapa_geo:
         return mapa_geo[clave_busqueda]
 
+    modulo_raw = normalizar_componente_geografico(None if modulo is None else str(modulo))
+    turno_raw = normalizar_componente_geografico(None if turno is None else str(turno))
+    valvula_raw = normalizar_componente_geografico(None if valvula is None else str(valvula))
+    cama_raw = normalizar_componente_geografico(None if cama is None else str(cama))
+
     try:
         with engine.connect() as conexion:
             fila = conexion.execute(text("""
@@ -300,10 +307,10 @@ def _resolver_geografia_sp(fundo: str | None,
                     @Valvula_Raw = :valvula_raw,
                     @Cama_Raw = :cama_raw
             """), {
-                'modulo_raw': None if modulo is None else str(modulo),
-                'turno_raw': None if turno is None else str(turno),
-                'valvula_raw': None if valvula is None else str(valvula),
-                'cama_raw': None if cama is None else str(cama),
+                'modulo_raw': modulo_raw,
+                'turno_raw': turno_raw,
+                'valvula_raw': valvula_raw,
+                'cama_raw': cama_raw,
             }).fetchone()
     except Exception:
         return None

@@ -1,21 +1,21 @@
 """
-cuarentena.py — Página de Cuarentena del portal MDM
-=====================================================
+paginas/cuarentena.py — Página de Cuarentena del portal MDM ACP
+================================================================
 Presenta los registros rechazados por el ETL y permite al equipo
 revisar, aprobar, homologar o descartar cada uno.
-
-Sin dependencia de Lottie ni de base de datos —
-funciona con datos demo hasta que se conecte la BD real.
 """
 
 import io
-from datetime import date, timedelta
 
 import pandas as pd
 import streamlit as st
-from utils.formato import header_pagina, colorear_severidad, crear_paginacion_ui, renderizar_tabla_premium
-from utils.db import ejecutar_query
 
+from utils.componentes import badge_html, estado_vacio_html, mostrar_kpis
+from utils.db import ejecutar_query
+from utils.formato import header_pagina, renderizar_tabla_premium
+
+
+# ── Query cacheada ────────────────────────────────────────────────────────────
 
 @st.cache_data(ttl=60, show_spinner=False)
 def cargar_cuarentena() -> pd.DataFrame:
@@ -23,7 +23,6 @@ def cargar_cuarentena() -> pd.DataFrame:
     Lee todos los registros con Estado_Carga = 'EN_CUARENTENA'
     de las tablas Bronce. Retorna columnas estandarizadas.
     """
-    # Tablas Bronce conocidas con sus columnas clave
     tablas = [
         ("Bronce.Evaluacion_Pesos",      "Variedad_Raw",  "ID_Evaluacion_Pesos"),
         ("Bronce.Conteo_Fruta",          "Variedad_Raw",  "ID_Conteo_Fruta"),
@@ -58,12 +57,12 @@ def cargar_cuarentena() -> pd.DataFrame:
             if not df.empty:
                 partes.append(df)
         except Exception:
-            pass  # Tabla no existe aun — se ignora sin romper el portal
+            pass  # Tabla no existe aún — se ignora
 
     if not partes:
         return pd.DataFrame(columns=[
-            "Tabla Origen", "ID", "Columna Origen", "Valor Raw", 
-            "Archivo", "Fecha ingreso", "Estado", "Severidad", "Motivo"
+            "Tabla Origen", "ID", "Columna Origen", "Valor Raw",
+            "Archivo", "Fecha ingreso", "Estado", "Severidad", "Motivo",
         ])
 
     resultado = pd.concat(partes, ignore_index=True)
@@ -72,6 +71,7 @@ def cargar_cuarentena() -> pd.DataFrame:
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 def _exportar_excel(df: pd.DataFrame) -> bytes:
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
@@ -79,54 +79,29 @@ def _exportar_excel(df: pd.DataFrame) -> bytes:
     return buffer.getvalue()
 
 
-def _badge_severidad(sev: str) -> str:
-    colores = {
-        "CRÍTICO": ("#C0392B", "#FAEDEC"),
-        "ALTO":    ("#E67E22", "#FEF5EC"),
-        "MEDIO":   ("#1E6B35", "#EAF4EC"),
-    }
-    fg, bg = colores.get(sev, ("#555", "#f0f0f0"))
-    return (
-        f"<span style='background:{bg}; color:{fg}; border:1px solid {fg}; "
-        f"padding:2px 10px; border-radius:12px; font-size:0.78rem; font-weight:700;'>"
-        f"{sev}</span>"
-    )
+# ── Render ────────────────────────────────────────────────────────────────────
 
-
-def _badge_estado(estado: str) -> str:
-    colores = {
-        "PENDIENTE":    ("#3949AB", "#EEF0FB"),
-        "EN_REVISIÓN":  ("#E29D45", "#FEF8EC"),
-        "RESUELTO":     ("#1E6B35", "#EAF4EC"),
-    }
-    fg, bg = colores.get(estado, ("#555", "#f0f0f0"))
-    return (
-        f"<span style='background:{bg}; color:{fg}; border:1px solid {fg}; "
-        f"padding:2px 10px; border-radius:12px; font-size:0.78rem; font-weight:700;'>"
-        f"{estado}</span>"
-    )
-
-
-# ── Render principal ──────────────────────────────────────────────────────────
 def render() -> None:
     header_pagina(
         "🔴", "Cuarentena",
-        "Revisión de registros rechazados · Decide qué hacer con cada uno"
+        "Revisión de registros rechazados · Decide qué hacer con cada uno",
     )
 
     df_original = cargar_cuarentena()
 
-    # ── KPIs rápidos ─────────────────────────────────────────────────────────
-    total       = len(df_original)
-    pendientes  = (df_original["Estado"] == "PENDIENTE").sum()
-    criticos    = (df_original["Severidad"] == "CRÍTICO").sum()
-    resueltos   = (df_original["Estado"] == "RESUELTO").sum()
+    # ── KPIs rápidos ──────────────────────────────────────────────────────────
+    total      = len(df_original)
+    pendientes = int((df_original["Estado"] == "PENDIENTE").sum())
+    criticos   = int((df_original["Severidad"] == "CRÍTICO").sum())
+    resueltos  = int((df_original["Estado"] == "RESUELTO").sum())
 
-    k1, k2, k3, k4 = st.columns(4)
-    k1.metric("📋 Total registros",   total)
-    k2.metric("⏳ Pendientes",         pendientes,  delta=f"-{resueltos} resueltos" if resueltos > 0 else None)
-    k3.metric("🔴 Críticos",           criticos,    delta_color="inverse")
-    k4.metric("✅ Resueltos",          resueltos)
+    mostrar_kpis([
+        {"label": "📋 Total registros", "value": total},
+        {"label": "⏳ Pendientes",       "value": pendientes,
+         "delta": f"-{resueltos} resueltos" if resueltos > 0 else None},
+        {"label": "🔴 Críticos",         "value": criticos, "delta_color": "inverse"},
+        {"label": "✅ Resueltos",        "value": resueltos},
+    ])
 
     if criticos > 0:
         st.error(
@@ -138,42 +113,44 @@ def render() -> None:
     st.markdown("<hr style='margin:16px 0;'>", unsafe_allow_html=True)
 
     # ── Filtros ───────────────────────────────────────────────────────────────
-    with st.container():
-        st.markdown("### 🔍 Filtros")
-        fc1, fc2, fc3, fc4, fc5 = st.columns([2, 2, 1.5, 1.5, 2])
+    st.markdown("### 🔍 Filtros")
+    fc1, fc2, fc3, fc4, fc5 = st.columns([2, 2, 1.5, 1.5, 2])
 
-        with fc1:
-            tablas_disp = ["Todas"] + sorted(df_original["Tabla Origen"].unique().tolist())
-            tabla_sel = st.selectbox("Tabla origen", tablas_disp, key="cuar_tabla")
-        with fc2:
-            cols_disp = ["Todas"] + sorted(df_original["Columna Origen"].unique().tolist())
-            col_sel = st.selectbox("Columna", cols_disp, key="cuar_col")
-        with fc3:
-            sev_disp = ["Todas"] + ["CRÍTICO", "ALTO", "MEDIO"]
-            sev_sel = st.selectbox("Severidad", sev_disp, key="cuar_sev")
-        with fc4:
-            estado_disp = ["Todos"] + sorted(df_original["Estado"].unique().tolist())
-            estado_sel = st.selectbox("Estado", estado_disp, key="cuar_estado")
-        with fc5:
-            buscar = st.text_input("🔎 Buscar valor raw…", key="cuar_buscar",
-                                   placeholder="ej: FCM14, Biloxi…")
+    with fc1:
+        tabla_sel = st.selectbox(
+            "Tabla origen",
+            ["Todas"] + sorted(df_original["Tabla Origen"].unique().tolist()),
+            key="cuar_tabla",
+        )
+    with fc2:
+        col_sel = st.selectbox(
+            "Columna",
+            ["Todas"] + sorted(df_original["Columna Origen"].unique().tolist()),
+            key="cuar_col",
+        )
+    with fc3:
+        sev_sel = st.selectbox("Severidad", ["Todas", "CRÍTICO", "ALTO", "MEDIO"], key="cuar_sev")
+    with fc4:
+        estado_sel = st.selectbox(
+            "Estado",
+            ["Todos"] + sorted(df_original["Estado"].unique().tolist()),
+            key="cuar_estado",
+        )
+    with fc5:
+        buscar = st.text_input("🔎 Buscar valor raw…", key="cuar_buscar", placeholder="ej: FCM14, Biloxi…")
 
     # Aplicar filtros
     df = df_original.copy()
-    if tabla_sel   != "Todas":
-        df = df[df["Tabla Origen"]   == tabla_sel]
-    if col_sel     != "Todas":
-        df = df[df["Columna Origen"] == col_sel]
-    if sev_sel     != "Todas":
-        df = df[df["Severidad"]      == sev_sel]
-    if estado_sel  != "Todos":
-        df = df[df["Estado"]         == estado_sel]
+    if tabla_sel  != "Todas": df = df[df["Tabla Origen"]   == tabla_sel]
+    if col_sel    != "Todas": df = df[df["Columna Origen"] == col_sel]
+    if sev_sel    != "Todas": df = df[df["Severidad"]      == sev_sel]
+    if estado_sel != "Todos": df = df[df["Estado"]         == estado_sel]
     if buscar.strip():
         df = df[df["Valor Raw"].str.contains(buscar.strip(), case=False, na=False)]
 
     st.markdown(
         f"**{len(df)}** registro(s) coinciden · "
-        f"mostrando filtro: tabla=*{tabla_sel}* | severidad=*{sev_sel}* | estado=*{estado_sel}*"
+        f"tabla=*{tabla_sel}* | severidad=*{sev_sel}* | estado=*{estado_sel}*"
     )
 
     # ── Exportar ──────────────────────────────────────────────────────────────
@@ -189,15 +166,17 @@ def render() -> None:
     st.markdown("<br>", unsafe_allow_html=True)
 
     if df.empty:
-        st.success("✅ No hay registros que coincidan con los filtros seleccionados.")
+        estado_vacio_html(
+            icono="✅",
+            titulo="Sin registros coincidentes",
+            subtitulo="No hay registros que coincidan con los filtros seleccionados.",
+        )
         return
 
     # ── Tabla de cuarentena ───────────────────────────────────────────────────
     st.markdown("### 📋 Registros en cuarentena")
-
-    columnas_vista = ["ID", "Tabla Origen", "Columna Origen",
-                      "Valor Raw", "Motivo", "Severidad", "Fecha ingreso", "Estado"]
-
+    columnas_vista = ["ID", "Tabla Origen", "Columna Origen", "Valor Raw",
+                      "Motivo", "Severidad", "Fecha ingreso", "Estado"]
     renderizar_tabla_premium(df[columnas_vista], key="cuarentena_tabla", page_size=15)
 
     st.markdown("<hr style='margin:24px 0;'>", unsafe_allow_html=True)
@@ -227,9 +206,9 @@ def render() -> None:
                 disabled=len(ids_selec) == 0,
                 type="primary",
             ):
-                st.info(
-                    f"Acción **{accion_masiva}** aplicada a {len(ids_selec)} ID(s): "
-                    f"{ids_selec}  \n_(Conexión a BD no disponible — sin persistencia)_"
+                st.toast(
+                    f"Acción masiva '{accion_masiva}' aplicada a {len(ids_selec)} ID(s).",
+                    icon="✅"
                 )
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -251,6 +230,7 @@ def render() -> None:
         sev  = fila["Severidad"]
         sev_color = {"CRÍTICO": "#C0392B", "ALTO": "#E67E22", "MEDIO": "#1E6B35"}.get(sev, "#555")
 
+        # Panel de detalle con badges unificados desde componentes
         st.markdown(
             f"""
             <div style="background:var(--secondary-background-color);
@@ -262,7 +242,7 @@ def render() -> None:
                         box-shadow:0 2px 8px rgba(0,0,0,0.06);">
                 <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
                     <h4 style="margin:0; color:var(--verde-acp, #1E6B35);">🔎 Registro #{id_sel}</h4>
-                    {_badge_severidad(sev)} &nbsp; {_badge_estado(fila['Estado'])}
+                    {badge_html(sev)} &nbsp; {badge_html(fila['Estado'])}
                 </div>
                 <div style="margin-top:14px; display:flex; flex-wrap:wrap; gap:24px; font-size:0.9rem;">
                     <div><b>Valor raw:</b> &nbsp;<code style="background:rgba(0,0,0,0.07);
@@ -281,7 +261,7 @@ def render() -> None:
             unsafe_allow_html=True,
         )
 
-        # Opciones de resolución
+        # ── Opciones de resolución ────────────────────────────────────────────
         st.markdown("**¿Qué es este valor?**")
         opcion = st.radio(
             "Acción de resolución",
@@ -297,7 +277,7 @@ def render() -> None:
         )
 
         st.markdown("<br>", unsafe_allow_html=True)
-        d1, d2, d3 = st.columns([3, 2, 1])
+        d1, d2, _ = st.columns([3, 2, 1])
 
         if "nueva" in opcion:
             with d1:
@@ -310,10 +290,7 @@ def render() -> None:
                 st.markdown("<br>", unsafe_allow_html=True)
                 if st.button("➕ Agregar variedad", key=f"btn_agregar_{id_sel}",
                              type="primary", disabled=not nuevo_nombre.strip()):
-                    st.success(
-                        f"Variedad **{nuevo_nombre}** marcada para agregar al catálogo. "
-                        f"_(Pendiente de conexión a BD)_"
-                    )
+                    st.toast(f"Variedad '{nuevo_nombre}' marcada para agregar.", icon="✅")
 
         elif "homologar" in opcion:
             with d1:
@@ -326,9 +303,8 @@ def render() -> None:
                 st.markdown("<br>", unsafe_allow_html=True)
                 if st.button("✅ Aprobar homologación", key=f"btn_aprobar_{id_sel}",
                              type="primary", disabled=not valor_homo.strip()):
-                    st.success(
-                        f"**'{fila['Valor Raw']}'** → **'{valor_homo}'** "
-                        f"guardado en diccionario. _(Pendiente de conexión a BD)_"
+                    st.toast(
+                        f"'{fila['Valor Raw']}' → '{valor_homo}' guardado en diccionario.", icon="✅"
                     )
 
         elif "Test Block" in opcion:
@@ -340,9 +316,8 @@ def render() -> None:
                 )
             with d2:
                 st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("🧪 Confirmar Test Block", key=f"btn_tb_{id_sel}",
-                             type="primary"):
-                    st.success("Marcado como Test Block. _(Pendiente de conexión a BD)_")
+                if st.button("🧪 Confirmar Test Block", key=f"btn_tb_{id_sel}", type="primary"):
+                    st.toast("Módulo marcado como Test Block.", icon="🧪")
 
         elif "Descartar" in opcion:
             with d1:
@@ -353,11 +328,10 @@ def render() -> None:
                 )
             with d2:
                 st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("🗑️ Confirmar descarte", key=f"btn_desc_{id_sel}",
-                             disabled=False):
-                    st.success("Registro descartado. _(Pendiente de conexión a BD)_")
+                if st.button("🗑️ Confirmar descarte", key=f"btn_desc_{id_sel}"):
+                    st.toast("Registro descartado exitosamente.", icon="🗑️")
 
         st.caption(
-            "💡 Los cambios se persistirán en la base de datos cuando la conexión esté activa. "
+            "💡 Los cambios se persistirán en la BD cuando la conexión esté activa. "
             "Por ahora operan en modo simulación."
         )

@@ -32,14 +32,26 @@ def _a_int(valor) -> int | None:
 def _leer_bronce(engine: Engine) -> pd.DataFrame:
     with engine.connect() as conexion:
         resultado = conexion.execute(text(f"""
+            WITH LoteActual AS (
+                SELECT TOP (1)
+                    Fecha_Sistema,
+                    Nombre_Archivo
+                FROM {TABLA_ORIGEN}
+                WHERE Estado_Carga = 'CARGADO'
+                  AND CAST(Fecha_Sistema AS DATE) = CAST(SYSDATETIME() AS DATE)
+                ORDER BY Fecha_Sistema DESC, ID_Fisiologia DESC
+            )
             SELECT
                 ID_Fisiologia,
                 Fecha_Raw, Fundo_Raw, Modulo_Raw,
                 Variedad_Raw, Tercio_Raw,
                 Hinchadas_Raw, Productivas_Raw,
                 Total_Org_Raw, Brote_Raw
-            FROM {TABLA_ORIGEN}
-            WHERE Estado_Carga = 'CARGADO'
+            FROM {TABLA_ORIGEN} f
+            INNER JOIN LoteActual l
+                ON f.Fecha_Sistema = l.Fecha_Sistema
+               AND f.Nombre_Archivo = l.Nombre_Archivo
+            WHERE f.Estado_Carga = 'CARGADO'
         """))
         return pd.DataFrame(resultado.fetchall(), columns=resultado.keys())
 

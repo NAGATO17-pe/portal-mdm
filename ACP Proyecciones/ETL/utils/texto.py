@@ -89,7 +89,7 @@ def normalizar_modulo(valor: str | None) -> str | None:
     if 'TEST' in valor_limpio or 'BLOCK' in valor_limpio:
         return None  # Señal para Es_Test_Block = 1
 
-    return valor_limpio
+    return normalizar_componente_geografico(valor_limpio)
 
 
 def es_test_block(valor: str | None) -> bool:
@@ -113,3 +113,38 @@ def limpiar_numerico_texto(valor: str | None) -> str | None:
         return str(int(float(valor)))
     except (ValueError, TypeError):
         return valor
+
+
+def normalizar_componente_geografico(valor: str | None) -> str | None:
+    """
+    Normaliza componentes operativos de geografia para que el ETL
+    tolere prefijos y formatos de campo variables.
+
+    Ejemplos:
+    - 'MODULO 2' -> '2'
+    - 'TURNO 04' -> '4'
+    - 'NROVALVULA 15' -> '15'
+    - '9.1' -> '9.1'
+    - 'VI' -> 'VI'
+    """
+    if valor is None:
+        return None
+
+    texto = normalizar_espacio(str(valor))
+    if texto is None or texto in ('', 'None', 'nan'):
+        return None
+
+    texto = texto.upper()
+    if 'TEST' in texto or 'BLOCK' in texto:
+        return texto
+
+    coincidencias = re.findall(r'[+-]?\d+(?:\.\d+)?', texto)
+    if not coincidencias:
+        return texto
+
+    numero = coincidencias[-1]
+    if re.fullmatch(r'[+-]?\d+\.0+', numero):
+        return str(int(float(numero)))
+    if re.fullmatch(r'[+-]?\d+', numero):
+        return str(int(numero))
+    return numero
