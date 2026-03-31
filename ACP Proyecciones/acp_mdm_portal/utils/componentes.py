@@ -399,3 +399,35 @@ def health_status_panel() -> bool:
         )
 
     return conectado
+
+def mostrar_dialogo_confirmacion(titulo: str, mensaje: str, callback: callable, *args, **kwargs):
+    """
+    Despliega un modal de confirmación limpio usando st.dialog (1.37+) o 
+    st.experimental_dialog (1.34+).
+    """
+    if hasattr(st, "dialog"):
+        decorator = st.dialog
+    elif hasattr(st, "experimental_dialog"):
+        decorator = st.experimental_dialog
+    else:
+        # Fallback para versiones muy antiguas
+        st.warning(mensaje)
+        if st.button("Confirmar fallback"):
+            callback(*args, **kwargs)
+        return
+
+    @decorator(titulo)
+    def _modal():
+        st.markdown(f"**{mensaje}**")
+        st.markdown("<br>", unsafe_allow_html=True)
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("✅ Sí, Confirmar", type="primary", use_container_width=True):
+                callback(*args, **kwargs)
+                st.rerun()
+        with col2:
+            if st.button("❌ Cancelar", use_container_width=True):
+                st.rerun()
+
+    _modal()

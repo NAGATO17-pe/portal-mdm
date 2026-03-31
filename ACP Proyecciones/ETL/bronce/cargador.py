@@ -6,6 +6,8 @@ Aplica validacion de layout critico cuando la operacion lo exige.
 """
 
 import shutil
+import re
+import unicodedata
 import numpy as np
 from datetime import datetime
 from pathlib import Path
@@ -158,8 +160,8 @@ _FIRMAS_RUTA_SUGERIDA: dict[str, dict[str, Any]] = {
 }
 
 
-# Mapeo de nombres de columnas comunes del Excel a nombres estándar del ETL.
-# Se aplica DESPUÉS de reemplazar espacios por _ y eliminar acentos.
+# Mapeo de nombres de columnas comunes del Excel a nombres estÃ¡ndar del ETL.
+# Se aplica DESPUÃ‰S de reemplazar espacios por _ y eliminar acentos.
 # Clave : nombre ya sin acentos/espacios (sin _Raw)
 # Valor : nombre esperado por los scripts Silver (sin _Raw)
 _ALIAS_COLUMNAS: dict[str, str] = {
@@ -169,42 +171,83 @@ _ALIAS_COLUMNAS: dict[str, str] = {
     'Fecha_evaluacion':           'Fecha',
     'Fecha':                      'Fecha',
     'fecha':                      'Fecha',
+    'FECHA':                      'Fecha',
+    'FECHAEVALUACION':            'Fecha',
     # Fecha de subida
     'Fecha_de_subida':            'Fecha_Subida',
     'FechaSubida':                'Fecha_Subida',
+    'FECHASUBIDA':                'Fecha_Subida',
+    'FECHAREGISTRO':              'Fecha_Registro',
     # Fundo
     'Fundo':                      'Fundo',
     'fundo':                      'Fundo',
     # Modulo
     'Modulo':                     'Modulo',
     'modulo':                     'Modulo',
+    'MODULO':                     'Modulo',
     # Valvula
     'Valvula':                    'Valvula',
+    'valvula':                    'Valvula',
+    'VALVULA':                    'Valvula',
+    'NROVALVULA':                 'Valvula',
     'Cama':                       'Cama',
     'N_cama':                     'Cama',
     'N_de_cama':                  'Cama',
     # Turno
     'Turno':                      'Turno',
     'turno':                      'Turno',
+    'TURNO':                      'Turno',
     # Variedad
     'Variedad':                   'Variedad',
     'variedad':                   'Variedad',
+    'VARIEDAD':                   'Variedad',
     # Evaluacion
     'Evaluacion':                 'Evaluacion',
     'evaluacion':                 'Evaluacion',
     # DNI / Personal
     'DNI':                        'DNI',
     'dni':                        'DNI',
+    'USUARIO':                    'Evaluador',
+    'USUARIOEVALUADOR':           'Evaluador',
+    'EVALUADOR':                  'Evaluador',
     'Nombres':                    'Nombres',
     'Nombre':                     'Nombres',
     'Evaluador':                  'Evaluador',
+    # Hora
+    'Hora':                       'Hora',
+    'HORA':                       'Hora',
     # Sector
     'Sector':                     'Sector',
     'sector':                     'Sector',
-    # Pesos bayas (Reporte_evaluacion_peso.xlsx) — post normalizacion de acentos
+    # Clima
+    'T_Max':                      'TempMax',
+    'T_Min':                      'TempMin',
+    'HUMEDAD_RELATIVA':           'Humedad',
+    'RADIACION_SOLAR':            'Radiacion',
+    'DVP_Real':                   'VPD',
+    'DVP_PROMETEO':               'VPD',
+    # Tareos
+    'DNIRESPONSABLE':             'DNIResponsable',
+    'DNI_RESPONSABLE':            'DNIResponsable',
+    'IDPERSONALGENERAL':          'IDPersonalGeneral',
+    'ID_PERSONAL_GENERAL':        'IDPersonalGeneral',
+    'IDPLANILLA':                 'IDPlanilla',
+    'ID_PLANILLA':                'IDPlanilla',
+    'IDACTIVIDAD':                'IDActividad',
+    'ID_ACTIVIDAD':               'IDActividad',
+    'ACTIVIDAD':                  'Actividad',
+    'IDLABOR':                    'IDLabor',
+    'ID_LABOR':                   'IDLabor',
+    'LABOR':                      'Labor',
+    'IDTURNO':                    'Turno',
+    'ID_TURNO':                   'Turno',
+    'HORAS':                      'HorasTrabajadas',
+    'HORASTRABAJADAS':            'HorasTrabajadas',
+    'AREA':                       'Area',
+    # Pesos bayas (Reporte_evaluacion_peso.xlsx) - post normalizacion de acentos
     'Bayas_pequenas':             'BayasPequenas',
     'Peso_bayas_pequenas':        'PesoBayasPequenas',
-    'Peso_bayas_pequenas1':       'PesoBayasPequenas2',  # header Excel: "Peso bayas pequeñas.1"
+    'Peso_bayas_pequenas1':       'PesoBayasPequenas2',
     'Peso_bayas_pequenas2':       'PesoBayasPequenas2',
     'Bayas_grandes':              'BayasGrandes',
     'Peso_bayas_grandes':         'PesoBayasGrandes',
@@ -222,46 +265,85 @@ _ALIAS_COLUMNAS: dict[str, str] = {
     'CantMuestra':                'CantMuestra',
 }
 
+_ALIAS_COLUMNAS_CASEFOLD: dict[str, str] = {
+    str(clave).casefold(): valor
+    for clave, valor in _ALIAS_COLUMNAS.items()
+}
+
 
 def _alias(col_snake: str) -> str:
-    """Retorna el alias estándar si existe, o la misma col_snake."""
-    return _ALIAS_COLUMNAS.get(col_snake, col_snake)
+    """Retorna el alias estandar si existe, o la misma col_snake."""
+    if col_snake in _ALIAS_COLUMNAS:
+        return _ALIAS_COLUMNAS[col_snake]
+    return _ALIAS_COLUMNAS_CASEFOLD.get(str(col_snake).casefold(), col_snake)
+
+
+def _normalizar_nombre_columna_base(columna) -> str:
+    """
+    Canoniza encabezados reales del Excel a una forma estable:
+    - quita tildes y variantes Unicode
+    - elimina simbolos como °, º, #, /, (), .
+    - colapsa separadores repetidos
+    - normaliza sufijos numericos tipo ".1" -> "1"
+    """
+    texto = str(columna).strip()
+    texto = unicodedata.normalize('NFKD', texto)
+    texto = ''.join(ch for ch in texto if not unicodedata.combining(ch))
+    texto = texto.replace('°', '').replace('º', '').replace('#', 'N')
+    texto = re.sub(r'[^0-9A-Za-z]+', '_', texto)
+    texto = re.sub(r'_+', '_', texto).strip('_')
+    texto = re.sub(r'_(\d+)$', r'\1', texto)
+    return texto
+
+
+def _consolidar_columnas_duplicadas(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Si varios encabezados del Excel terminan en el mismo nombre normalizado,
+    conserva una sola columna usando el primer valor no nulo por fila.
+    """
+    nombres_ordenados = list(dict.fromkeys(str(col) for col in df.columns))
+    if len(nombres_ordenados) == len(df.columns):
+        return df
+
+    df_consolidado = pd.DataFrame(index=df.index)
+    for nombre in nombres_ordenados:
+        bloque = df.loc[:, df.columns == nombre]
+        if isinstance(bloque, pd.Series):
+            df_consolidado[nombre] = bloque
+            continue
+
+        bloque = bloque.replace(r'^\s*$', np.nan, regex=True)
+        if bloque.shape[1] == 1:
+            df_consolidado[nombre] = bloque.iloc[:, 0]
+        else:
+            df_consolidado[nombre] = bloque.bfill(axis=1).iloc[:, 0]
+
+    return df_consolidado
 
 
 def normalizar_columnas(df: pd.DataFrame) -> pd.DataFrame:
     """
     Normaliza nombres de columnas del Excel:
     - Quita espacios / caracteres especiales
-    - Aplica alias estándares (Fecha de evaluación → Fecha_Raw)
+    - Aplica alias estÃ¡ndares (Fecha de evaluaciÃ³n â†’ Fecha_Raw)
     - Agrega sufijo _Raw si no lo tiene
     """
     columnas_nuevas = {}
     for col in df.columns:
-        col_snake = (
-            str(col)
-            .strip()
-            .replace(' ', '_')
-            .replace('ó', 'o')
-            .replace('á', 'a')
-            .replace('é', 'e')
-            .replace('í', 'i')
-            .replace('ú', 'u')
-            .replace('ñ', 'n')
-            .replace('°', '')
-            .replace('.', '')
-        )
+        col_snake = _normalizar_nombre_columna_base(col)
         col_snake = _alias(col_snake)
         if not col_snake.endswith('_Raw'):
             col_snake = f'{col_snake}_Raw'
         columnas_nuevas[col] = col_snake
-    return df.rename(columns=columnas_nuevas)
+    df = df.rename(columns=columnas_nuevas)
+    return _consolidar_columnas_duplicadas(df)
 
 
 def castear_todo_a_texto(df: pd.DataFrame) -> pd.DataFrame:
     """
     Convierte todas las columnas a string (vectorizado).
     None y NaN se convierten a None (NULL en SQL).
-    Bronce nunca tipifica — todo es NVARCHAR.
+    Bronce nunca tipifica â€” todo es NVARCHAR.
     """
     for col in df.columns:
         mask_nulo = df[col].isna()
@@ -294,7 +376,7 @@ def insertar_en_bronce(df: pd.DataFrame,
                         engine) -> int:
     """
     Inserta el DataFrame en la tabla Bronce indicada.
-    Retorna el número de filas insertadas.
+    Retorna el nÃºmero de filas insertadas.
     """
     esquema, nombre_tabla = tabla.split('.')
 
@@ -304,7 +386,7 @@ def insertar_en_bronce(df: pd.DataFrame,
         schema=esquema,
         if_exists='append',
         index=False,
-        chunksize=1000,  # fast_executemany=True ya está en el engine
+        chunksize=1000,  # fast_executemany=True ya estÃ¡ en el engine
     )
     return len(df)
 
@@ -377,6 +459,83 @@ def _columnas_normalizadas_excel(ruta_archivo: Path, header_idx: int) -> list[st
     return [str(col) for col in df.columns]
 
 
+def _extraer_sector_climatico_desde_archivo(ruta_archivo: Path) -> str | None:
+    coincidencia = re.search(r'\b([A-Z]\d{2})\b', ruta_archivo.stem.upper())
+    return coincidencia.group(1) if coincidencia else None
+
+
+def _leer_excel_clima_bd(ruta_archivo: Path) -> pd.DataFrame:
+    """
+    Lee el layout analitico de clima desde la hoja BD.
+    El header real esta en la fila 3 del Excel (header=2).
+    """
+    df = pd.read_excel(
+        str(ruta_archivo),
+        sheet_name='BD',
+        header=2,
+        engine='openpyxl',
+    )
+    if df.empty:
+        return df
+
+    df = df.dropna(how='all')
+    df = df.loc[:, ~df.columns.isna()]
+    df = normalizar_columnas(df)
+
+    sector = _extraer_sector_climatico_desde_archivo(ruta_archivo)
+    if sector:
+        df['Sector_Raw'] = sector
+
+    return df
+
+
+def _serie_o_nulos(df: pd.DataFrame, columna: str) -> pd.Series:
+    if columna in df.columns:
+        return df[columna]
+    return pd.Series([None] * len(df), index=df.index)
+
+
+def _proyectar_dataframe_clima_bronce(
+    ruta_archivo: Path,
+    tabla_destino: str,
+) -> pd.DataFrame:
+    """
+    Proyecta el layout BD de clima a las columnas fisicas esperadas en Bronce.
+    No depende del alineador generico porque el libro trae muchas metricas analiticas.
+    """
+    df = _leer_excel_clima_bd(ruta_archivo)
+    if df.empty:
+        return df
+
+    columnas_base = {
+        'Fecha_Raw': _serie_o_nulos(df, 'Fecha_Raw'),
+        'Sector_Raw': _serie_o_nulos(df, 'Sector_Raw'),
+        'TempMax_Raw': _serie_o_nulos(df, 'TempMax_Raw'),
+        'TempMin_Raw': _serie_o_nulos(df, 'TempMin_Raw'),
+        'Humedad_Raw': _serie_o_nulos(df, 'Humedad_Raw'),
+    }
+
+    if tabla_destino == 'Bronce.Reporte_Clima':
+        columnas_base.update({
+            'Hora_Raw': _serie_o_nulos(df, 'Hora_Raw'),
+            'Precipitacion_Raw': _serie_o_nulos(df, 'Precipitacion_Raw'),
+        })
+    elif tabla_destino == 'Bronce.Variables_Meteorologicas':
+        columnas_base.update({
+            'VPD_Raw': _serie_o_nulos(df, 'VPD_Raw'),
+            'Radiacion_Raw': _serie_o_nulos(df, 'Radiacion_Raw'),
+        })
+
+    df_salida = pd.DataFrame(columnas_base, index=df.index)
+
+    columnas_usadas = set(df_salida.columns)
+    columnas_extra = [col for col in df.columns if col not in columnas_usadas]
+    if columnas_extra:
+        df_salida['Valores_Raw'] = _serializar_valores_extra(df, columnas_extra)
+
+    return df_salida
+
+
 def _detectar_header_idx(ruta_archivo: Path, tabla_destino: str, engine) -> int:
     """
     Detecta si encabezado real esta en fila 0 o fila 1 comparando
@@ -437,6 +596,23 @@ def _serializar_valores_extra(df: pd.DataFrame, columnas_extra: list[str]) -> pd
     return df.apply(_serializar_fila, axis=1)
 
 
+def _formatear_columnas_extra(columnas_extra: list[str], max_columnas: int = 12) -> str:
+    """
+    Devuelve una version legible de las columnas extra detectadas.
+    Limita la salida para no romper el log de consola.
+    """
+    if not columnas_extra:
+        return ''
+
+    columnas_ordenadas = sorted(str(col) for col in columnas_extra)
+    if len(columnas_ordenadas) <= max_columnas:
+        return ', '.join(columnas_ordenadas)
+
+    visibles = ', '.join(columnas_ordenadas[:max_columnas])
+    restantes = len(columnas_ordenadas) - max_columnas
+    return f'{visibles}, ... (+{restantes} mas)'
+
+
 def _alinear_dataframe_a_tabla(
     df: pd.DataFrame,
     tabla_destino: str,
@@ -452,11 +628,26 @@ def _alinear_dataframe_a_tabla(
     if not columnas_tabla:
         return df, []
 
-    # Compatibilidad entre layouts de reportes y DDL legado.
     if 'Evaluador_Raw' in columnas_tabla and 'Evaluador_Raw' not in df.columns and 'Nombres_Raw' in df.columns:
         df['Evaluador_Raw'] = df['Nombres_Raw']
     if 'Variedad_Raw' in columnas_tabla and 'Variedad_Raw' not in df.columns and 'Descripcion_Raw' in df.columns:
         df['Variedad_Raw'] = df['Descripcion_Raw']
+    if 'Tipo_Evaluacion_Raw' in columnas_tabla and 'Tipo_Evaluacion_Raw' not in df.columns and 'Evaluacion_Raw' in df.columns:
+        df['Tipo_Evaluacion_Raw'] = df['Evaluacion_Raw']
+    if 'TallosPlanta_Raw' in columnas_tabla and 'TallosPlanta_Raw' not in df.columns and 'Tallos_Planta_Raw' in df.columns:
+        df['TallosPlanta_Raw'] = df['Tallos_Planta_Raw']
+    if 'LongitudTallo_Raw' in columnas_tabla and 'LongitudTallo_Raw' not in df.columns and 'Longitud_de_Tallo_Raw' in df.columns:
+        df['LongitudTallo_Raw'] = df['Longitud_de_Tallo_Raw']
+    if 'DiametroTallo_Raw' in columnas_tabla and 'DiametroTallo_Raw' not in df.columns and 'Diametro_de_Tallo_Raw' in df.columns:
+        df['DiametroTallo_Raw'] = df['Diametro_de_Tallo_Raw']
+    if 'RamillaPlanta_Raw' in columnas_tabla and 'RamillaPlanta_Raw' not in df.columns and 'Ramilla_Planta_Raw' in df.columns:
+        df['RamillaPlanta_Raw'] = df['Ramilla_Planta_Raw']
+    if 'ToconesPlanta_Raw' in columnas_tabla and 'ToconesPlanta_Raw' not in df.columns and 'Tocones_Planta_Raw' in df.columns:
+        df['ToconesPlanta_Raw'] = df['Tocones_Planta_Raw']
+    if 'CortesDefectuosos_Raw' in columnas_tabla and 'CortesDefectuosos_Raw' not in df.columns and 'N_Cortes_Defect_Planta_Raw' in df.columns:
+        df['CortesDefectuosos_Raw'] = df['N_Cortes_Defect_Planta_Raw']
+    if 'AlturaPoda_Raw' in columnas_tabla and 'AlturaPoda_Raw' not in df.columns and 'Altura_de_Planta_Raw' in df.columns:
+        df['AlturaPoda_Raw'] = df['Altura_de_Planta_Raw']
     if 'Semanas_Poda_Raw' in columnas_tabla and 'Semanas_Poda_Raw' not in df.columns and 'N_de_cama_Raw' in df.columns:
         df['Semanas_Poda_Raw'] = df['N_de_cama_Raw']
 
@@ -611,17 +802,21 @@ def cargar_archivo(nombre_carpeta: str,
     }
 
     try:
-        # Leer Excel — todo como string desde el inicio
-        header_idx = _detectar_header_idx(ruta_archivo, tabla_destino, engine)
-        df = pd.read_excel(str(ruta_archivo), header=header_idx, dtype=str, engine='openpyxl')
+        if nombre_carpeta in {'reporte_clima', 'variables_meteorologicas'}:
+            df = _proyectar_dataframe_clima_bronce(ruta_archivo, tabla_destino)
+        else:
+            header_idx = _detectar_header_idx(ruta_archivo, tabla_destino, engine)
+            df = pd.read_excel(str(ruta_archivo), header=header_idx, dtype=str, engine='openpyxl')
+            if df.empty:
+                resultado['mensaje'] = 'Archivo vacio - sin filas para cargar'
+                resultado['estado'] = 'VACIO'
+                return resultado
+            df = normalizar_columnas(df)
 
         if df.empty:
-            resultado['mensaje'] = 'Archivo vacío — sin filas para cargar'
+            resultado['mensaje'] = 'Archivo vacio - sin filas para cargar'
             resultado['estado'] = 'VACIO'
             return resultado
-
-        # Normalizar columnas → agregar _Raw
-        df = normalizar_columnas(df)
 
         validacion_layout = _validar_layout_critico(
             nombre_carpeta,
@@ -650,13 +845,8 @@ def cargar_archivo(nombre_carpeta: str,
             )
             return resultado
 
-        # Castear todo a texto (NVARCHAR)
         df = castear_todo_a_texto(df)
-
-        # Agregar columnas de sistema
         df = agregar_columnas_sistema(df, ruta_archivo.name)
-
-        # Alinear columnas a la tabla SQL destino (Bronce tolerante a layout).
         df, columnas_descartadas = _alinear_dataframe_a_tabla(df, tabla_destino, engine)
         if df.shape[1] == 0:
             resultado['estado'] = 'ERROR'
@@ -666,28 +856,30 @@ def cargar_archivo(nombre_carpeta: str,
             )
             return resultado
 
-        # Insertar en Bronce
         filas_insertadas = insertar_en_bronce(df, tabla_destino, engine)
-
-        # Archivar archivo procesado
         archivar_archivo(ruta_archivo, nombre_carpeta)
 
-        resultado['filas']   = filas_insertadas
-        resultado['estado']  = 'OK'
+        resultado['filas'] = filas_insertadas
+        resultado['estado'] = 'OK'
         resultado['mensaje'] = f'{filas_insertadas} filas insertadas en {tabla_destino}'
         if columnas_descartadas:
-            resultado['mensaje'] += f' | columnas extras: {len(columnas_descartadas)}'
+            detalle_columnas = _formatear_columnas_extra(columnas_descartadas)
+            resultado['columnas_extras'] = sorted(str(col) for col in columnas_descartadas)
+            resultado['mensaje'] += (
+                f' | columnas extras: {len(columnas_descartadas)}'
+                f' [{detalle_columnas}]'
+            )
 
     except Exception as error:
         resultado['mensaje'] = str(error)
-        resultado['estado']  = 'ERROR'
+        resultado['estado'] = 'ERROR'
 
     return resultado
 
 
 def ejecutar_carga_bronce() -> list[dict]:
     """
-    Punto de entrada del módulo Bronce.
+    Punto de entrada del modulo Bronce.
     Busca todos los archivos pendientes y los carga a sus tablas destino.
     Retorna lista de resultados por archivo.
     """

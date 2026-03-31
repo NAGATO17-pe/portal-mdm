@@ -10,6 +10,7 @@ from utils.componentes import (
     health_status_panel,
     mostrar_kpis,
     seccion_tabla_sql_paginada,
+    mostrar_dialogo_confirmacion,
 )
 from utils.db import ejecutar_query
 from utils.formato import header_pagina
@@ -83,7 +84,13 @@ def render():
             st.markdown("<br>", unsafe_allow_html=True)
             campos_ok = all(v and v.strip() for v in [tabla, columna])
             if st.button("✅ Agregar", key="btn_reg_agregar", type="primary", disabled=not campos_ok):
-                st.toast(f"Regla para '{tabla}.{columna}' agregada correctamente.", icon="✅")
+                def do_agregar_regla(t, c):
+                    st.toast(f"Regla para '{t}.{c}' agregada correctamente.", icon="✅")
+                mostrar_dialogo_confirmacion(
+                    "Confirmar Regla",
+                    f"¿Crear nueva regla de validación para la columna '{columna}'?",
+                    do_agregar_regla, tabla, columna
+                )
         if not campos_ok:
             st.caption("Completa Tabla y Columna para habilitar.")
 

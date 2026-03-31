@@ -147,16 +147,15 @@ def refrescar_mart_fenologia(conexion) -> int:
 def refrescar_mart_clima(conexion) -> int:
     conexion.execute(text("""
         INSERT INTO Gold.Mart_Clima (
-            ID_Tiempo, ID_Geografia,
-            Fundo, Semana_ISO,
+            ID_Tiempo, Sector_Climatico,
+            Semana_ISO,
             Temp_Max_Promedio, Temp_Min_Promedio,
             VPD_Promedio, Humedad_Promedio,
             Precipitacion_Total
         )
         SELECT
             cl.ID_Tiempo,
-            cl.ID_Geografia,
-            g.Fundo,
+            cl.Sector_Climatico,
             t.Semana_ISO,
             AVG(cl.Temperatura_Max_C),
             AVG(cl.Temperatura_Min_C),
@@ -164,9 +163,8 @@ def refrescar_mart_clima(conexion) -> int:
             AVG(cl.Humedad_Relativa_Pct),
             SUM(cl.Precipitacion_mm)
         FROM Silver.Fact_Telemetria_Clima cl
-        JOIN Silver.Dim_Tiempo    t ON t.ID_Tiempo    = cl.ID_Tiempo
-        JOIN Silver.Dim_Geografia g ON g.ID_Geografia = cl.ID_Geografia AND g.Es_Vigente = 1
-        GROUP BY cl.ID_Tiempo, cl.ID_Geografia, g.Fundo, t.Semana_ISO
+        JOIN Silver.Dim_Tiempo t ON t.ID_Tiempo = cl.ID_Tiempo
+        GROUP BY cl.ID_Tiempo, cl.Sector_Climatico, t.Semana_ISO
     """))
     return _contar(conexion, 'Gold.Mart_Clima')
 

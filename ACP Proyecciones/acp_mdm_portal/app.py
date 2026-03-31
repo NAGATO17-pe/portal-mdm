@@ -96,6 +96,7 @@ with st.sidebar:
             options=[
                 "📋  Reglas de Validación",
                 "⚙️  Parámetros Pipeline",
+                "🛠️  Pruebas BD",
             ],
             label_visibility="collapsed",
             key="nav_config",
@@ -159,6 +160,7 @@ _RUTAS = {
     "Personal":            "paginas.catalogos.personal",
     "Reglas de Validación": "paginas.configuracion.reglas_validacion",
     "Parámetros Pipeline": "paginas.configuracion.parametros_pipeline",
+    "Pruebas BD":          "paginas.configuracion.pruebas_bd",
 }
 
 modulo = _RUTAS.get(_nombre, "paginas.inicio")

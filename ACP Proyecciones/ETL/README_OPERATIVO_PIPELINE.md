@@ -1,4 +1,4 @@
-# README Operativo - ETL ACP (estado estable)
+﻿# README Operativo - ETL ACP (estado estable)
 
 ## 1) Objetivo
 Operacion oficial del ETL con:
@@ -6,15 +6,22 @@ Operacion oficial del ETL con:
 - Gobernanza de cama por catalogo y bridge.
 - Normalizacion de `Modulo_Raw` via reglas MDM.
 - Carga de `Maduracion` como base del analisis Six Week.
+- Normalizacion global de componentes geograficos antes del resolvedor.
+- Homologacion tipografica segura de variedades antes de MDM.
 
 ## 2) Archivos operativos (raiz)
 - `pipeline.py`
 - `lookup.py`
+- `texto.py`
+- `homologador.py`
+- `fact_maduracion.py`
 - `fact_evaluacion_pesos.py`
 - `fact_evaluacion_vegetativa.py`
 - `fase10_diagnostico_calidad_camas.sql`
 - `fase11_sp_geografia_cama.sql`
 - `fase12_regla_modulo_raw_y_sp.sql`
+- `fase17_reglas_modulo_raw_11_13_14.sql`
+- `fase18_fact_maduracion_y_cinta.sql`
 - `fase11_limpieza_controlada_legacy.sql`
 
 Archivos historicos/descartados:
@@ -32,8 +39,9 @@ Archivos historicos/descartados:
    - `SP_Cama aptas > 0` y `Bridge camas despues > 0`
 6. Si estado <> `OK_OPERATIVO`, o si hay aptas y el bridge queda en `0`, detener publicacion de Gold.
 7. Si `Fact_Maduracion` rechaza filas, revisar `MDM.Cuarentena` con foco en:
+   - `ID_Organo invalido o ausente en maduracion`
+   - `Estado fenologico no reconocido en maduracion`
    - `Cinta no reconocida o ausente en maduracion`
-   - `No se encontraron mediciones de maduracion con semana 1..6 en Valores_Raw`
 
 ## 4) Reglas activas de cama y modulo
 - Catalogo permitido de cama: `1..100`.
@@ -42,7 +50,21 @@ Archivos historicos/descartados:
 - `Modulo_Raw`:
   - `9.1 -> Modulo=9, SubModulo=1, Tipo_Conduccion='SUELO'`
   - `9.2 -> Modulo=9, SubModulo=2, Tipo_Conduccion='MACETA'`
+  - `11.1 -> Modulo=11, SubModulo=1, Tipo_Conduccion='SUELO'`
+  - `11.2 -> Modulo=11, SubModulo=2, Tipo_Conduccion='MACETA'`
+  - `13.1 -> Modulo=13, SubModulo=1, Tipo_Conduccion='SUELO'`
+  - `13.2 -> Modulo=13, SubModulo=2, Tipo_Conduccion='MACETA'`
+  - `14.1 -> Modulo=14, SubModulo=1, Tipo_Conduccion='SUELO'`
+  - `14.2 -> Modulo=14, SubModulo=2, Tipo_Conduccion='MACETA'`
   - `VI -> CASO_ESPECIAL_MODULO (test block)`
+- Saneamiento global de geografia:
+  - `MODULO 2 -> 2`
+  - `TURNO 04 -> 4`
+  - `NROVALVULA 15 -> 15`
+  - `Valvula=57 -> 57`
+- `Fact_Conteo_Fenologico` ya no usa `ID_Cinta`.
+- `Fact_Maduracion` si usa `ID_Cinta`, `ID_Organo` y `ID_Estado_Fenologico`.
+- `Fact_Telemetria_Clima` usa `Sector_Climatico` directo; no depende de `Dim_Geografia`.
 
 ## 5) Comandos utiles
 Resolver un caso puntual:
@@ -81,10 +103,89 @@ EXEC Silver.sp_Validar_Calidad_Camas
 - `Geografias_Saturadas = 0`
 - Si `SP_Cama aptas > 0`, entonces `Bridge_Geografia_Cama > 0`
 - Reduccion sostenida de cuarentena geografia/cama.
+- Reduccion de cuarentena tipografica de variedades sin mezclar geneticas ambiguas.
+- `Fact_Maduracion > 0` cuando exista lote real en `Bronce.Maduracion`.
 
 ## 7) Incidentes operativos que ya no se deben mezclar
 - `LAYOUT_INCOMPATIBLE`: archivo mal ubicado o con estructura no soportada. Se mueve a `data/rechazados/<carpeta>/`.
 - `rechazados` de un fact: problema funcional de mapeo/DQ del loader correspondiente.
 - `backlog historico CARGADO`: lote viejo pendiente que puede distorsionar el resumen del dia si no se acota al lote actual.
 - `bridge en 0`: inconsistencia del paso 6; no publicar Gold aunque la calidad de camas salga `OK_OPERATIVO`.
-- `maduracion sin parser`: ausencia de `Cinta` o de semanas `1..6` en `Valores_Raw`; no es fallo de `Conteo_Fruta`.
+- `maduracion sin match`: falta `ID_Organo`, `COLOR_Raw`, `DESCRIPCIONESTADOCICLO_Raw` o geografia resoluble; no es fallo de `Conteo_Fruta`.
+- `variedad tipografica`: diferencia de guiones/apostrofes/espacios/codigos; primero normalizacion segura, luego MDM.
+
+## 8) Ajuste confirmado en Poda
+El layout real de `Evaluacion_Calidad_Poda` puede traer metricas validas bajo nombres distintos a las columnas fisicas de Bronce.
+
+Mapeos consolidados en el cargador:
+- `Evaluacion_Raw -> Tipo_Evaluacion_Raw`
+- `Tallos_Planta_Raw -> TallosPlanta_Raw`
+- `Longitud_de_Tallo_Raw -> LongitudTallo_Raw`
+- `Diametro_de_Tallo_Raw -> DiametroTallo_Raw`
+- `Ramilla_Planta_Raw -> RamillaPlanta_Raw`
+- `Tocones_Planta_Raw -> ToconesPlanta_Raw`
+- `N_Cortes_Defect_Planta_Raw -> CortesDefectuosos_Raw`
+- `Altura_de_Planta_Raw -> AlturaPoda_Raw`
+
+Criterio operativo:
+- Estas metricas ya no deben quedar en `Valores_Raw` cuando el archivo corresponde al layout de poda hoy soportado.
+- `Valores_Raw` debe quedar solo para payload extra real como `AUXILIAR_Raw`, `Consumidor_Raw` o campos no estructurados del Excel.
+
+
+## 9) Ajuste transitorio confirmado en Clima
+El dominio de clima queda desacoplado de la geografia agronomica operativa.
+
+Criterio consolidado:
+- `Fact_Telemetria_Clima` usa `Sector_Climatico` directo.
+- No intenta resolver `ID_Geografia` desde `Sector_Raw`.
+- `Gold.Mart_Clima` agrega por `ID_Tiempo + Sector_Climatico`.
+
+Implicancia operativa:
+- Si el Excel de clima trae identificadores como `F07`, estos se cargan como sector climatico operativo.
+- La futura `Dim_Estacion_Climatica` queda postergada; no forma parte de este ajuste minimo.
+
+## Addendum 2026-03-30 - Clima, Tareo y Regla de Campana
+
+### Clima
+- Se habilito carga especial en Bronce para clima usando la hoja `BD` del Excel analitico.
+- La lectura valida usa `header=2` (fila real 3 del archivo) y mapea explicitamente:
+  - `Fecha -> Fecha_Raw`
+  - `Hora -> Hora_Raw`
+  - `T Max -> TempMax_Raw`
+  - `T Min -> TempMin_Raw`
+  - `HUMEDAD RELATIVA -> Humedad_Raw`
+  - `RADIACION SOLAR -> Radiacion_Raw`
+  - `DVP Real -> VPD_Raw`
+- `Sector_Raw` se deriva desde el nombre del archivo, por ejemplo `F07`.
+- `Fact_Telemetria_Clima` deja de depender de `Dim_Geografia` y usa `Sector_Climatico` directo.
+- `Gold.Mart_Clima` agrega por `ID_Tiempo + Sector_Climatico`.
+- Script asociado: `fase19_ajuste_fact_clima_sector_climatico.sql`.
+
+### Evidencia operativa validada hoy
+- Corrida clima validada:
+  - `Bronce filas`: `42947`
+  - `Fact_Telemetria_Clima`: `15569` insertados
+  - `Fact_Telemetria_Clima`: `27378` rechazados
+  - `Gold.Mart_Clima`: `373` filas
+- El residual de clima ya no es estructural; se concentra solo en `Fecha invalida o fuera de campana`.
+- Las filas rechazadas corresponden a historico meteorologico de `2022`, no a error de parseo del Excel.
+
+### Hallazgo tecnico critico
+- La validacion de campana en `utils/fechas.py` sigue globalizada con rango fijo `2025-03-01` a `2026-06-30`.
+- Esa regla hoy afecta a todas las facts que llaman `procesar_fecha()`.
+- Conclusion aprobada:
+  - la validacion de campana no debe seguir siendo global;
+  - debe separarse por fact o por dominio;
+  - clima debe poder conservar historico aunque este fuera de la campana vigente.
+
+### Tareo
+- Se corrigieron aliases reales del layout de `Consolidado_Tareos`.
+- Se separaron filas basura del Excel (`Personas`, `Horas`, `TOTAL`, etc.).
+- El rechazo restante ya no es bug del parser: la fuente actual no trae `Fundo/Modulo` resolubles.
+- `Fact_Tareo` queda diagnosticado y pendiente hasta contar con fuente suficiente o redefinir el modelo de geografia.
+
+### Suite de pruebas
+- Se dejo base automatica con `pytest` en `tests/` para estructura, integridad y calidad.
+- Los tests ya contemplan `Sector_Climatico` en clima.
+- La suite sirve como smoke tecnico del estado estable actual.
+

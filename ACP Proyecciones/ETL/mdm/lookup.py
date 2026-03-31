@@ -17,6 +17,12 @@ from utils.texto import normalizar_componente_geografico
 _cache: dict[str, pd.DataFrame] = {}
 _cache_mapas: dict[str, dict] = {}
 
+_ALIASES_CINTA = {
+    'amarillo': 'amarilla',
+    'blanco': 'blanca',
+    'rojo': 'roja',
+}
+
 
 def _cargar_dim(engine: Engine, tabla: str,
                 col_id: str, col_clave: str) -> pd.DataFrame:
@@ -198,7 +204,14 @@ def obtener_id_cinta(color: str | None,
     if clave is None:
         return None
     mapa = _obtener_mapa_dim(engine, 'Silver.Dim_Cinta', 'ID_Cinta', 'Color_Cinta')
-    return mapa.get(clave)
+    if clave in mapa:
+        return mapa[clave]
+
+    clave_alias = _ALIASES_CINTA.get(clave)
+    if clave_alias is not None:
+        return mapa.get(clave_alias)
+
+    return None
 
 
 def _geo_token(valor) -> str | None:

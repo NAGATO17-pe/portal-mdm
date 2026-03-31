@@ -10,6 +10,7 @@ from utils.componentes import (
     health_status_panel,
     mostrar_kpis,
     seccion_tabla_sql_paginada,
+    mostrar_dialogo_confirmacion,
 )
 from utils.db import ejecutar_query
 from utils.formato import header_pagina
@@ -75,7 +76,13 @@ def render():
             btn_disabled = not (nombre and nombre.strip())
             if st.button("✅ Agregar", key="btn_var_agregar", type="primary",
                       disabled=btn_disabled):
-                st.toast(f"Variedad '{nombre}' agregada correctamente.", icon="✅")
+                def do_agregar(nom):
+                    st.toast(f"Variedad '{nom}' agregada correctamente.", icon="✅")
+                mostrar_dialogo_confirmacion(
+                    "Confirmación de Catálogo",
+                    f"¿Estás seguro de que deseas agregar la variedad '{nombre}'?",
+                    do_agregar, nombre
+                )
         if nombre and not nombre.strip():
             st.warning("El nombre canónico es obligatorio.", icon="⚠️")
 

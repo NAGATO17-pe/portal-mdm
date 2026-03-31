@@ -1,4 +1,4 @@
-"""
+﻿"""
 fact_maduracion.py
 ==================
 Carga Silver.Fact_Maduracion desde Bronce.Maduracion.
@@ -12,13 +12,18 @@ Layout real observado:
 from __future__ import annotations
 
 import re
+import unicodedata
 
 import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from dq.cuarentena import enviar_a_cuarentena
-from mdm.homologador import homologar_columna
+from mdm.homologador import (
+    cargar_catalogo_variedades,
+    cargar_diccionario,
+    homologar_valor,
+)
 from mdm.lookup import (
     obtener_id_cinta,
     obtener_id_estado_fenologico,
@@ -39,7 +44,7 @@ MAPA_ESTADO_CICLO = {
     'BOTON': 'Boton Floral',
     'FLOR': 'Flor',
     'PEQUENA': 'Pequena',
-    'PEQUEÑA': 'Pequena',
+    'PEQUENA FRUTA': 'Pequena',
     'VERDE': 'Verde',
     'INICIO FASE 1': 'Inicio F1',
     'INICIO F1': 'Inicio F1',
@@ -49,7 +54,22 @@ MAPA_ESTADO_CICLO = {
     'FASE 2': 'Inicio F2',
     'CREMA': 'Crema',
     'MADURA': 'Madura',
+    'MADURO': 'Madura',
+    'PINTON': 'Crema',
+    'PINTONA': 'Crema',
     'COSECHABLE': 'Cosechable',
+}
+
+MAPA_ESTADO_POR_ID = {
+    0: 'Boton Floral',
+    1: 'Flor',
+    2: 'Pequena',
+    3: 'Verde',
+    4: 'Inicio F1',
+    5: 'Inicio F2',
+    6: 'Crema',
+    7: 'Madura',
+    8: 'Cosechable',
 }
 
 
@@ -121,29 +141,29 @@ def _extraer_texto(valor) -> str | None:
     return texto if texto else None
 
 
+def _normalizar_estado_crudo(valor: str | None) -> str | None:
+    texto = _extraer_texto(valor)
+    if not texto:
+        return None
+    texto = unicodedata.normalize('NFKD', texto)
+    texto = ''.join(ch for ch in texto if not unicodedata.combining(ch))
+    texto = re.sub(r'[^A-Z0-9]+', ' ', texto.upper()).strip()
+    texto = re.sub(r'\s+', ' ', texto)
+    return texto or None
+
+
 def _resolver_estado_canonico(payload: dict[str, str]) -> str | None:
     descripcion = _extraer_texto(
         _obtener_valor(payload, 'DESCRIPCIONESTADOCICLO_Raw', 'DESCRIPCION_ESTADO_CICLO_Raw')
     )
-    if descripcion:
-        return MAPA_ESTADO_CICLO.get(descripcion.upper(), descripcion.title())
+    descripcion_normalizada = _normalizar_estado_crudo(descripcion)
+    if descripcion_normalizada and descripcion_normalizada in MAPA_ESTADO_CICLO:
+        return MAPA_ESTADO_CICLO[descripcion_normalizada]
 
     id_estado = _extraer_entero(_obtener_valor(payload, 'IDESTADOCICLO_Raw', 'ID_ESTADO_CICLO_Raw'))
     if id_estado is None:
         return None
-
-    mapa_por_id = {
-        0: 'Boton Floral',
-        1: 'Flor',
-        2: 'Pequena',
-        3: 'Verde',
-        4: 'Inicio F1',
-        5: 'Inicio F2',
-        6: 'Crema',
-        7: 'Madura',
-        8: 'Cosechable',
-    }
-    return mapa_por_id.get(id_estado)
+    return MAPA_ESTADO_POR_ID.get(id_estado)
 
 
 def _cargar_claves_existentes(engine: Engine) -> set[tuple[int, int, int, int, int]]:
@@ -176,17 +196,10 @@ def cargar_fact_maduracion(engine: Engine) -> dict:
     if df.empty:
         return resumen
 
-    df, cuarentenas_var = homologar_columna(
-        df,
-        'Variedad_Raw',
-        'Variedad_Canonica',
-        TABLA_ORIGEN,
-        engine,
-        columna_id_origen='ID_Maduracion',
-    )
-    resumen['cuarentena'].extend(cuarentenas_var)
-
     claves_existentes = _cargar_claves_existentes(engine)
+    diccionario_variedades = cargar_diccionario(engine, TABLA_ORIGEN)
+    catalogo_variedades = cargar_catalogo_variedades(engine)
+    cache_variedades: dict[str, tuple[str | None, str]] = {}
 
     with engine.begin() as conexion:
         for _, fila in df.iterrows():
@@ -261,7 +274,21 @@ def cargar_fact_maduracion(engine: Engine) -> dict:
                 })
                 continue
 
-            id_variedad = obtener_id_variedad(fila.get('Variedad_Canonica'), engine)
+            variedad_token = '' if variedad_raw is None else str(variedad_raw).strip()
+            if variedad_token in cache_variedades:
+                variedad_canonica, _estado_variedad = cache_variedades[variedad_token]
+            else:
+                variedad_canonica, estado_variedad = homologar_valor(
+                    variedad_raw,
+                    TABLA_ORIGEN,
+                    'VARIEDAD_Raw',
+                    diccionario_variedades,
+                    catalogo_variedades,
+                    engine,
+                )
+                cache_variedades[variedad_token] = (variedad_canonica, estado_variedad)
+
+            id_variedad = obtener_id_variedad(variedad_canonica, engine)
             if not id_variedad:
                 resumen['rechazados'] += 1
                 resumen['cuarentena'].append({

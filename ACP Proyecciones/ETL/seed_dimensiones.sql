@@ -11,11 +11,11 @@
 USE ACP_Geographic_Phenology;
 GO
 
--- ── 1. Dim_Tiempo (2025-06-01 -> 2026-06-30) ─────────────────
+-- ── 1. Dim_Tiempo (2020-01-01 -> 2026-06-30) ─────────────────
 PRINT 'Cargando Dim_Tiempo...';
 
 WITH fechas AS (
-    SELECT CAST('2025-03-01' AS DATE) AS fecha
+    SELECT CAST('2020-01-01' AS DATE) AS fecha
     UNION ALL
     SELECT DATEADD(DAY, 1, fecha)
     FROM fechas

@@ -1,7 +1,7 @@
 ﻿# CHECKLIST OPERATIVO 5 MINUTOS — DWH Geographic Phenology
 
-Fecha de referencia: 2026-03-25
-Alcance: Operación diaria para validar salud de cargas críticas (`Fact_Evaluacion_Pesos`, `Fact_Evaluacion_Vegetativa`) antes y después de corrida.
+Fecha de referencia: 2026-03-30
+Alcance: Operación diaria para validar salud de cargas críticas (`Fact_Evaluacion_Pesos`, `Fact_Evaluacion_Vegetativa`, `Fact_Maduracion`) antes y después de corrida.
 
 ---
 
@@ -11,6 +11,7 @@ Este checklist sirve para responder en menos de 5 minutos:
 - ¿La geografía VI sigue resolviendo como Test Block?
 - ¿La cuarentena está bajo control o hay desvío?
 - ¿La trazabilidad (`ID_Registro_Origen`) sigue íntegra?
+- ¿Maduracion está interpretando bien `ID_Organo`, `Estado` y `Color/Cinta`?
 
 Analogía rápida: como revisar tablero, aceite y presión de llantas antes de salir a carretera.
 
@@ -79,7 +80,7 @@ Interpretación recomendada:
 2. No confiar en un copy/paste de consola si contradice `Auditoria.Log_Carga`.
 
 ### 5.2 Carga de facts hoy
-Esperado: ambos > 0.
+Esperado: Pesos/Vegetativa > 0 según lote; Maduracion > 0 cuando exista carga en Bronce.
 
 ```sql
 DECLARE @hoy DATE = CAST(SYSDATETIME() AS DATE);
@@ -94,6 +95,12 @@ SELECT 'Silver.Fact_Evaluacion_Vegetativa',
        COUNT(*),
        MAX(Fecha_Sistema)
 FROM Silver.Fact_Evaluacion_Vegetativa
+WHERE CAST(Fecha_Sistema AS DATE) = @hoy
+UNION ALL
+SELECT 'Silver.Fact_Maduracion',
+       COUNT(*),
+       MAX(Fecha_Sistema)
+FROM Silver.Fact_Maduracion
 WHERE CAST(Fecha_Sistema AS DATE) = @hoy;
 ```
 
@@ -109,7 +116,7 @@ Objetivo: identificar foco real, no “ruido”.
 SELECT Tabla_Origen, Motivo, COUNT(*) AS Filas_Pendientes
 FROM MDM.Cuarentena
 WHERE Estado='PENDIENTE'
-  AND Tabla_Origen IN ('Bronce.Evaluacion_Pesos','Bronce.Evaluacion_Vegetativa')
+  AND Tabla_Origen IN ('Bronce.Evaluacion_Pesos','Bronce.Evaluacion_Vegetativa','Bronce.Maduracion')
 GROUP BY Tabla_Origen, Motivo
 ORDER BY Tabla_Origen, Filas_Pendientes DESC;
 ```
@@ -118,6 +125,10 @@ Interpretación recomendada:
 1. `Geografia especial...` en Pesos debe mantenerse muy bajo (actual: 8).
 2. `Geografia no encontrada...` en Vegetativa es el foco principal (actual: 497).
 3. `9.` sin submódulo en cuarentena: esperado por diseño.
+4. En Maduracion, revisar primero:
+   - `ID_Organo invalido o ausente en maduracion`
+   - `Estado fenologico no reconocido en maduracion`
+   - `Cinta no reconocida o ausente en maduracion`
 
 ### 5.4 Trazabilidad de nuevas cuarentenas
 Esperado: `Con_ID_Registro_Origen` alto, idealmente 100%.
@@ -150,6 +161,7 @@ Marcar “cumple” solo si:
 4. `sp_Validar_Calidad_Camas = OK_OPERATIVO`
 5. Si `SP_Cama aptas > 0`, entonces `Bridge_Geografia_Cama > 0`
 6. `Pct_Con_ID` de nuevas cuarentenas >= 98%
+7. Si hubo lote de Maduracion, `Fact_Maduracion > 0`
 
 ---
 
@@ -176,6 +188,20 @@ Marcar “cumple” solo si:
 1. Tomar `Auditoria.Log_Carga` como fuente de verdad.
 2. Revisar `Servidor SQL` y `Base SQL` del resumen final.
 
+### Caso F: geografia llega con prefijos operativos
+1. Confirmar que el ETL sanea prefijos:
+   - `MODULO 2 -> 2`
+   - `TURNO 04 -> 4`
+   - `NROVALVULA 15 -> 15`
+2. Si el residual persiste, revisar catalogo geografico y no el parser primero.
+
+### Caso G: variedad cambia por tipografia
+1. Verificar si es diferencia segura de formato:
+   - guiones
+   - apostrofes
+   - espacios entre letras y numeros
+2. Si sigue sin match tras normalizacion segura, enviarlo a MDM y no forzar merge.
+
 ---
 
 ## 8) Registro operativo sugerido (copiar/pegar)
@@ -186,12 +212,14 @@ Operador:
 Pipeline OK: SI/NO
 Pesos Hoy:
 Vegetativa Hoy:
+Maduracion Hoy:
 VI Smoke (0/1/2): OK/NO
 Estado Calidad Camas:
 Bridge camas:
 Top 3 Motivos Cuarentena:
 Pct Con_ID (Pesos):
 Pct Con_ID (Vegetativa):
+Pct Con_ID (Maduracion):
 Acción tomada:
 ```
 
@@ -204,3 +232,33 @@ Acción tomada:
 - `ID_Registro_Origen` = número de guía del paquete (sin guía, no hay trazabilidad).
 
 Sin guía, se pierde tiempo buscando. Con guía, el ajuste es directo.
+
+## Addendum 2026-03-30 - Clima, Tareo y Regla de Campana
+
+### Clima
+Agregar al post-check cuando exista lote de clima:
+
+```sql
+DECLARE @hoy DATE = CAST(SYSDATETIME() AS DATE);
+
+SELECT
+    Campo_Origen,
+    Motivo,
+    COUNT(*) AS Filas
+FROM MDM.Cuarentena
+WHERE CAST(Fecha_Ingreso AS DATE) = @hoy
+  AND Tabla_Origen = 'Bronce.Clima'
+GROUP BY Campo_Origen, Motivo
+ORDER BY Filas DESC, Campo_Origen;
+```
+
+Interpretacion:
+1. Si el residual de clima es solo `Fecha invalida o fuera de campana`, revisar primero si el lote contiene historico de campanas anteriores.
+2. No clasificar ese caso automaticamente como bug de Bronce o Silver.
+3. `Fact_Telemetria_Clima` hoy usa `Sector_Climatico`, no `ID_Geografia`.
+
+### Tareo
+Si hay lote de `Consolidado_Tareos` y todo cae a cuarentena:
+1. Revisar si el archivo trae `Fundo/Modulo`.
+2. Si no los trae, no forzar carga a `Fact_Tareo`; documentar como fuente insuficiente para el modelo actual.
+

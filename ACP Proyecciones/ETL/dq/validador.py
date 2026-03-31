@@ -18,7 +18,7 @@ Reglas que aplica:
 
 import pandas as pd
 from utils.dni    import procesar_dni
-from utils.fechas import procesar_fecha
+from utils.fechas import procesar_fecha, FECHA_CAMPANA_INICIO, FECHA_CAMPANA_FIN
 from utils.texto  import (
     normalizar_variedad,
     normalizar_nombre_persona,
@@ -92,7 +92,7 @@ def validar_peso_baya(valor: str | None) -> tuple[float | None, dict | None]:
         return None, _error('Peso_Baya_g', valor,
                             'Peso no numérico', 'CRITICO')
 
-    if not (0.0<= peso <= 8.0):
+    if not (0.5 <= peso <= 8.0):
         return None, _error(
             'Peso_Baya_g', valor,
             f'Peso fuera de rango biológico 0.5–8.0g (recibido: {peso})',

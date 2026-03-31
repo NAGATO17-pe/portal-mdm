@@ -64,6 +64,57 @@ def normalizar_variedad(valor: str | None) -> str | None:
     return titulo(valor)
 
 
+def normalizar_variedad_para_match(valor: str | None) -> str | None:
+    """
+    Normalizacion tipografica segura para matching de variedades.
+    No cambia la semantica; solo unifica formato.
+
+    Ejemplos:
+    - 'FCM15 – 005' -> 'FCM15-005'
+    - 'FL 19-006' -> 'FL19-006'
+    - '  mega crisp  ' -> 'MEGA CRISP'
+    """
+    if valor is None:
+        return None
+
+    texto = normalizar_espacio(str(valor))
+    if texto is None or texto in ('', 'None', 'nan'):
+        return None
+
+    texto = quitar_tildes(texto)
+    texto = (
+        texto.replace('–', '-')
+        .replace('—', '-')
+        .replace('−', '-')
+        .replace('’', "'")
+        .replace('`', "'")
+    )
+    texto = re.sub(r'\s*-\s*', '-', texto)
+    texto = re.sub(r'\s*\(\s*', '(', texto)
+    texto = re.sub(r'\s*\)\s*', ')', texto)
+    texto = re.sub(r'([A-Za-z])\s+(\d)', r'\1\2', texto)
+    texto = re.sub(r'(\d)\s+([A-Za-z])', r'\1\2', texto)
+    texto = re.sub(r'\s+', ' ', texto).strip()
+    return texto.upper()
+
+
+def compactar_variedad_para_match(valor: str | None) -> str | None:
+    """
+    Clave compacta para equivalencias tipograficas de muy bajo riesgo.
+    Elimina separadores manteniendo solo letras y numeros.
+
+    Ejemplos:
+    - 'MEGA CRISP' -> 'MEGACRISP'
+    - 'FCM15-005' -> 'FCM15005'
+    - 'O''NEAL' -> 'ONEAL'
+    """
+    texto = normalizar_variedad_para_match(valor)
+    if texto is None:
+        return None
+    texto = re.sub(r'[^A-Z0-9]+', '', texto)
+    return texto or None
+
+
 def normalizar_nombre_persona(valor: str | None) -> str | None:
     """
     Normalización para nombres de personal:

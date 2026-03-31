@@ -22,6 +22,9 @@ FORMATOS_ACEPTADOS = [
     '%Y-%m-%dT%H:%M:%S',
 ]
 
+FECHA_CAMPANA_INICIO = '2025-03-01'
+FECHA_CAMPANA_FIN = '2026-06-30'
+
 
 def parsear_serie_fechas(serie: 'pd.Series') -> 'pd.Series':
     """
@@ -159,13 +162,16 @@ def obtener_id_tiempo(fecha: datetime | date | None) -> Optional[int]:
 
 
 def es_fecha_valida_campana(fecha: datetime | date | None,
-                             inicio: str = '2025-03-01',
-                             fin:    str = '2026-06-30') -> bool:
+                             inicio: str | None = None,
+                             fin: str | None = None) -> bool:
     """
     Verifica que la fecha esté dentro del rango de la campaña activa.
     """
     if fecha is None:
         return False
+
+    inicio = inicio or FECHA_CAMPANA_INICIO
+    fin = fin or FECHA_CAMPANA_FIN
 
     fecha_inicio = datetime.strptime(inicio, '%Y-%m-%d').date()
     fecha_fin    = datetime.strptime(fin,    '%Y-%m-%d').date()
@@ -175,11 +181,25 @@ def es_fecha_valida_campana(fecha: datetime | date | None,
     return fecha_inicio <= fecha_date <= fecha_fin
 
 
-def procesar_fecha(valor: str | None) -> tuple[Optional[datetime], bool]:
+def procesar_fecha(valor: str | None,
+                   *,
+                   validar_campana: bool = True,
+                   inicio_campana: str | None = None,
+                   fin_campana: str | None = None) -> tuple[Optional[datetime], bool]:
     """
-    Parsea y valida la fecha en un solo paso.
-    Retorna tupla (fecha_parseada, es_valida_para_campana).
+    Parsea una fecha y, opcionalmente, valida campana.
+    Retorna (fecha_parseada, es_valida_en_el_contexto).
     """
-    fecha  = parsear_fecha(valor)
-    valida = es_fecha_valida_campana(fecha)
+    fecha = parsear_fecha(valor)
+    if fecha is None:
+        return None, False
+
+    if not validar_campana:
+        return fecha, True
+
+    valida = es_fecha_valida_campana(
+        fecha,
+        inicio=inicio_campana,
+        fin=fin_campana,
+    )
     return fecha, valida

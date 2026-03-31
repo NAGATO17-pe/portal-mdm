@@ -1,215 +1,164 @@
-﻿# CONTEXTO OPERATIVO DWH - 2026-03-25
+﻿# CONTEXTO OPERATIVO DWH - 2026-03-30
 
 ## 1) Estado actual del sistema
-El sistema ya paso de un problema estructural a un problema puntual de datos.
+El sistema ya paso de problemas estructurales a tres frentes operativos controlados:
+1. residual geografico real,
+2. DQ biologico/fechas en facts,
+3. cierre funcional de `Fact_Maduracion`.
 
 Antes:
-- Fallaba resolucion de geografia para casos especiales.
-- Habia reprocesos con ruido por falta de trazabilidad por ID en cuarentena.
+- fallaba la resolucion de geografia especial,
+- el bridge de camas podia quedar en `0`,
+- archivos mal ubicados contaminaban Bronce,
+- `Conteo` y `Ciclo_Poda` tenian layout/logica desalineados.
 
 Ahora:
-- `VI` se resuelve como Test Block correctamente.
-- En nuevas cuarentenas se registra `ID_Registro_Origen`.
-- La calidad de cama se mantiene en `OK_OPERATIVO`.
+- `VI` se resuelve como Test Block correctamente,
+- el pipeline bloquea archivos mal ubicados en Bronce,
+- `SP_Cama` persiste bridge y valida consistencia,
+- `Fact_Ciclo_Poda` y `Fact_Conteo_Fenologico` ya estan cerrados,
+- hay normalizacion global de geografia y homologacion tipografica segura de variedades.
 
 ## 2) Reglas vigentes clave
-1. `VI` => Test Block (por Turno/Valvula).
-2. `9.1` y `9.2` son validos por regla MDM.
+1. `VI` => Test Block.
+2. `9.1/9.2`, `11.1/11.2`, `13.1/13.2`, `14.1/14.2` son modulos validos por regla MDM.
 3. `9.` (sin submodulo) queda en cuarentena por diseno.
 4. Cama operativa esperada: `1..100`.
+5. `Fact_Conteo_Fenologico` ya no usa `ID_Cinta`.
+6. `Fact_Maduracion` si usa `ID_Cinta`, `ID_Organo` e `ID_Estado_Fenologico`.
+7. `ID_Organo` es identificador degenerado; NO existe `Dim_Organo`.
 
-## 3) Que significa esto en lenguaje simple (ejemplos cotidianos)
-- Ejemplo 1 (direccion incompleta):
-  - `9.` es como decir "vivo en Calle 9" sin numero de casa.
-  - El repartidor no inventa el numero: lo deja pendiente.
-- Ejemplo 2 (zona especial):
-  - `VI` es como una puerta exclusiva de personal autorizado.
-  - No entra por la puerta principal de clientes (geografia operativa normal).
-- Ejemplo 3 (ticket con ID):
-  - Guardar `ID_Registro_Origen` es como tener numero de ticket en soporte.
-  - Permite ubicar exactamente el caso y reabrirlo sin adivinar por texto.
+## 3) Resumen operativo validado
+Corrida limpia de referencia:
+- `Fact_Conteo_Fenologico`: `67860` insertados, `67` rechazados.
+- `Fact_Evaluacion_Pesos`: `5658` insertados, `14` rechazados.
+- `Fact_Evaluacion_Vegetativa`: `22872` insertados, `545` rechazados.
+- `Fact_Ciclo_Poda`: `5205` insertados, `0` rechazados.
+- `SP_Cama aptas`: `3866`
+- `SP_Cama insert bridge`: `3866`
+- `Bridge camas despues`: `3866`
+- `sp_Validar_Calidad_Camas`: `OK_OPERATIVO`
 
-## 4) Flujo diario recomendado
-1. Ejecutar `py pipeline.py`.
-2. Ejecutar `fase16_snapshot_baseline.sql`.
-3. Revisar 5 semaforos:
+## 4) Que significa esto en lenguaje simple
+- `VI` es un carril exclusivo ya senalizado.
+- `9.` sigue siendo direccion incompleta: no se adivina.
+- `Geografia no encontrada` es direccion valida no registrada aun en el GPS.
+- `LAYOUT_INCOMPATIBLE` es archivo en la carpeta equivocada o con estructura no soportada.
+- `ID_Registro_Origen` en cuarentena es el numero de ticket.
+
+## 5) Flujo diario recomendado
+1. Ejecutar `py "D:\Proyecto2026\ACP_DWH\ACP Proyecciones\ETL\pipeline.py"`.
+2. Confirmar `Servidor SQL` y `Base SQL`.
+3. Revisar 7 semaforos:
    - Carga de Pesos > 0.
    - Carga de Vegetativa > 0.
-   - VI smoke = RESUELTA_TEST_BLOCK.
-   - Calidad cama = OK_OPERATIVO.
-   - % cuarentena con ID origen alto.
+   - Si hubo lote, `Fact_Maduracion > 0` o cuarentena util.
+   - `VI` smoke = `RESUELTA_TEST_BLOCK`.
+   - Calidad cama = `OK_OPERATIVO`.
+   - Si `SP_Cama aptas > 0`, entonces bridge > 0.
+   - `% cuarentena con ID origen` alto.
 
-## 5) Troubleshooting rapido
-### Si insertados=0 en Pesos/Vegetativa
-- Revisar `Estado_Carga` en Bronce.
-- Revisar que no se aplico limpieza fuera de secuencia.
+## 6) Troubleshooting rapido
+### Si Bronce bloquea por layout o ruta
+- Revisar carpeta de entrada.
+- Revisar `data/rechazados/<carpeta>/`.
+- No forzar carga manual de ese archivo.
 
-### Si sube "Geografia no encontrada"
+### Si `SP_Cama` reporta aptas pero bridge sigue en `0`
+- Es inconsistencia del paso 6.
+- No publicar Gold.
+- Validar misma instancia SQL y commit real.
+
+### Si sube `Geografia no encontrada`
 - Es backlog de catalogo/regla pendiente.
 - No es necesariamente falla de codigo.
 
-### Si falla VI smoke
-- Revisar `MDM.Regla_Modulo_Raw` y patch de SP.
+### Si falla `Fact_Maduracion`
+- Revisar primero `Valores_Raw` en `Bronce.Maduracion`.
+- Validar campos `FECHA_Raw`, `MODULO_Raw`, `TURNO_Raw`, `NROVALVULA_Raw`, `VARIEDAD_Raw`, `ORGANO_Raw`, `DESCRIPCIONESTADOCICLO_Raw`, `COLOR_Raw`.
 
-## 6) Prioridad operativa actual
-1. Reducir `Geografia no encontrada` en Vegetativa (`497`).
+## 7) Prioridad operativa actual
+1. Reducir `Geografia no encontrada` en Vegetativa (`455`).
 2. Mantener control de `9.` en cuarentena sin forzar inferencias.
-3. Sostener corrida limpia y snapshot diario para tendencia real.
+3. Completar validacion funcional de `Fact_Maduracion` con lote real y DDL final consistente.
+4. Sostener corrida limpia y snapshot diario para tendencia real.
 
-## 7) Bitacora tecnica cronologica (actualizado 2026-03-25)
+## 8) Bitacora tecnica resumida
+### 8.1 Error metodologico corregido
+- Se dejo de asumir `ID_Registro_Origen` en `Bronce.Evaluacion_Vegetativa`.
+- Para backlog historico se usa `MDM.Cuarentena.Valor_Recibido`.
 
-### 7.1 Error clave detectado y corregido en diagnostico
-Se detecto un error de suposicion durante el analisis:
-- Se asumio que en `Bronce.Evaluacion_Vegetativa` existia una columna `ID_Registro_Origen`.
-- En tu esquema real esa columna NO existe con ese nombre en Bronce.
-- Resultado inmediato: query de diagnostico fallo con `Invalid column name 'ID_Registro_Origen'`.
+### 8.2 Bloqueo de Bronce ya operativo
+- Archivos mal ubicados ahora generan `LAYOUT_INCOMPATIBLE` o `RUTA_CONTENIDO_INCOMPATIBLE`.
+- Se mueven a `data/rechazados`.
+- El pipeline se detiene antes de Silver/Gold.
 
-Correccion aplicada:
-1. Se descarto el join por ID contra Bronce para el diagnostico.
-2. Se paso a un diagnostico robusto sin depender de IDs de Bronce.
-3. Se parseo `MDM.Cuarentena.Valor_Recibido` (formato `Modulo|Turno|Valvula|Cama`).
-4. Con esos tokens se ejecuto `Silver.sp_Resolver_Geografia_Cama` por combinacion.
+### 8.3 Bridge de camas ya persistente
+- El paso 6 ahora usa transaccion con commit real.
+- Solo corre si entran tablas Bronce con cama.
 
-Leccion operativa:
-- Para soporte de cuarentena historica, la fuente mas estable para diagnostico rapido es `MDM.Cuarentena.Valor_Recibido`.
-- El ID de Bronce es util cuando existe trazabilidad directa, pero no debe ser prerequisito para diagnosticar.
+### 8.4 Incidentes cerrados
+- `Fact_Ciclo_Poda`: cerrado.
+- `Fact_Conteo_Fenologico`: cerrado.
 
-### 7.2 Hallazgo funcional real despues de corregir el enfoque
-Tras ejecutar el diagnostico correcto:
-1. `VI` se mantuvo estable en `RESUELTA_TEST_BLOCK`.
-2. En `Pesos`, lo pendiente geografico quedo concentrado en token `9.`.
-3. En `Vegetativa`, el foco mayor fue `GEOGRAFIA_NO_ENCONTRADA` en combinaciones operativas reales.
+### 8.5 Frente nuevo
+- `Fact_Maduracion`:
+  - fuente real: `Bronce.Maduracion`
+  - payload: `Valores_Raw`
+  - modelo objetivo: fila por organo observado
+  - pendiente: validacion final de corrida estable con el DDL definitivo.
 
-Interpretacion:
-- No era un fallo de la regla VI.
-- No era un fallo global del pipeline.
-- Era brecha de cobertura de catalogo geografico + token ambiguo `9.` (esperado en cuarentena).
-
-### 7.3 Ajustes aplicados despues del diagnostico
-Se aplicaron dos acciones tecnicas:
-1. Script de catalogacion focalizada para `9.2` (turnos 10/11, valvulas 1/2/3):
-   - `fase17_catalogar_geografia_9_2_turnos_10_11.sql`
-2. Ajuste de reapertura para considerar ambos motivos geograficos:
-   - `Geografia especial requiere catalogacion o regla en MDM_Geografia.`
-   - `Geografia no encontrada en Silver.Dim_Geografia.`
-
-Resultado observado:
-- El catalogo ya contenia esas combinaciones (preview mostro `Combos_Faltantes_Para_Insert = 0`).
-- La reapertura dirigida devolvio `Pesos_Reabiertos=0` y `Vegetativa_Reabiertos=0` en ese corte, consistente con ausencia de backlog reabrible para esas firmas.
-
-### 7.4 Verificacion del pipeline correcto (riesgo de doble archivo)
-Se valido explicitamente que Python use el pipeline de produccion ETL:
-- Correcto: `D:\Proyecto2026\ACP_DWH\ACP Proyecciones\ETL\pipeline.py`
-- Existe otro `pipeline.py` en `Playground`, pero no tiene contexto completo de modulos (`config`), por eso no es el ejecutable real del ETL.
-
-Recomendacion fija:
-- Ejecutar siempre con ruta absoluta:
-  - `py "D:\Proyecto2026\ACP_DWH\ACP Proyecciones\ETL\pipeline.py"`
-
-### 7.5 Estado consolidado al cierre de esta iteracion
-Corrida validada:
-- `Fact_Evaluacion_Pesos`: 5658
-- `Fact_Evaluacion_Vegetativa`: 22872
-- `Dim_Geografia vigentes`: 1031
-- `SP_Cama estado calidad`: `OK_OPERATIVO`
-- `VI` smoke (cama 0/1/2): `RESUELTA_TEST_BLOCK`
-- Trazabilidad en nuevas cuarentenas: `100%` con `ID_Registro_Origen`
-
-Residual principal actual:
-1. Pesos: residual pequeno (14), incluyendo `9.` (controlado por diseno).
-2. Vegetativa: residual dominante en `Geografia no encontrada` (455 en el corte mostrado).
-3. Reglas biologicas y fecha en Vegetativa: residual secundario.
-
-### 7.6 Explicacion cotidiana para equipo no tecnico
-- El caso VI ya es un carril exclusivo: ya no se confunde con trafico general.
-- El token `9.` es direccion incompleta: no se adivina, se deja pendiente.
-- `Geografia no encontrada` es como tener direccion valida pero no registrada en el GPS: hay que dar de alta la ruta en el catalogo.
-- `ID_Registro_Origen` en cuarentena es el numero de ticket: permite volver exacto al registro sin buscar manualmente.
-
-### 7.7 Criterio de verdad para las siguientes decisiones
-A partir de esta fecha, se considera evidencia valida de avance cuando simultaneamente se cumpla:
-1. `Fact_Evaluacion_Pesos > 0` y `Fact_Evaluacion_Vegetativa > 0` en corrida limpia.
-2. `VI` = `RESUELTA_TEST_BLOCK` en smoke 0/1/2.
+## 9) Criterio de verdad para decisiones
+Se considera evidencia valida de avance cuando simultaneamente se cumpla:
+1. `Fact_Evaluacion_Pesos > 0` y `Fact_Evaluacion_Vegetativa > 0`.
+2. `VI` = `RESUELTA_TEST_BLOCK` en smoke `0/1/2`.
 3. `sp_Validar_Calidad_Camas` = `OK_OPERATIVO`.
-4. `% con ID_Registro_Origen` en nuevas cuarentenas >= 98%.
-5. Tendencia descendente de `Geografia no encontrada` en Vegetativa.
+4. Si `SP_Cama aptas > 0`, entonces `Bridge_Geografia_Cama > 0`.
+5. `% con ID_Registro_Origen` en nuevas cuarentenas >= `98%`.
+6. Tendencia descendente de `Geografia no encontrada` en Vegetativa.
 
-## 8) Incidente cerrado - Fact_Ciclo_Poda (2026-03-25)
+## Addendum 2026-03-30 - Clima, Tareo y Regla de Campana
 
-### 8.1 Sintoma observado
-En corrida de pipeline se observó:
-- `Fact_Ciclo_Poda -> 0 insertados | 5205 rechazados | 0 cuarentena`.
+### Clima
+- Se habilito carga especial en Bronce para clima usando la hoja `BD` del Excel analitico.
+- La lectura valida usa `header=2` (fila real 3 del archivo) y mapea explicitamente:
+  - `Fecha -> Fecha_Raw`
+  - `Hora -> Hora_Raw`
+  - `T Max -> TempMax_Raw`
+  - `T Min -> TempMin_Raw`
+  - `HUMEDAD RELATIVA -> Humedad_Raw`
+  - `RADIACION SOLAR -> Radiacion_Raw`
+  - `DVP Real -> VPD_Raw`
+- `Sector_Raw` se deriva desde el nombre del archivo, por ejemplo `F07`.
+- `Fact_Telemetria_Clima` deja de depender de `Dim_Geografia` y usa `Sector_Climatico` directo.
+- `Gold.Mart_Clima` agrega por `ID_Tiempo + Sector_Climatico`.
+- Script asociado: `fase19_ajuste_fact_clima_sector_climatico.sql`.
 
-### 8.2 Diagnostico tecnico
-Se valido con evidencia que:
-1. Había 5205 filas `Estado_Carga='CARGADO'` en `Bronce.Evaluacion_Calidad_Poda`.
-2. No era falla de variedad ni de fecha.
-3. El rechazo masivo venía por `id_geo = NULL` en todas las filas.
-4. Causa principal: el loader resolvía geografía solo por módulo, pero para este flujo se requiere granularidad operativa (`Modulo + Turno + Valvula`).
+### Evidencia operativa validada hoy
+- Corrida clima validada:
+  - `Bronce filas`: `42947`
+  - `Fact_Telemetria_Clima`: `15569` insertados
+  - `Fact_Telemetria_Clima`: `27378` rechazados
+  - `Gold.Mart_Clima`: `373` filas
+- El residual de clima ya no es estructural; se concentra solo en `Fecha invalida o fuera de campana`.
+- Las filas rechazadas corresponden a historico meteorologico de `2022`, no a error de parseo del Excel.
 
-Adicionalmente se detectó:
-- `ID_Evaluacion_Calidad_Poda` estaba nulo en esas filas.
-- El ID operativo válido era `ID_Evaluacion_Poda`.
+### Hallazgo tecnico critico
+- La validacion de campana en `utils/fechas.py` sigue globalizada con rango fijo `2025-03-01` a `2026-06-30`.
+- Esa regla hoy afecta a todas las facts que llaman `procesar_fecha()`.
+- Conclusion aprobada:
+  - la validacion de campana no debe seguir siendo global;
+  - debe separarse por fact o por dominio;
+  - clima debe poder conservar historico aunque este fuera de la campana vigente.
 
-### 8.3 Correcciones aplicadas
-Archivos ajustados:
-1. `mdm/lookup.py`
-   - Se reforzó fallback de resolución geográfica cuando el SP no devuelve ID y no hay granularidad operativa.
-2. `silver/facts/fact_ciclo_poda.py`
-   - Se incorporó lectura de `Turno_Raw` y `Valvula_Raw`.
-   - Resolución geográfica actualizada a `Modulo + Turno + Valvula`.
-   - Marcado de estado corregido para usar `ID_Evaluacion_Poda`.
-   - Homologación de variedad enlazada con `columna_id_origen='ID_Evaluacion_Poda'`.
+### Tareo
+- Se corrigieron aliases reales del layout de `Consolidado_Tareos`.
+- Se separaron filas basura del Excel (`Personas`, `Horas`, `TOTAL`, etc.).
+- El rechazo restante ya no es bug del parser: la fuente actual no trae `Fundo/Modulo` resolubles.
+- `Fact_Tareo` queda diagnosticado y pendiente hasta contar con fuente suficiente o redefinir el modelo de geografia.
 
-### 8.4 Validacion posterior al fix
-Prueba directa del loader:
-- Resultado: `{'insertados': 5205, 'rechazados': 0, 'cuarentena': []}`.
+### Suite de pruebas
+- Se dejo base automatica con `pytest` en `tests/` para estructura, integridad y calidad.
+- Los tests ya contemplan `Sector_Climatico` en clima.
+- La suite sirve como smoke tecnico del estado estable actual.
 
-Validación posterior en tabla fact:
-- `SELECT COUNT(*) AS CicloPoda_Hoy ...` devolvió `5825` filas del día.
-
-### 8.5 Estado
-- Incidente: **CERRADO**.
-- Riesgo residual: bajo.
-- Recomendación operativa: mantener check diario de `Fact_Ciclo_Poda` para detectar regresión temprana.
-
-## 9) Incidente cerrado - Fact_Conteo_Fenologico (2026-03-25)
-
-### 9.1 Sintoma observado
-En corrida de pipeline se observó:
-- `Fact_Conteo_Fenologico -> 0 insertados | 1565 rechazados | 1565 cuarentena`.
-
-### 9.2 Diagnostico tecnico
-Se identificó que el lote `Conteo frutos.xlsx` llegó en layout ancho:
-1. `Color_Cinta_Raw`, `Estado_Raw`, `Cantidad_Organos_Raw` venían nulos.
-2. Los valores operativos estaban dentro de `Valores_Raw` (pares `clave=valor`).
-3. El loader original esperaba layout largo (estado/cantidad por fila) y geografía sin granularidad operativa.
-
-Causa raíz:
-- Desalineación entre layout de entrada y lógica del fact.
-
-### 9.3 Correcciones aplicadas
-Archivo ajustado:
-- `silver/facts/fact_conteo_fenologico.py`
-
-Cambios funcionales:
-1. Soporte dual de layout (largo y ancho).
-2. Parseo de `Valores_Raw` para extraer estados fenológicos y cantidades.
-3. Resolución geográfica con `Modulo + Turno + Valvula`.
-4. Resolución de cinta por fallback desde `Punto_Raw`.
-
-Mapa aplicado de `Punto_Raw -> Color_Cinta`:
-- 1=Roja, 2=Azul, 3=Verde, 4=Amarilla, 5=Blanca, 6=Naranja.
-
-### 9.4 Validacion posterior al fix
-Prueba directa del loader:
-- Resultado: `{'insertados': 14085, 'rechazados': 0, 'cuarentena': []}`.
-
-Estado:
-- Incidente: **CERRADO**.
-- Riesgo residual: bajo (mantener monitoreo por cambios de layout en origen).
-
-### 9.5 Control recomendado
-Validar en cada corrida:
-1. `Fact_Conteo_Fenologico` > 0.
-2. Si reaparece rechazo masivo, revisar primero estructura de `Valores_Raw`.

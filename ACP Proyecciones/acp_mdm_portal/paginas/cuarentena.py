@@ -10,7 +10,7 @@ import io
 import pandas as pd
 import streamlit as st
 
-from utils.componentes import badge_html, estado_vacio_html, mostrar_kpis
+from utils.componentes import badge_html, estado_vacio_html, mostrar_kpis, mostrar_dialogo_confirmacion
 from utils.db import ejecutar_query
 from utils.formato import header_pagina, renderizar_tabla_premium
 
@@ -290,8 +290,13 @@ def render() -> None:
                 st.markdown("<br>", unsafe_allow_html=True)
                 if st.button("➕ Agregar variedad", key=f"btn_agregar_{id_sel}",
                              type="primary", disabled=not nuevo_nombre.strip()):
-                    st.toast(f"Variedad '{nuevo_nombre}' marcada para agregar.", icon="✅")
-
+                    def do_agregar(nom):
+                        st.toast(f"Variedad '{nom}' marcada para agregar.", icon="✅")
+                    mostrar_dialogo_confirmacion(
+                        "Confirmación de Cuarentena",
+                        f"¿Confirmas agregar la nueva variedad '{nuevo_nombre}' al catálogo maestro?",
+                        do_agregar, nuevo_nombre
+                    )
         elif "homologar" in opcion:
             with d1:
                 valor_homo = st.text_input(

@@ -17,11 +17,10 @@ from utils.dni       import procesar_dni
 from utils.sql_lotes import marcar_estado_carga_por_ids
 from dq.cuarentena   import enviar_a_cuarentena
 from mdm.lookup      import (
-    obtener_id_geografia,
+    resolver_geografia,
     obtener_id_personal,
     obtener_id_actividad,
 )
-
 
 TABLA_ORIGEN  = 'Bronce.Consolidado_Tareos'
 TABLA_DESTINO = 'Silver.Fact_Tareo'
@@ -31,7 +30,7 @@ def _leer_bronce(engine: Engine) -> pd.DataFrame:
     with engine.connect() as conexion:
         resultado = conexion.execute(text(f"""
             SELECT
-                ID_Consolidado_Tareos,
+                ID_Tareo,
                 Fecha_Raw,
                 Fundo_Raw,
                 Modulo_Raw,
@@ -46,6 +45,25 @@ def _leer_bronce(engine: Engine) -> pd.DataFrame:
         return pd.DataFrame(resultado.fetchall(), columns=resultado.keys())
 
 
+def _motivo_cuarentena_geografia(resultado_geo: dict) -> str:
+    estado = resultado_geo.get('estado')
+    if estado in ('TEST_BLOCK_NO_MAPEADO', 'TEST_BLOCK_AMBIGUO'):
+        return 'Test block (VI) sin mapeo unico en Dim_Geografia.'
+    if estado in ('PENDIENTE_CASO_ESPECIAL', 'CASO_ESPECIAL_MODULO'):
+        return 'Geografia especial requiere catalogacion o regla en MDM_Geografia.'
+    if estado in ('PENDIENTE_DIM_DUPLICADA', 'GEOGRAFIA_AMBIGUA'):
+        return 'La clave geografica tiene mas de un registro vigente en Silver.Dim_Geografia.'
+    return 'Geografia no encontrada en Silver.Dim_Geografia.'
+
+
+def _es_fila_no_operativa(fila) -> bool:
+    fecha_raw = str(fila.get('Fecha_Raw') or '').strip()
+    supervisor_raw = str(fila.get('IDPersonalGeneral_Raw') or '').strip().upper()
+    tokens_fecha_descartar = {'', 'NONE', 'PERSONAS', 'HORAS'}
+    tokens_supervisor_descartar = {'AREA:', 'FECHA:', 'TURNO:', 'DIA:', 'DÍA:', 'NOCHE:', 'TOTAL'}
+    return fecha_raw.upper() in tokens_fecha_descartar or supervisor_raw in tokens_supervisor_descartar
+
+
 def cargar_fact_tareo(engine: Engine) -> dict:
     """
     Lee Bronce.Consolidado_Tareos y carga Silver.Fact_Tareo.
@@ -56,15 +74,38 @@ def cargar_fact_tareo(engine: Engine) -> dict:
     if df.empty:
         return resumen
 
-    ids_procesados = []
+    ids_leidos = []
+    ids_insertados = []
+    ids_rechazados = []
+    ids_descartados = []
 
     with engine.begin() as conexion:
         for _, fila in df.iterrows():
+            id_origen = None
+            try:
+                id_origen = int(fila['ID_Tareo'])
+                ids_leidos.append(id_origen)
+            except (ValueError, TypeError):
+                pass
+
+            if _es_fila_no_operativa(fila):
+                if id_origen is not None:
+                    ids_descartados.append(id_origen)
+                continue
 
             # ── Fecha ─────────────────────────────────────────
             fecha, fecha_valida = procesar_fecha(fila.get('Fecha_Raw'))
             if not fecha_valida:
                 resumen['rechazados'] += 1
+                if id_origen is not None:
+                    ids_rechazados.append(id_origen)
+                resumen['cuarentena'].append({
+                    'columna': 'Fecha_Raw',
+                    'valor': fila.get('Fecha_Raw'),
+                    'motivo': 'Fecha invalida o fuera de campana',
+                    'severidad': 'ALTO',
+                    'id_registro_origen': id_origen,
+                })
                 continue
 
             id_tiempo = obtener_id_tiempo(fecha)
@@ -72,11 +113,25 @@ def cargar_fact_tareo(engine: Engine) -> dict:
             # ── Geografía ─────────────────────────────────────
             modulo_raw = fila.get('Modulo_Raw')
             modulo     = None if es_test_block(modulo_raw) else normalizar_modulo(modulo_raw)
-            id_geo     = obtener_id_geografia(
-                fila.get('Fundo_Raw'), None, modulo, engine
+            resultado_geo = resolver_geografia(
+                fila.get('Fundo_Raw'),
+                None,
+                modulo,
+                engine,
             )
+            id_geo = resultado_geo.get('id_geografia')
             if not id_geo:
                 resumen['rechazados'] += 1
+                if id_origen is not None:
+                    ids_rechazados.append(id_origen)
+                resumen['cuarentena'].append({
+                    'columna': 'Modulo_Raw',
+                    'valor': f"Fundo={fila.get('Fundo_Raw')} | Modulo={fila.get('Modulo_Raw')}",
+                    'motivo': _motivo_cuarentena_geografia(resultado_geo),
+                    'tipo_regla': 'MDM',
+                    'severidad': 'ALTO',
+                    'id_registro_origen': id_origen,
+                })
                 continue
 
             # ── Personal operario ─────────────────────────────
@@ -96,11 +151,14 @@ def cargar_fact_tareo(engine: Engine) -> dict:
             )
             if not id_actividad:
                 resumen['rechazados'] += 1
+                if id_origen is not None:
+                    ids_rechazados.append(id_origen)
                 resumen['cuarentena'].append({
                     'columna':   'Labor_Raw',
                     'valor':     fila.get('Labor_Raw'),
                     'motivo':    'Actividad no reconocida en Dim_Actividad_Operativa',
                     'severidad': 'ALTO',
+                    'id_registro_origen': id_origen,
                 })
                 continue
 
@@ -136,12 +194,22 @@ def cargar_fact_tareo(engine: Engine) -> dict:
                 'fecha_evento':  fecha,
             })
 
-            ids_procesados.append(int(fila['ID_Consolidado_Tareos']))
+            if id_origen is not None:
+                ids_insertados.append(id_origen)
             resumen['insertados'] += 1
 
-    marcar_estado_carga_por_ids(
-        engine, TABLA_ORIGEN, 'ID_Consolidado_Tareos', ids_procesados
-    )
+    if ids_insertados:
+        marcar_estado_carga_por_ids(
+            engine, TABLA_ORIGEN, 'ID_Tareo', ids_insertados
+        )
+    if ids_rechazados:
+        marcar_estado_carga_por_ids(
+            engine, TABLA_ORIGEN, 'ID_Tareo', ids_rechazados, estado='RECHAZADO'
+        )
+    if ids_descartados:
+        marcar_estado_carga_por_ids(
+            engine, TABLA_ORIGEN, 'ID_Tareo', ids_descartados, estado='DESCARTADO'
+        )
 
     if resumen['cuarentena']:
         enviar_a_cuarentena(engine, TABLA_ORIGEN, resumen['cuarentena'])

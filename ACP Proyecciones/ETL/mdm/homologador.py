@@ -25,7 +25,12 @@ from sqlalchemy.engine import Engine
 from sqlalchemy import text
 from datetime import datetime
 
-from utils.texto import normalizar_variedad, quitar_tildes
+from utils.texto import (
+    compactar_variedad_para_match,
+    normalizar_variedad,
+    normalizar_variedad_para_match,
+    quitar_tildes,
+)
 
 
 UMBRAL_AUTO = 0.99
@@ -34,7 +39,16 @@ UMBRAL_AUTO = 0.99
 def _clave_variedad(valor: str | None) -> str | None:
     if valor is None:
         return None
-    valor_normalizado = normalizar_variedad(valor)
+    valor_normalizado = normalizar_variedad_para_match(valor)
+    if not valor_normalizado:
+        return None
+    return quitar_tildes(valor_normalizado).lower()
+
+
+def _clave_variedad_compacta(valor: str | None) -> str | None:
+    if valor is None:
+        return None
+    valor_normalizado = compactar_variedad_para_match(valor)
     if not valor_normalizado:
         return None
     return quitar_tildes(valor_normalizado).lower()
@@ -63,7 +77,9 @@ def cargar_diccionario(engine: Engine,
         if df.empty:
             return df
         df['Clave_Texto_Crudo'] = df['Texto_Crudo'].map(_clave_variedad)
+        df['Clave_Texto_Crudo_Compacta'] = df['Texto_Crudo'].map(_clave_variedad_compacta)
         df['Clave_Valor_Canonico'] = df['Valor_Canonico'].map(_clave_variedad)
+        df['Clave_Valor_Canonico_Compacta'] = df['Valor_Canonico'].map(_clave_variedad_compacta)
         return df
 
 
@@ -91,6 +107,7 @@ def cargar_catalogo_variedades(engine: Engine) -> pd.DataFrame:
             return df
 
         df['Clave_Valor_Canonico'] = df['Valor_Canonico'].map(_clave_variedad)
+        df['Clave_Valor_Canonico_Compacta'] = df['Valor_Canonico'].map(_clave_variedad_compacta)
         df = df.dropna(subset=['Clave_Valor_Canonico'])
         df = df.drop_duplicates(subset=['Clave_Valor_Canonico'], keep='first')
         return df
@@ -101,10 +118,19 @@ def buscar_match_exacto(valor: str,
     if diccionario.empty:
         return None
     clave = _clave_variedad(valor)
-    if clave is None:
+    if clave is not None:
+        coincidencia = diccionario[diccionario['Clave_Texto_Crudo'] == clave]
+        canonicos = coincidencia['Valor_Canonico'].dropna().unique().tolist()
+        if len(canonicos) == 1:
+            return canonicos[0]
+
+    clave_compacta = _clave_variedad_compacta(valor)
+    if clave_compacta is None:
         return None
-    coincidencia = diccionario[diccionario['Clave_Texto_Crudo'] == clave]
-    return coincidencia.iloc[0]['Valor_Canonico'] if not coincidencia.empty else None
+
+    coincidencia = diccionario[diccionario['Clave_Texto_Crudo_Compacta'] == clave_compacta]
+    canonicos = coincidencia['Valor_Canonico'].dropna().unique().tolist()
+    return canonicos[0] if len(canonicos) == 1 else None
 
 
 def buscar_match_catalogo(valor: str,
@@ -113,11 +139,19 @@ def buscar_match_catalogo(valor: str,
         return None
 
     clave = _clave_variedad(valor)
-    if clave is None:
+    if clave is not None:
+        coincidencia = catalogo[catalogo['Clave_Valor_Canonico'] == clave]
+        canonicos = coincidencia['Valor_Canonico'].dropna().unique().tolist()
+        if len(canonicos) == 1:
+            return canonicos[0]
+
+    clave_compacta = _clave_variedad_compacta(valor)
+    if clave_compacta is None:
         return None
 
-    coincidencia = catalogo[catalogo['Clave_Valor_Canonico'] == clave]
-    return coincidencia.iloc[0]['Valor_Canonico'] if not coincidencia.empty else None
+    coincidencia = catalogo[catalogo['Clave_Valor_Canonico_Compacta'] == clave_compacta]
+    canonicos = coincidencia['Valor_Canonico'].dropna().unique().tolist()
+    return canonicos[0] if len(canonicos) == 1 else None
 
 
 def buscar_match_levenshtein(valor: str,
@@ -125,20 +159,28 @@ def buscar_match_levenshtein(valor: str,
     if catalogo.empty:
         return None, 0.0
 
-    valor_normalizado = normalizar_variedad(valor)
+    valor_normalizado = normalizar_variedad_para_match(valor)
     if not valor_normalizado:
         return None, 0.0
 
-    candidatos = catalogo['Valor_Canonico'].tolist()
+    catalogo_match = catalogo.dropna(subset=['Clave_Valor_Canonico']).drop_duplicates(
+        subset=['Clave_Valor_Canonico'], keep='first'
+    )
+    candidatos = catalogo_match['Clave_Valor_Canonico'].tolist()
     resultado  = process.extractOne(valor_normalizado, candidatos, scorer=fuzz.token_sort_ratio)
 
     if resultado is None:
         return None, 0.0
 
-    match, score, _ = resultado
+    match_clave, score, _ = resultado
     score_norm = score / 100.0
 
-    return (match, score_norm) if score_norm >= UMBRAL_AUTO else (None, score_norm)
+    if score_norm < UMBRAL_AUTO:
+        return None, score_norm
+
+    coincidencia = catalogo_match[catalogo_match['Clave_Valor_Canonico'] == match_clave]
+    canonicos = coincidencia['Valor_Canonico'].dropna().unique().tolist()
+    return (canonicos[0], score_norm) if len(canonicos) == 1 else (None, score_norm)
 
 
 def buscar_sugerencia_levenshtein(valor: str,
@@ -146,17 +188,22 @@ def buscar_sugerencia_levenshtein(valor: str,
     if catalogo.empty:
         return None, 0.0
 
-    valor_normalizado = normalizar_variedad(valor)
+    valor_normalizado = normalizar_variedad_para_match(valor)
     if not valor_normalizado:
         return None, 0.0
 
-    candidatos = catalogo['Valor_Canonico'].tolist()
+    catalogo_match = catalogo.dropna(subset=['Clave_Valor_Canonico']).drop_duplicates(
+        subset=['Clave_Valor_Canonico'], keep='first'
+    )
+    candidatos = catalogo_match['Clave_Valor_Canonico'].tolist()
     resultado = process.extractOne(valor_normalizado, candidatos, scorer=fuzz.token_sort_ratio)
     if resultado is None:
         return None, 0.0
 
-    match, score, _ = resultado
-    return match, score / 100.0
+    match_clave, score, _ = resultado
+    coincidencia = catalogo_match[catalogo_match['Clave_Valor_Canonico'] == match_clave]
+    canonicos = coincidencia['Valor_Canonico'].dropna().unique().tolist()
+    return (canonicos[0] if len(canonicos) == 1 else None), score / 100.0
 
 
 def registrar_homologacion(engine: Engine,

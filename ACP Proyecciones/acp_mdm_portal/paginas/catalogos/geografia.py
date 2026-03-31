@@ -10,6 +10,7 @@ from utils.componentes import (
     health_status_panel,
     mostrar_kpis,
     seccion_tabla_sql_paginada,
+    mostrar_dialogo_confirmacion,
 )
 from utils.db import ejecutar_query
 from utils.formato import header_pagina
@@ -78,7 +79,13 @@ def render():
 
         campos_ok = all(v and v.strip() for v in [fundo, sector, modulo])
         if st.button("✅ Agregar", key="btn_geo_agregar", type="primary", disabled=not campos_ok):
-            st.toast(f"Módulo '{modulo}' en fundo '{fundo}' agregado correctamente.", icon="✅")
+            def do_agregar(m, f):
+                st.toast(f"Módulo '{m}' en fundo '{f}' agregado correctamente.", icon="✅")
+            mostrar_dialogo_confirmacion(
+                "Confirmación de Geografía",
+                f"¿Dar de alta el módulo '{modulo}' en el fundo '{fundo}'?",
+                do_agregar, modulo, fundo
+            )
         if not campos_ok:
             st.caption("Completa Fundo, Sector y Módulo para habilitar.")
 
