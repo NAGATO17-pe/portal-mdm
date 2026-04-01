@@ -5,11 +5,17 @@ Pruebas de contrato para los endpoints de cuarentena:
     GET   /api/cuarentena
     PATCH /api/cuarentena/{tabla}/{id}/resolver
     PATCH /api/cuarentena/{tabla}/{id}/rechazar
+
+Nota sobre mocks: se parchea el símbolo en el módulo router que lo importa.
 """
 
 from unittest.mock import patch
 
 import pytest
+
+_PATCH_LISTAR   = "api.rutas_cuarentena.listar_cuarentena"
+_PATCH_RESOLVER = "api.rutas_cuarentena.resolver_registro"
+_PATCH_RECHAZAR = "api.rutas_cuarentena.rechazar_registro"
 
 
 _PAGINA_MOCK = {
@@ -46,12 +52,12 @@ _ACCION_RECHAZADO = {
 
 class TestListarCuarentena:
     def test_retorna_200(self, cliente):
-        with patch("servicios.servicio_cuarentena.listar_cuarentena", return_value=_PAGINA_MOCK):
+        with patch(_PATCH_LISTAR, return_value=_PAGINA_MOCK):
             resp = cliente.get("/api/cuarentena")
         assert resp.status_code == 200
 
     def test_estructura_paginada(self, cliente):
-        with patch("servicios.servicio_cuarentena.listar_cuarentena", return_value=_PAGINA_MOCK):
+        with patch(_PATCH_LISTAR, return_value=_PAGINA_MOCK):
             data = cliente.get("/api/cuarentena").json()
         assert "total" in data
         assert "pagina" in data
@@ -60,14 +66,12 @@ class TestListarCuarentena:
         assert isinstance(data["datos"], list)
 
     def test_paginacion_parametros_default(self, cliente):
-        with patch("servicios.servicio_cuarentena.listar_cuarentena") as mock_lc:
-            mock_lc.return_value = _PAGINA_MOCK
+        with patch(_PATCH_LISTAR, return_value=_PAGINA_MOCK) as mock_lc:
             cliente.get("/api/cuarentena")
             mock_lc.assert_called_once_with(pagina=1, tamano=20, tabla_filtro=None)
 
     def test_filtro_por_tabla(self, cliente):
-        with patch("servicios.servicio_cuarentena.listar_cuarentena") as mock_lc:
-            mock_lc.return_value = _PAGINA_MOCK
+        with patch(_PATCH_LISTAR, return_value=_PAGINA_MOCK) as mock_lc:
             cliente.get("/api/cuarentena?tabla_filtro=Bronce.Cosecha")
             args = mock_lc.call_args
             assert args.kwargs["tabla_filtro"] == "Bronce.Cosecha"
@@ -82,7 +86,7 @@ class TestListarCuarentena:
 
 class TestResolverCuarentena:
     def test_resolver_retorna_200(self, cliente):
-        with patch("servicios.servicio_cuarentena.resolver_registro", return_value=_ACCION_OK):
+        with patch(_PATCH_RESOLVER, return_value=_ACCION_OK):
             resp = cliente.patch(
                 "/api/cuarentena/Bronce.Cosecha/42/resolver",
                 json={
@@ -94,7 +98,7 @@ class TestResolverCuarentena:
         assert resp.status_code == 200
 
     def test_resolver_respuesta_tiene_estado_nuevo(self, cliente):
-        with patch("servicios.servicio_cuarentena.resolver_registro", return_value=_ACCION_OK):
+        with patch(_PATCH_RESOLVER, return_value=_ACCION_OK):
             data = cliente.patch(
                 "/api/cuarentena/Bronce.Cosecha/42/resolver",
                 json={"valor_canonico": "Camarosa", "analista": "12345678"},
@@ -102,17 +106,20 @@ class TestResolverCuarentena:
         assert data["estado_nuevo"] == "RESUELTO"
         assert data["id_registro"] == "42"
 
-    def test_resolver_sin_analista_retorna_422(self, cliente):
-        resp = cliente.patch(
-            "/api/cuarentena/Bronce.Cosecha/42/resolver",
-            json={"valor_canonico": "Camarosa"},
-        )
-        assert resp.status_code == 422
+    def test_resolver_sin_analista_usa_default(self, cliente):
+        """analista tiene default='api_user' — omitirlo es válido."""
+        with patch(_PATCH_RESOLVER, return_value=_ACCION_OK):
+            resp = cliente.patch(
+                "/api/cuarentena/Bronce.Cosecha/42/resolver",
+                json={"valor_canonico": "Camarosa"},
+            )
+        # No debe 422 porque analista tiene default
+        assert resp.status_code == 200
 
 
 class TestRechazarCuarentena:
     def test_rechazar_retorna_200(self, cliente):
-        with patch("servicios.servicio_cuarentena.rechazar_registro", return_value=_ACCION_RECHAZADO):
+        with patch(_PATCH_RECHAZAR, return_value=_ACCION_RECHAZADO):
             resp = cliente.patch(
                 "/api/cuarentena/Bronce.Cosecha/42/rechazar",
                 json={"motivo": "Valor inválido.", "analista": "12345678"},

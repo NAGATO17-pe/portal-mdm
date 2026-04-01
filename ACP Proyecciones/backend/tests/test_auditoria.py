@@ -4,6 +4,9 @@ tests/test_auditoria.py
 Pruebas de contrato para los endpoints de auditoría:
     GET /api/auditoria/log-carga
     GET /api/auditoria/log-carga/{tabla_destino}
+
+Nota sobre mocks: se parchea el símbolo en el módulo que lo importa
+(api.rutas_auditoria), no en el módulo donde se define.
 """
 
 from datetime import datetime
@@ -39,22 +42,25 @@ _ULTIMO_ESTADO_MOCK = {
 }
 
 
+# Ruta exacta usada por el router para importar el servicio
+_PATCH_HISTORIAL      = "api.rutas_auditoria.obtener_historial"
+_PATCH_ULTIMO_ESTADO  = "api.rutas_auditoria.obtener_ultimo_estado_tabla"
+
+
 class TestLogCarga:
     def test_retorna_200_con_lista(self, cliente):
-        with patch("servicios.servicio_auditoria.obtener_historial", return_value=_HISTORIAL_MOCK):
+        with patch(_PATCH_HISTORIAL, return_value=_HISTORIAL_MOCK):
             resp = cliente.get("/api/auditoria/log-carga")
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
 
     def test_limite_default_es_50(self, cliente):
-        with patch("servicios.servicio_auditoria.obtener_historial") as mock_hist:
-            mock_hist.return_value = []
+        with patch(_PATCH_HISTORIAL, return_value=[]) as mock_hist:
             cliente.get("/api/auditoria/log-carga")
             mock_hist.assert_called_once_with(limite=50)
 
     def test_limite_personalizado(self, cliente):
-        with patch("servicios.servicio_auditoria.obtener_historial") as mock_hist:
-            mock_hist.return_value = []
+        with patch(_PATCH_HISTORIAL, return_value=[]) as mock_hist:
             cliente.get("/api/auditoria/log-carga?limite=10")
             mock_hist.assert_called_once_with(limite=10)
 
@@ -67,8 +73,9 @@ class TestLogCarga:
         assert resp.status_code == 422
 
     def test_campos_del_historial(self, cliente):
-        with patch("servicios.servicio_auditoria.obtener_historial", return_value=_HISTORIAL_MOCK):
+        with patch(_PATCH_HISTORIAL, return_value=_HISTORIAL_MOCK):
             data = cliente.get("/api/auditoria/log-carga").json()
+        assert len(data) > 0, "Se esperaba al menos un elemento en el historial"
         entrada = data[0]
         campos_requeridos = [
             "id_log", "nombre_proceso", "tabla_destino", "nombre_archivo",
@@ -80,35 +87,23 @@ class TestLogCarga:
 
 class TestUltimoEstadoTabla:
     def test_retorna_200_cuando_existe(self, cliente):
-        with patch(
-            "servicios.servicio_auditoria.obtener_ultimo_estado_tabla",
-            return_value=_ULTIMO_ESTADO_MOCK,
-        ):
+        with patch(_PATCH_ULTIMO_ESTADO, return_value=_ULTIMO_ESTADO_MOCK):
             resp = cliente.get("/api/auditoria/log-carga/Silver.Dim_Personal")
         assert resp.status_code == 200
 
     def test_retorna_404_cuando_no_existe(self, cliente):
-        with patch(
-            "servicios.servicio_auditoria.obtener_ultimo_estado_tabla",
-            return_value=None,
-        ):
+        with patch(_PATCH_ULTIMO_ESTADO, return_value=None):
             resp = cliente.get("/api/auditoria/log-carga/Tabla.Inexistente")
         assert resp.status_code == 404
 
     def test_error_404_tiene_request_id(self, cliente):
-        with patch(
-            "servicios.servicio_auditoria.obtener_ultimo_estado_tabla",
-            return_value=None,
-        ):
+        with patch(_PATCH_ULTIMO_ESTADO, return_value=None):
             data = cliente.get("/api/auditoria/log-carga/Tabla.Inexistente").json()
         assert "request_id" in data
         assert "timestamp" in data
 
     def test_campos_ultimo_estado(self, cliente):
-        with patch(
-            "servicios.servicio_auditoria.obtener_ultimo_estado_tabla",
-            return_value=_ULTIMO_ESTADO_MOCK,
-        ):
+        with patch(_PATCH_ULTIMO_ESTADO, return_value=_ULTIMO_ESTADO_MOCK):
             data = cliente.get("/api/auditoria/log-carga/Silver.Dim_Personal").json()
         for campo in ["tabla_destino", "estado", "fecha_inicio", "filas_insertadas"]:
             assert campo in data, f"Falta campo '{campo}' en respuesta de último estado"

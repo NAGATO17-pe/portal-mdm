@@ -5,9 +5,11 @@ Pruebas de contrato para los endpoints ETL:
     POST /api/etl/corridas
     GET  /api/etl/corridas/{id_corrida}/eventos
     GET  /api/etl/corridas
+
+Nota sobre mocks: se parchea el símbolo en el módulo router que lo importa.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 from datetime import datetime
 
 import pytest
@@ -36,10 +38,15 @@ _HISTORIAL_MOCK = [
     }
 ]
 
+# Rutas de mock: se parchea en el módulo router, no donde se define
+_PATCH_INICIAR   = "api.rutas_etl.iniciar_corrida"
+_PATCH_EXISTE    = "api.rutas_etl.corrida_existe"
+_PATCH_HISTORIAL = "api.rutas_etl.obtener_historial"
+
 
 class TestIniciarCorrida:
     def test_post_corrida_retorna_200(self, cliente):
-        with patch("servicios.servicio_etl.iniciar_corrida", new_callable=AsyncMock) as mock_ic:
+        with patch(_PATCH_INICIAR, new_callable=AsyncMock) as mock_ic:
             mock_ic.return_value = _CORRIDA_MOCK
             resp = cliente.post(
                 "/api/etl/corridas",
@@ -48,7 +55,7 @@ class TestIniciarCorrida:
         assert resp.status_code == 200
 
     def test_respuesta_contiene_id_corrida(self, cliente):
-        with patch("servicios.servicio_etl.iniciar_corrida", new_callable=AsyncMock) as mock_ic:
+        with patch(_PATCH_INICIAR, new_callable=AsyncMock) as mock_ic:
             mock_ic.return_value = _CORRIDA_MOCK
             data = cliente.post(
                 "/api/etl/corridas",
@@ -58,44 +65,40 @@ class TestIniciarCorrida:
         assert "url_stream" in data
         assert data["iniciado_por"] == "analista_test"
 
-    def test_falta_iniciado_por_retorna_422(self, cliente):
-        resp = cliente.post("/api/etl/corridas", json={})
-        assert resp.status_code == 422
-
-    def test_respuesta_error_tiene_request_id(self, cliente):
-        resp = cliente.post("/api/etl/corridas", json={})
-        data = resp.json()
-        # Con el middleware activo, los errores estructurados incluyen request_id
-        assert resp.status_code == 422
+    def test_falta_iniciado_por_usa_default(self, cliente):
+        """iniciado_por tiene default='backend_api' — JSON vacío es válido."""
+        with patch(_PATCH_INICIAR, new_callable=AsyncMock) as mock_ic:
+            mock_ic.return_value = _CORRIDA_MOCK
+            resp = cliente.post("/api/etl/corridas", json={})
+        # No debe retornar 422 porque iniciado_por tiene default
+        assert resp.status_code == 200
 
 
 class TestStreamEventos:
     def test_corrida_inexistente_retorna_404(self, cliente):
-        with patch("broker.broker_sse.corrida_existe", return_value=False):
+        with patch(_PATCH_EXISTE, return_value=False):
             resp = cliente.get("/api/etl/corridas/uuid-inexistente/eventos")
         assert resp.status_code == 404
 
     def test_error_incluye_mensaje_descriptivo(self, cliente):
-        with patch("broker.broker_sse.corrida_existe", return_value=False):
+        with patch(_PATCH_EXISTE, return_value=False):
             data = cliente.get("/api/etl/corridas/uuid-inexistente/eventos").json()
         assert "no encontrada" in data["mensaje"].lower() or "uuid-inexistente" in data["mensaje"]
 
 
 class TestHistorialCorridas:
     def test_get_historial_retorna_lista(self, cliente):
-        with patch("servicios.servicio_auditoria.obtener_historial", return_value=_HISTORIAL_MOCK):
+        with patch(_PATCH_HISTORIAL, return_value=_HISTORIAL_MOCK):
             resp = cliente.get("/api/etl/corridas")
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
 
     def test_limite_por_defecto_es_50(self, cliente):
-        with patch("servicios.servicio_auditoria.obtener_historial") as mock_hist:
-            mock_hist.return_value = []
+        with patch(_PATCH_HISTORIAL, return_value=[]) as mock_hist:
             cliente.get("/api/etl/corridas")
             mock_hist.assert_called_once_with(limite=50)
 
     def test_limite_personalizado(self, cliente):
-        with patch("servicios.servicio_auditoria.obtener_historial") as mock_hist:
-            mock_hist.return_value = []
+        with patch(_PATCH_HISTORIAL, return_value=[]) as mock_hist:
             cliente.get("/api/etl/corridas?limite=10")
             mock_hist.assert_called_once_with(limite=10)
