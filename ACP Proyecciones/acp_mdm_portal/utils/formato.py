@@ -70,6 +70,7 @@ html, body, [class*="css"] {{
         radial-gradient(ellipse at 10% 0%, rgba(45,90,39,0.06), transparent 50%),
         radial-gradient(ellipse at 90% 100%, rgba(195,141,79,0.06), transparent 50%);
     background-attachment: fixed;
+    animation: fadeIn 0.5s ease-out;
 }}
 
 /* ── Sidebar — Dark Green Glassmorphism ── */

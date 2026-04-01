@@ -127,3 +127,38 @@ Debes asumir ademas lo siguiente como contexto vigente:
 - Existe suite `pytest` en `tests/` para estructura, integridad y calidad.
 - Los checks de clima ya esperan `Sector_Climatico`.
 
+## Addendum 2026-04-01 - Frente Induccion Floral y Tasa de Crecimiento Brotes
+
+Debes asumir como contexto vigente:
+
+### Bronce
+- `Bronce.Induccion_Floral` ya fue ampliada y carga columnas estructurales reales.
+- `Bronce.Tasa_Crecimiento_Brotes` ya fue ampliada y procesa solo `BD_General`.
+- `Valores_Raw` ya no debe ser fuente principal en estos dos dominios.
+
+### Silver
+- `Silver.Fact_Induccion_Floral` existe y carga correctamente.
+- `Silver.Fact_Tasa_Crecimiento_Brotes` existe y carga correctamente.
+- Ambos usan `validar_campana=False`.
+- `ID_Personal = -1` es aceptado de forma transitoria mientras `Dim_Personal` no este poblada.
+
+### Regla de no gafe
+- No fusionar estos dominios dentro de `Fact_Evaluacion_Vegetativa`.
+- No crear Gold nuevo para features del modelo.
+- El modelo futuro debe consumir `Silver`.
+
+### Regla de duplicados
+Si ves duplicados en `Fact_Induccion_Floral`, primero demostrar si vienen de:
+1. archivo repetido en Bronce,
+2. lote repetido,
+3. o fuente realmente duplicada.
+
+No asumir bug del fact sin esa prueba.
+
+### Addendum 2026-04-01 - Fisiologia
+- `Fisiologia` validada con corrida real: `43900` insertados / `1655` pendientes.
+- Residual vigente: `Modulo_Raw = '9.'`.
+- Regla por turno de `Modulo 11`: desactivada por catalogo incompleto.
+- Reglas finales de `9.`: pendientes.
+- Validacion aceptable: solo con rerun real y evidencia SQL comparativa.
+

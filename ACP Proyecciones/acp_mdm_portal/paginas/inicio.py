@@ -181,28 +181,43 @@ def render():
                     with st.status("🛠️ Ejecutando Pipeline ETL...", expanded=True) as status:
                         st.write("Iniciando motor Python externo...")
                         try:
-                            proceso = subprocess.Popen(
-                                [sys.executable, ruta_pipeline],
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT,
-                                text=True,
-                                cwd=os.path.join(directorio_raiz, "ETL"),
+                            import requests
+                            URL_BASE = "http://127.0.0.1:8000"
+                            res = requests.post(
+                                f"{URL_BASE}/api/etl/corridas", 
+                                json={"iniciado_por": "Portal Streamlit"}
                             )
-                            for linea in iter(proceso.stdout.readline, ""):
-                                if linea:
-                                    st.text(linea.strip())
-                            proceso.stdout.close()
-                            codigo = proceso.wait()
+                            
+                            if res.status_code != 200:
+                                st.error(f"El Backend rechazó la petición: {res.text}")
+                                raise Exception("Falla de API")
+
+                            datos = res.json()
+                            url_stream = f"{URL_BASE}{datos['url_stream']}"
+                            st.write(f"Conectado a Backend (ID: {datos['id_corrida'][:8]})")
+
+                            codigo = 0
+                            with requests.get(url_stream, stream=True) as stream:
+                                for linea in stream.iter_lines():
+                                    if linea:
+                                        linea_dec = linea.decode("utf-8")
+                                        if linea_dec.startswith("data: "):
+                                            contenido = linea_dec[6:]
+                                            if contenido == "[FIN_CORRIDA]":
+                                                break
+                                            if "FINALIZÓ CON ERROR" in contenido:
+                                                codigo = 1
+                                            st.text(contenido)
 
                             if codigo == 0:
                                 status.update(label="✅ Pipeline completado exitosamente", state="complete")
-                                st.toast("Carga al Data Warehouse completada.", icon="🎉")
+                                st.toast("Carga al Data Warehouse completada mediante API.", icon="🎉")
                                 st.balloons()
                             else:
-                                status.update(label=f"❌ Falla (Código {codigo})", state="error")
-                                st.error("El pipeline falló. Revisa el log arriba.")
+                                status.update(label=f"❌ Falla de Pipeline en el Backend", state="error")
+                                st.error("El pipeline falló en el Backend. Revisa el log arriba.")
                         except Exception as e:
-                            status.update(label="❌ Error crítico", state="error")
+                            status.update(label="❌ Error crítico de red", state="error")
                             st.error(f"Excepción: {e}")
 
     st.markdown("<hr style='margin: 32px 0;'>", unsafe_allow_html=True)

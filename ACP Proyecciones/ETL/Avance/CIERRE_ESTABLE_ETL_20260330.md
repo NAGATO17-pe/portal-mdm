@@ -474,3 +474,116 @@ Checkpoint operativo oficial recomendado: `ACTIVO`
 - Los tests ya contemplan `Sector_Climatico` en clima.
 - La suite sirve como smoke tecnico del estado estable actual.
 
+## Addendum 2026-04-01 - Induccion Floral y Tasa de Crecimiento Brotes
+
+### Alcance aprobado
+Se deja formalmente registrado que el ETL ya incorpora dos dominios nuevos en estado funcional:
+- `Bronce.Induccion_Floral -> Silver.Fact_Induccion_Floral`
+- `Bronce.Tasa_Crecimiento_Brotes -> Silver.Fact_Tasa_Crecimiento_Brotes`
+
+### Bronce
+Se fortalecieron ambas tablas raw con columnas fisicas reales del layout de negocio.
+
+`Bronce.Induccion_Floral` ya promueve fisicamente:
+- `DNI_Raw`
+- `Fecha_Subida_Raw`
+- `Nombres_Raw`
+- `Consumidor_Raw`
+- `Cama_Raw`
+- `Descripcion_Raw`
+- `PlantasPorCama_Raw`
+- `PlantasConInduccion_Raw`
+- `BrotesConInduccion_Raw`
+- `BrotesTotales_Raw`
+- `BrotesConFlor_Raw`
+
+`Bronce.Tasa_Crecimiento_Brotes` ya promueve fisicamente:
+- `Codigo_Origen_Raw`
+- `Semana_Raw`
+- `Dia_Raw`
+- `DNI_Raw`
+- `Condicion_Raw`
+- `Estado_Vegetativo_Raw`
+- `Cama_Raw`
+- `Tipo_Tallo_Raw`
+- `Ensayo_Raw`
+- `Medida_Raw`
+- `Fecha_Poda_Aux_Raw`
+- `Campana_Raw`
+- `Observacion_Raw`
+- `Tipo_Evaluacion_Raw`
+
+Condicion congelada:
+- `Tasa_Crecimiento_Brotes` solo procesa la hoja `BD_General`.
+- `Valores_Raw` ya no debe contener estructura principal en ninguno de los dos dominios.
+
+### Silver
+`Fact_Induccion_Floral` queda aprobado con:
+- `ID_Geografia`
+- `ID_Tiempo`
+- `ID_Variedad`
+- `ID_Personal`
+- `Tipo_Evaluacion`
+- `Codigo_Consumidor`
+- conteos de plantas y brotes
+- porcentajes recalculados
+
+`Fact_Tasa_Crecimiento_Brotes` queda aprobado con:
+- `ID_Geografia`
+- `ID_Tiempo`
+- `ID_Variedad`
+- `ID_Personal`
+- `Condicion`
+- `Estado_Vegetativo`
+- `Tipo_Tallo`
+- `Codigo_Ensayo`
+- `Codigo_Origen`
+- `Campana`
+- `Fecha_Poda_Aux`
+- `Dias_Desde_Poda`
+- `Medida_Crecimiento`
+
+### Estado operativo validado
+- `Fact_Induccion_Floral`: carga funcional validada
+- `Fact_Tasa_Crecimiento_Brotes`: carga funcional validada
+- sin cuarentena nueva en la ultima corrida observada para estos dos dominios
+
+### Hallazgo importante
+Los duplicados vistos en `Fact_Induccion_Floral` NO corresponden a bug estructural del fact.
+
+Diagnostico confirmado:
+- el mismo archivo de prueba fue cargado dos veces en `Bronce.Induccion_Floral`
+- Silver replico esa duplicidad de origen
+
+Dictamen congelado:
+- no abrir por ahora parche anti-duplicado en Silver
+- primero debe definirse politica de recarga por archivo/lote
+
+### ID_Personal
+- `ID_Personal = -1` se considera esperado por ahora
+- motivo: `Dim_Personal` aun no esta poblada para estos dominios
+- no tratar este punto como falla del fact mientras la dimension siga vacia o incompleta
+
+### Recomendacion final consolidada
+1. Mantener ambos dominios como facts separados.
+2. No ensanchar `Fact_Evaluacion_Vegetativa` con estas medidas.
+3. No abrir Gold nuevo para estos dominios en esta fase.
+4. Cuando se entre a modelado, consumir estas features desde `Silver`, no desde `Gold`.
+
+## Addendum 2026-04-01 - Fisiologia y Regla de Modulo
+
+### Validacion real consolidada
+- `Fact_Fisiologia = 43900`
+- `Bronce.Fisiologia.PROCESADO = 43900`
+- `Bronce.Fisiologia.CARGADO = 1655`
+
+### Hallazgo aprobado
+- La regla por turno de `Modulo 11` genero regresion real y quedo desactivada.
+- El pipeline volvio al baseline sano.
+- El residual vigente queda concentrado solo en `Modulo_Raw = '9.'`.
+
+### Regla de no regresion actualizada
+1. No reactivar regla por turno de `Modulo 11` sin catalogo geografico completo.
+2. No declarar regla final de `9.` mientras negocio y MDM no cierren turnos/valvulas al 100%.
+3. No considerar revision de sintaxis como validacion funcional suficiente para este frente.
+

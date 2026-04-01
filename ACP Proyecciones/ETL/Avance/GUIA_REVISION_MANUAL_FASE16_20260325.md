@@ -189,3 +189,15 @@ Interpretacion vigente:
 - `Fact_Tareo` sigue pendiente por ausencia de `Fundo/Modulo` en la fuente actual.
 - Si el archivo no trae geografia resoluble, el estado correcto es `diagnosticado y pendiente`, no `bug oculto`.
 
+## Addendum 2026-04-01 - Revision de Fisiologia
+
+Usar como referencia operativa:
+- baseline sano: `43900`
+- residual controlado: `1655`
+- foco residual: `Modulo_Raw = '9.'`
+
+Si reaparece residual fuerte fuera de `9.`:
+1. revisar reglas activas de modulo;
+2. revisar catalogo geográfico y `SubModulo`;
+3. comparar contra baseline real antes de abrir nuevo parche.
+

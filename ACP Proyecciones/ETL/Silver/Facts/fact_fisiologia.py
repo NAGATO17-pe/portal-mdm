@@ -11,7 +11,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy import text
 
 from utils.fechas    import procesar_fecha, obtener_id_tiempo
-from utils.texto     import normalizar_modulo, es_test_block, mayusculas
+from utils.texto     import normalizar_modulo, es_test_block
 from utils.sql_lotes import marcar_estado_carga_por_ids
 from dq.cuarentena   import enviar_a_cuarentena
 from mdm.lookup      import obtener_id_geografia, obtener_id_variedad
@@ -29,8 +29,72 @@ def _a_int(valor) -> int | None:
         return None
 
 
+def _parsear_valores_raw(texto: str | None) -> dict[str, str]:
+    if texto is None:
+        return {}
+
+    crudo = str(texto).strip()
+    if not crudo:
+        return {}
+
+    resultado: dict[str, str] = {}
+    for parte in crudo.split('|'):
+        if '=' not in parte:
+            continue
+        clave, valor = parte.split('=', 1)
+        clave = str(clave).strip()
+        valor = str(valor).strip()
+        if clave:
+            resultado[clave] = valor
+    return resultado
+
+
+def _obtener_columna_sql(columnas_disponibles: set[str], nombre_columna: str) -> str:
+    if nombre_columna in columnas_disponibles:
+        return nombre_columna
+    return f"CAST(NULL AS NVARCHAR(MAX)) AS {nombre_columna}"
+
+
+def _obtener_valor_raw(fila: pd.Series, nombre_columna: str):
+    valor = fila.get(nombre_columna)
+    if valor is not None and str(valor).strip() not in ('', 'None', 'nan'):
+        return valor
+
+    valores_raw = _parsear_valores_raw(fila.get('Valores_Raw'))
+    valor_serializado = valores_raw.get(nombre_columna)
+    if valor_serializado is None or str(valor_serializado).strip() in ('', 'None', 'nan'):
+        return None
+    return valor_serializado
+
+
 def _leer_bronce(engine: Engine) -> pd.DataFrame:
     with engine.connect() as conexion:
+        columnas_resultado = conexion.execute(text("""
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = 'Bronce'
+              AND TABLE_NAME = 'Fisiologia'
+        """)).fetchall()
+        columnas_disponibles = {str(fila[0]) for fila in columnas_resultado}
+
+        columnas_select = [
+            'ID_Fisiologia',
+            _obtener_columna_sql(columnas_disponibles, 'Fecha_Raw'),
+            _obtener_columna_sql(columnas_disponibles, 'Fundo_Raw'),
+            _obtener_columna_sql(columnas_disponibles, 'Sector_Raw'),
+            _obtener_columna_sql(columnas_disponibles, 'Modulo_Raw'),
+            _obtener_columna_sql(columnas_disponibles, 'Turno_Raw'),
+            _obtener_columna_sql(columnas_disponibles, 'Valvula_Raw'),
+            _obtener_columna_sql(columnas_disponibles, 'Variedad_Raw'),
+            _obtener_columna_sql(columnas_disponibles, 'Tercio_Raw'),
+            _obtener_columna_sql(columnas_disponibles, 'Hinchadas_Raw'),
+            _obtener_columna_sql(columnas_disponibles, 'Productivas_Raw'),
+            _obtener_columna_sql(columnas_disponibles, 'Total_Org_Raw'),
+            _obtener_columna_sql(columnas_disponibles, 'Brote_Raw'),
+            _obtener_columna_sql(columnas_disponibles, 'BrotesProd_Raw'),
+            _obtener_columna_sql(columnas_disponibles, 'BrotesVeg_Raw'),
+            _obtener_columna_sql(columnas_disponibles, 'Valores_Raw'),
+        ]
         resultado = conexion.execute(text(f"""
             WITH LoteActual AS (
                 SELECT TOP (1)
@@ -42,11 +106,7 @@ def _leer_bronce(engine: Engine) -> pd.DataFrame:
                 ORDER BY Fecha_Sistema DESC, ID_Fisiologia DESC
             )
             SELECT
-                ID_Fisiologia,
-                Fecha_Raw, Fundo_Raw, Modulo_Raw,
-                Variedad_Raw, Tercio_Raw,
-                Hinchadas_Raw, Productivas_Raw,
-                Total_Org_Raw, Brote_Raw
+                {", ".join(columnas_select)}
             FROM {TABLA_ORIGEN} f
             INNER JOIN LoteActual l
                 ON f.Fecha_Sistema = l.Fecha_Sistema
@@ -77,8 +137,22 @@ def cargar_fact_fisiologia(engine: Engine) -> dict:
                 resumen['rechazados'] += 1
                 continue
 
-            modulo = None if es_test_block(fila.get('Modulo_Raw')) else normalizar_modulo(fila.get('Modulo_Raw'))
-            id_geo = obtener_id_geografia(fila.get('Fundo_Raw'), None, modulo, engine)
+            modulo_raw = _obtener_valor_raw(fila, 'Modulo_Raw')
+            turno_raw = _obtener_valor_raw(fila, 'Turno_Raw')
+            valvula_raw = _obtener_valor_raw(fila, 'Valvula_Raw')
+            fundo_raw = _obtener_valor_raw(fila, 'Fundo_Raw')
+            sector_raw = _obtener_valor_raw(fila, 'Sector_Raw')
+
+            modulo = None if es_test_block(modulo_raw) else normalizar_modulo(modulo_raw)
+            id_geo = obtener_id_geografia(
+                fundo_raw,
+                sector_raw,
+                modulo,
+                engine,
+                turno=turno_raw,
+                valvula=valvula_raw,
+                cama=None,
+            )
             id_var = obtener_id_variedad(fila.get('Variedad_Canonica'), engine)
 
             if not id_geo or not id_var:
@@ -86,7 +160,7 @@ def cargar_fact_fisiologia(engine: Engine) -> dict:
                 continue
 
             # Tercio: normalizar BAJO/MEDIO/ALTO
-            tercio_raw = str(fila.get('Tercio_Raw', '')).strip().upper()
+            tercio_raw = str(_obtener_valor_raw(fila, 'Tercio_Raw') or '').strip().upper()
             tercio_map = {
                 'BAJO': 'BAJO', 'B': 'BAJO', 'LOW': 'BAJO',
                 'MEDIO': 'MEDIO', 'M': 'MEDIO', 'MID': 'MEDIO',
@@ -96,7 +170,11 @@ def cargar_fact_fisiologia(engine: Engine) -> dict:
 
             # Brote_Raw — puede venir como un número único (productivos)
             # o como texto combinado. Se guarda en Brotes_Productivos.
-            brotes_prod = _a_int(fila.get('Brote_Raw'))
+            brotes_prod = _a_int(_obtener_valor_raw(fila, 'BrotesProd_Raw'))
+            if brotes_prod is None:
+                brotes_prod = _a_int(_obtener_valor_raw(fila, 'Brote_Raw'))
+
+            brotes_veg = _a_int(_obtener_valor_raw(fila, 'BrotesVeg_Raw'))
 
             conexion.execute(text("""
                 INSERT INTO Silver.Fact_Fisiologia (
@@ -106,7 +184,7 @@ def cargar_fact_fisiologia(engine: Engine) -> dict:
                     Fecha_Evento, Fecha_Sistema, Estado_DQ
                 ) VALUES (
                     :id_geo, :id_tiempo, :id_variedad,
-                    :tercio, :brotes_prod, NULL,
+                    :tercio, :brotes_prod, :brotes_veg,
                     :hinchadas, :productivas, :total_organos,
                     :fecha_evento, SYSDATETIME(), 'OK'
                 )
@@ -116,9 +194,10 @@ def cargar_fact_fisiologia(engine: Engine) -> dict:
                 'id_variedad':   id_var,
                 'tercio':        tercio,
                 'brotes_prod':   brotes_prod,
-                'hinchadas':     _a_int(fila.get('Hinchadas_Raw')),
-                'productivas':   _a_int(fila.get('Productivas_Raw')),
-                'total_organos': _a_int(fila.get('Total_Org_Raw')),
+                'brotes_veg':    brotes_veg,
+                'hinchadas':     _a_int(_obtener_valor_raw(fila, 'Hinchadas_Raw')),
+                'productivas':   _a_int(_obtener_valor_raw(fila, 'Productivas_Raw')),
+                'total_organos': _a_int(_obtener_valor_raw(fila, 'Total_Org_Raw')),
                 'fecha_evento':  fecha,
             })
             ids_procesados.append(int(fila['ID_Fisiologia']))

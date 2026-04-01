@@ -30,6 +30,8 @@ from silver.facts.fact_evaluacion_pesos import cargar_fact_evaluacion_pesos
 from silver.facts.fact_tareo import cargar_fact_tareo
 from silver.facts.fact_fisiologia import cargar_fact_fisiologia
 from silver.facts.fact_evaluacion_vegetativa import cargar_fact_evaluacion_vegetativa
+from silver.facts.fact_induccion_floral import cargar_fact_induccion_floral
+from silver.facts.fact_tasa_crecimiento_brotes import cargar_fact_tasa_crecimiento_brotes
 from silver.facts.fact_sanidad_activo import cargar_fact_sanidad_activo
 from silver.facts.fact_ciclo_poda import cargar_fact_ciclo_poda
 
@@ -158,7 +160,7 @@ def _contar_bridge_geografia_cama(engine) -> int:
 def ejecutar() -> None:
     inicio = _encabezado()
     engine = obtener_engine()
-    total = 20
+    total = 22
     resumen = {}
 
     _paso(1, total, 'Verificando conexion SQL Server...')
@@ -266,8 +268,10 @@ def ejecutar() -> None:
         (14, 'Fact_Tareo', 'Silver.Fact_Tareo', cargar_fact_tareo),
         (15, 'Fact_Fisiologia', 'Silver.Fact_Fisiologia', cargar_fact_fisiologia),
         (16, 'Fact_Evaluacion_Vegetativa', 'Silver.Fact_Evaluacion_Vegetativa', cargar_fact_evaluacion_vegetativa),
-        (17, 'Fact_Sanidad_Activo', 'Silver.Fact_Sanidad_Activo', cargar_fact_sanidad_activo),
-        (18, 'Fact_Ciclo_Poda', 'Silver.Fact_Ciclo_Poda', cargar_fact_ciclo_poda),
+        (17, 'Fact_Induccion_Floral', 'Silver.Fact_Induccion_Floral', cargar_fact_induccion_floral),
+        (18, 'Fact_Tasa_Crecimiento_Brotes', 'Silver.Fact_Tasa_Crecimiento_Brotes', cargar_fact_tasa_crecimiento_brotes),
+        (19, 'Fact_Sanidad_Activo', 'Silver.Fact_Sanidad_Activo', cargar_fact_sanidad_activo),
+        (20, 'Fact_Ciclo_Poda', 'Silver.Fact_Ciclo_Poda', cargar_fact_ciclo_poda),
     ]
 
     for numero, nombre, tabla_destino, funcion in facts:
@@ -295,7 +299,7 @@ def ejecutar() -> None:
                 'mensaje': str(error),
             })
 
-    _paso(19, total, 'Refrescando Marts Gold...')
+    _paso(21, total, 'Refrescando Marts Gold...')
     try:
         resumen_marts = refrescar_todos_los_marts(engine, resumen_etl=resumen)
         for mart, valor in resumen_marts.items():
@@ -303,7 +307,7 @@ def ejecutar() -> None:
     except Exception as error:
         print(f'  ERROR en Gold: {error}')
 
-    _paso(20, total, 'Finalizando...')
+    _paso(22, total, 'Finalizando...')
     _resumen_final(inicio, resumen)
 
 

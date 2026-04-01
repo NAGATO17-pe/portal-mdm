@@ -189,3 +189,16 @@ Implicancia operativa:
 - Los tests ya contemplan `Sector_Climatico` en clima.
 - La suite sirve como smoke tecnico del estado estable actual.
 
+## Addendum 2026-04-01 - Fisiologia
+
+### Estado operativo validado hoy
+- `Fact_Fisiologia = 43900`
+- `Bronce.Fisiologia.PROCESADO = 43900`
+- `Bronce.Fisiologia.CARGADO = 1655`
+
+### Criterio de operacion
+1. Mantener baseline actual como referencia.
+2. No reactivar regla por turno de `Modulo 11` sin catalogo completo.
+3. Tratar `9.` como backlog controlado mientras negocio no cierre regla final.
+4. No cerrar cambios de este frente sin rerun real y evidencia SQL.
+

@@ -31,6 +31,40 @@ def test_existe_fact_evaluacion_vegetativa(engine):
     )
 
 
+def test_existe_fact_induccion_floral(engine):
+    assert_tabla_existe(engine, 'Silver', 'Fact_Induccion_Floral')
+    assert_columnas_existen(
+        engine,
+        'Silver',
+        'Fact_Induccion_Floral',
+        [
+            'ID_Geografia',
+            'ID_Tiempo',
+            'ID_Personal',
+            'ID_Variedad',
+            'Cantidad_Plantas_Por_Cama',
+            'Cantidad_Brotes_Totales',
+        ],
+    )
+
+
+def test_existe_fact_tasa_crecimiento_brotes(engine):
+    assert_tabla_existe(engine, 'Silver', 'Fact_Tasa_Crecimiento_Brotes')
+    assert_columnas_existen(
+        engine,
+        'Silver',
+        'Fact_Tasa_Crecimiento_Brotes',
+        [
+            'ID_Geografia',
+            'ID_Tiempo',
+            'ID_Personal',
+            'ID_Variedad',
+            'Codigo_Ensayo',
+            'Medida_Crecimiento',
+        ],
+    )
+
+
 def test_existe_fact_ciclo_poda(engine):
     assert_tabla_existe(engine, 'Silver', 'Fact_Ciclo_Poda')
     assert_columnas_existen(

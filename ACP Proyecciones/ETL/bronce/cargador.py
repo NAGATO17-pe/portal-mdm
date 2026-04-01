@@ -68,19 +68,23 @@ _FIRMAS_LAYOUT_CRITICO: dict[str, dict[str, Any]] = {
         'ruta_canonica': 'fisiologia',
         'columnas_obligatorias': {
             'Fecha_Raw',
-            'Fundo_Raw',
             'Modulo_Raw',
             'Variedad_Raw',
             'Tercio_Raw',
             'Hinchadas_Raw',
             'Productivas_Raw',
             'Total_Org_Raw',
-            'Brote_Raw',
         },
+        'columnas_geo_alternativas': (
+            {'Fundo_Raw'},
+            {'Turno_Raw', 'Valvula_Raw'},
+        ),
+        'columnas_brote_alternativas': (
+            {'Brote_Raw'},
+            {'BrotesProd_Raw'},
+        ),
         'columnas_incompatibles': {
             'DNI_Raw',
-            'Turno_Raw',
-            'Valvula_Raw',
             'Cama_Raw',
             'Descripcion_Raw',
             'Evaluacion_Raw',
@@ -101,12 +105,50 @@ _FIRMAS_LAYOUT_CRITICO: dict[str, dict[str, Any]] = {
         },
         'motivo': (
             'El layout recibido no corresponde al fact actual de Fisiologia. '
-            'Se detectaron columnas de evaluacion vegetativa o geografia operativa no compatibles.'
+            'Se detectaron columnas incompatibles o faltan componentes minimos de geografia/biologia para el fact.'
         ),
+        'rechazar_por_faltantes': True,
     },
 }
 
 _FIRMAS_RUTA_SUGERIDA: dict[str, dict[str, Any]] = {
+    'induccion_floral': {
+        'tabla_destino': 'Bronce.Induccion_Floral',
+        'columnas_clave': {
+            'Fecha_Raw',
+            'DNI_Raw',
+            'Modulo_Raw',
+            'Turno_Raw',
+            'Valvula_Raw',
+            'Cama_Raw',
+            'Descripcion_Raw',
+            'Tipo_Evaluacion_Raw',
+            'PlantasPorCama_Raw',
+            'PlantasConInduccion_Raw',
+            'BrotesConInduccion_Raw',
+            'BrotesTotales_Raw',
+            'BrotesConFlor_Raw',
+        },
+    },
+    'tasa_crecimiento_brotes': {
+        'tabla_destino': 'Bronce.Tasa_Crecimiento_Brotes',
+        'columnas_clave': {
+            'Fecha_Raw',
+            'DNI_Raw',
+            'Modulo_Raw',
+            'Turno_Raw',
+            'Valvula_Raw',
+            'Cama_Raw',
+            'Condicion_Raw',
+            'Estado_Vegetativo_Raw',
+            'Tipo_Tallo_Raw',
+            'Ensayo_Raw',
+            'Medida_Raw',
+            'Fecha_Poda_Aux_Raw',
+            'Campana_Raw',
+            'Tipo_Evaluacion_Raw',
+        },
+    },
     'evaluacion_vegetativa': {
         'tabla_destino': 'Bronce.Evaluacion_Vegetativa',
         'columnas_clave': {
@@ -219,6 +261,7 @@ _ALIAS_COLUMNAS: dict[str, str] = {
     # Sector
     'Sector':                     'Sector',
     'sector':                     'Sector',
+    'SECTOR':                     'Sector',
     # Clima
     'T_Max':                      'TempMax',
     'T_Min':                      'TempMin',
@@ -263,6 +306,14 @@ _ALIAS_COLUMNAS: dict[str, str] = {
     'Peso_cosechables':           'PesoCosechables',
     'PesoBaya':                   'PesoBaya',
     'CantMuestra':                'CantMuestra',
+    # Fisiologia
+    'TERCIO':                     'Tercio',
+    'HINCHADAS':                  'Hinchadas',
+    'PRODUCTIVAS':                'Productivas',
+    'TOTAL_ORG':                  'Total_Org',
+    'BROTE':                      'Brote',
+    'BROTESPROD':                 'BrotesProd',
+    'BROTESVEG':                  'BrotesVeg',
 }
 
 _ALIAS_COLUMNAS_CASEFOLD: dict[str, str] = {
@@ -464,15 +515,21 @@ def _extraer_sector_climatico_desde_archivo(ruta_archivo: Path) -> str | None:
     return coincidencia.group(1) if coincidencia else None
 
 
-def _leer_excel_clima_bd(ruta_archivo: Path) -> pd.DataFrame:
+def _leer_excel_especial(
+    ruta_archivo: Path,
+    *,
+    header_idx: int,
+    sheet_name: str | int | None = 0,
+) -> pd.DataFrame:
     """
-    Lee el layout analitico de clima desde la hoja BD.
-    El header real esta en la fila 3 del Excel (header=2).
+    Lee un Excel con layout conocido, elimina filas/columnas totalmente vacias
+    y normaliza encabezados a la convención _Raw del ETL.
     """
     df = pd.read_excel(
         str(ruta_archivo),
-        sheet_name='BD',
-        header=2,
+        sheet_name=sheet_name,
+        header=header_idx,
+        dtype=str,
         engine='openpyxl',
     )
     if df.empty:
@@ -480,7 +537,17 @@ def _leer_excel_clima_bd(ruta_archivo: Path) -> pd.DataFrame:
 
     df = df.dropna(how='all')
     df = df.loc[:, ~df.columns.isna()]
-    df = normalizar_columnas(df)
+    return normalizar_columnas(df)
+
+
+def _leer_excel_clima_bd(ruta_archivo: Path) -> pd.DataFrame:
+    """
+    Lee el layout analitico de clima desde la hoja BD.
+    El header real esta en la fila 3 del Excel (header=2).
+    """
+    df = _leer_excel_especial(ruta_archivo, sheet_name='BD', header_idx=2)
+    if df.empty:
+        return df
 
     sector = _extraer_sector_climatico_desde_archivo(ruta_archivo)
     if sector:
@@ -529,6 +596,124 @@ def _proyectar_dataframe_clima_bronce(
     df_salida = pd.DataFrame(columnas_base, index=df.index)
 
     columnas_usadas = set(df_salida.columns)
+    columnas_extra = [col for col in df.columns if col not in columnas_usadas]
+    if columnas_extra:
+        df_salida['Valores_Raw'] = _serializar_valores_extra(df, columnas_extra)
+
+    return df_salida
+
+
+def _proyectar_dataframe_induccion_floral_bronce(ruta_archivo: Path) -> pd.DataFrame:
+    """
+    Proyecta el layout real de Induccion Floral a columnas fisicas de Bronce.
+    El archivo trae titulo en fila 1 y encabezado real en fila 2.
+    """
+    df = _leer_excel_especial(ruta_archivo, header_idx=1)
+    if df.empty:
+        return df
+
+    columnas_salida = {
+        'Fecha_Raw': _serie_o_nulos(df, 'Fecha_Raw'),
+        'DNI_Raw': _serie_o_nulos(df, 'DNI_Raw'),
+        'Fecha_Subida_Raw': _serie_o_nulos(df, 'Fecha_Subida_Raw'),
+        'Nombres_Raw': _serie_o_nulos(df, 'Nombres_Raw'),
+        'Evaluador_Raw': _serie_o_nulos(df, 'Nombres_Raw'),
+        'Consumidor_Raw': _serie_o_nulos(df, 'Consumidor_Raw'),
+        'Modulo_Raw': _serie_o_nulos(df, 'Modulo_Raw'),
+        'Turno_Raw': _serie_o_nulos(df, 'Turno_Raw'),
+        'Valvula_Raw': _serie_o_nulos(df, 'Valvula_Raw'),
+        'Tipo_Evaluacion_Raw': _serie_o_nulos(df, 'Evaluacion_Raw'),
+        'Cama_Raw': _serie_o_nulos(df, 'Cama_Raw'),
+        'Descripcion_Raw': _serie_o_nulos(df, 'Descripcion_Raw'),
+        'Variedad_Raw': _serie_o_nulos(df, 'Descripcion_Raw'),
+        'PlantasPorCama_Raw': _serie_o_nulos(df, 'Plantas_por_Cama_Raw'),
+        'PlantasConInduccion_Raw': _serie_o_nulos(df, 'Plantas_con_Induccion_Raw'),
+        'BrotesConInduccion_Raw': _serie_o_nulos(df, 'Brotes_con_Induccion_Raw'),
+        'BrotesTotales_Raw': _serie_o_nulos(df, 'Brotes_Totales_Raw'),
+        'BrotesConFlor_Raw': _serie_o_nulos(df, 'Brotes_con_Flor_Raw'),
+    }
+
+    df_salida = pd.DataFrame(columnas_salida, index=df.index)
+    columnas_usadas = {
+        'Fecha_Raw',
+        'DNI_Raw',
+        'Fecha_Subida_Raw',
+        'Nombres_Raw',
+        'Consumidor_Raw',
+        'Modulo_Raw',
+        'Turno_Raw',
+        'Valvula_Raw',
+        'Evaluacion_Raw',
+        'Cama_Raw',
+        'Descripcion_Raw',
+        'Plantas_por_Cama_Raw',
+        'Plantas_con_Induccion_Raw',
+        'Brotes_con_Induccion_Raw',
+        'Brotes_Totales_Raw',
+        'Brotes_con_Flor_Raw',
+    }
+    columnas_extra = [col for col in df.columns if col not in columnas_usadas]
+    if columnas_extra:
+        df_salida['Valores_Raw'] = _serializar_valores_extra(df, columnas_extra)
+
+    return df_salida
+
+
+def _proyectar_dataframe_tasa_crecimiento_brotes_bronce(ruta_archivo: Path) -> pd.DataFrame:
+    """
+    Proyecta Tasa de Crecimiento desde la hoja BD_General.
+    Solo esta hoja representa el grano raw util para ETL.
+    """
+    df = _leer_excel_especial(ruta_archivo, sheet_name='BD_General', header_idx=1)
+    if df.empty:
+        return df
+
+    columnas_salida = {
+        'Codigo_Origen_Raw': _serie_o_nulos(df, 'Unnamed0_Raw'),
+        'Semana_Raw': _serie_o_nulos(df, 'Semana_Raw'),
+        'Dia_Raw': _serie_o_nulos(df, 'Dia_Raw'),
+        'Fecha_Raw': _serie_o_nulos(df, 'Fecha_Raw'),
+        'DNI_Raw': _serie_o_nulos(df, 'DNI_Raw'),
+        'Evaluador_Raw': _serie_o_nulos(df, 'EVALUADOR_A_Raw'),
+        'Modulo_Raw': _serie_o_nulos(df, 'Mod_Raw'),
+        'Turno_Raw': _serie_o_nulos(df, 'Tur_Raw'),
+        'Valvula_Raw': _serie_o_nulos(df, 'Val_Raw'),
+        'Condicion_Raw': _serie_o_nulos(df, 'Condicion_Raw'),
+        'Estado_Vegetativo_Raw': _serie_o_nulos(df, 'Estado_Vegetativo_Raw'),
+        'Variedad_Raw': _serie_o_nulos(df, 'Variedad_Raw'),
+        'Cama_Raw': _serie_o_nulos(df, 'Cama_Raw'),
+        'Tipo_Tallo_Raw': _serie_o_nulos(df, 'Tipo_de_Tallo_Raw'),
+        'Ensayo_Raw': _serie_o_nulos(df, 'Ensayo_Raw'),
+        'Medida_Raw': _serie_o_nulos(df, 'Medida_Raw'),
+        'Fecha_Poda_Aux_Raw': _serie_o_nulos(df, 'Fecha_Poda_Aux_Raw'),
+        'Campana_Raw': _serie_o_nulos(df, 'CAMPANA_Raw'),
+        'Observacion_Raw': _serie_o_nulos(df, 'Observacion_Raw'),
+        'Tipo_Evaluacion_Raw': _serie_o_nulos(df, 'Evaluacion_Raw'),
+    }
+
+    df_salida = pd.DataFrame(columnas_salida, index=df.index)
+    columnas_usadas = {
+        'Unnamed0_Raw',
+        'Semana_Raw',
+        'Dia_Raw',
+        'Fecha_Raw',
+        'DNI_Raw',
+        'EVALUADOR_A_Raw',
+        'Mod_Raw',
+        'Tur_Raw',
+        'Val_Raw',
+        'Condicion_Raw',
+        'Estado_Vegetativo_Raw',
+        'Variedad_Raw',
+        'Cama_Raw',
+        'Tipo_de_Tallo_Raw',
+        'Ensayo_Raw',
+        'Medida_Raw',
+        'Fecha_Poda_Aux_Raw',
+        'CAMPANA_Raw',
+        'Observacion_Raw',
+        'Evaluacion_Raw',
+    }
     columnas_extra = [col for col in df.columns if col not in columnas_usadas]
     if columnas_extra:
         df_salida['Valores_Raw'] = _serializar_valores_extra(df, columnas_extra)
@@ -723,10 +908,28 @@ def _validar_layout_critico(
     faltantes = sorted(columnas_obligatorias - columnas_detectadas)
     columnas_incompatibles = sorted(columnas_detectadas & set(firma.get('columnas_incompatibles', set())))
 
+    columnas_geo_alternativas = tuple(
+        set(grupo) for grupo in firma.get('columnas_geo_alternativas', tuple())
+    )
+    if columnas_geo_alternativas and not any(
+        grupo.issubset(columnas_detectadas)
+        for grupo in columnas_geo_alternativas
+    ):
+        faltantes.append('Fundo_Raw o Turno_Raw+Valvula_Raw')
+
+    columnas_brote_alternativas = tuple(
+        set(grupo) for grupo in firma.get('columnas_brote_alternativas', tuple())
+    )
+    if columnas_brote_alternativas and not any(
+        grupo.issubset(columnas_detectadas)
+        for grupo in columnas_brote_alternativas
+    ):
+        faltantes.append('Brote_Raw o BrotesProd_Raw')
+
     if not faltantes:
         return None
 
-    if not columnas_incompatibles:
+    if not columnas_incompatibles and not firma.get('rechazar_por_faltantes', False):
         return None
 
     ruta_sugerida, _ = _detectar_ruta_sugerida(columnas_detectadas, nombre_carpeta)
@@ -804,6 +1007,10 @@ def cargar_archivo(nombre_carpeta: str,
     try:
         if nombre_carpeta in {'reporte_clima', 'variables_meteorologicas'}:
             df = _proyectar_dataframe_clima_bronce(ruta_archivo, tabla_destino)
+        elif nombre_carpeta == 'induccion_floral':
+            df = _proyectar_dataframe_induccion_floral_bronce(ruta_archivo)
+        elif nombre_carpeta == 'tasa_crecimiento_brotes':
+            df = _proyectar_dataframe_tasa_crecimiento_brotes_bronce(ruta_archivo)
         else:
             header_idx = _detectar_header_idx(ruta_archivo, tabla_destino, engine)
             df = pd.read_excel(str(ruta_archivo), header=header_idx, dtype=str, engine='openpyxl')

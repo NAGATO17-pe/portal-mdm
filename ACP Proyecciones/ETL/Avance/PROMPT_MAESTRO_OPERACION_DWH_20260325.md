@@ -102,3 +102,114 @@ Debes asumir ademas lo siguiente como contexto vigente:
 - Existe suite `pytest` en `tests/` para estructura, integridad y calidad.
 - Los checks de clima ya esperan `Sector_Climatico`.
 
+
+## Addendum 2026-03-31 - Protocolo maestro del frente Clima
+
+A partir de esta fecha, debes asumir como verdad operativa vigente lo siguiente:
+
+### Estado del portal
+- El portal tipo Streamlit queda fuera del frente actual de ejecucion.
+- Se mantiene solo como antecedente de diseno.
+- La direccion aprobada es reemplazarlo despues por una solucion mas robusta; no abrir implementacion de portal salvo instruccion explicita.
+
+### Reglas vigentes de clima
+1. `Fact_Telemetria_Clima` trabaja con dos orígenes:
+   - `Bronce.Reporte_Clima`
+   - `Bronce.Variables_Meteorologicas`
+2. `Sector_Climatico` se toma directo desde el archivo o el raw; no se resuelve contra `Dim_Geografia`.
+3. Las fechas climaticas se parsean con `validar_campana=False`.
+4. Si la fecha existe como valor parseable pero no tiene `ID_Tiempo` en `Dim_Tiempo`, el registro va a cuarentena; no debe romper el fact por FK.
+5. `Dim_Tiempo` ya debe cubrir historico desde `2020-01-01` hasta `2026-06-30`.
+6. La columna tecnica correcta de `Bronce.Variables_Meteorologicas` es `ID_Variables_Met`; no usar `ID_Variables_Meteorologicas` para updates de estado.
+7. La hora de `Variables_Meteorologicas` no esta en columna fisica dedicada; debe extraerse desde `Valores_Raw` con patron `Hora_Raw=HH:MM:SS`.
+8. El grano valido del fact es `Sector_Climatico + Fecha_Evento` con timestamp completo.
+
+### Regla maestra de duplicados en clima
+Cuando existan multiples filas para la misma clave logica `Sector_Climatico + Fecha_Evento`:
+- si las metricas son identicas, conservar una sola fila y descartar el resto silenciosamente como duplicado exacto;
+- si las metricas difieren, marcar todo el grupo como `duplicado logico conflictivo`, enviarlo a `MDM.Cuarentena` y NO insertarlo en Silver.
+
+Campos metricos considerados en conflicto:
+- para `Reporte_Clima`: `Temperatura_Max_C`, `Temperatura_Min_C`, `Humedad_Relativa_Pct`, `Precipitacion_mm`
+- para `Variables_Meteorologicas`: `Temperatura_Max_C`, `Temperatura_Min_C`, `Humedad_Relativa_Pct`, `VPD`, `Radiacion_Solar`
+
+### Evidencia operativa validada al 2026-03-31
+- Se detecto reproceso masivo artificial por uso incorrecto de columna de estado en Bronce.
+- Se recupero correctamente la hora subdiaria desde `Valores_Raw`.
+- Se valido caso conflictivo real en `F07`, `2025-11-25 14:30:00`.
+- La corrida limpia posterior dejo la validacion de duplicados en Silver en `0` filas.
+- Los conflictos reales ahora quedan trazados en `MDM.Cuarentena` y no contaminan `Silver.Fact_Telemetria_Clima`.
+
+### Protocolo de auditoria obligatoria para clima
+Despues de cualquier cambio en clima, ejecutar y revisar:
+
+```sql
+SELECT
+    Sector_Climatico,
+    Fecha_Evento,
+    COUNT(*) AS Filas
+FROM Silver.Fact_Telemetria_Clima
+WHERE Precipitacion_mm IS NULL
+  AND (VPD IS NOT NULL OR Radiacion_Solar IS NOT NULL)
+GROUP BY Sector_Climatico, Fecha_Evento
+HAVING COUNT(*) > 1
+ORDER BY Fecha_Evento DESC;
+```
+
+```sql
+SELECT TOP (20)
+    Fecha_Ingreso,
+    Campo_Origen,
+    Valor_Recibido,
+    Motivo,
+    ID_Registro_Origen
+FROM MDM.Cuarentena
+WHERE Tabla_Origen = 'Bronce.Clima'
+ORDER BY ID_Cuarentena DESC;
+```
+
+Si la primera query devuelve filas, el frente clima NO se considera cerrado.
+
+### Dictamen maestro vigente
+El frente clima ya no se considera exploratorio.
+Queda en estado operativo estable, con trazabilidad, control de conflicto y protocolo claro de reproceso limpio.
+
+## Addendum 2026-04-01 - Protocolo maestro para Induccion Floral y Tasa de Crecimiento Brotes
+
+Debes asumir como verdad operativa vigente:
+
+### Estado de Bronce
+1. `Bronce.Induccion_Floral` usa loader especial; no debe pasar por el flujo generico.
+2. `Bronce.Tasa_Crecimiento_Brotes` usa loader especial y solo procesa `BD_General`.
+3. En ambos casos, `Valores_Raw` debe quedar vacio para la estructura principal del layout real.
+
+### Estado de Silver
+1. Existen y deben mantenerse:
+   - `Silver.Fact_Induccion_Floral`
+   - `Silver.Fact_Tasa_Crecimiento_Brotes`
+2. Ambos facts trabajan con `validar_campana=False`.
+3. `ID_Personal = -1` es aceptable mientras `Dim_Personal` no resuelva los DNIs de estas fuentes.
+
+### Regla maestra de diagnostico
+Si `Fact_Induccion_Floral` aparece duplicado:
+1. revisar primero `Bronce.Induccion_Floral`;
+2. revisar `Nombre_Archivo + Fecha_Sistema`;
+3. distinguir si el duplicado viene de:
+   - recarga del mismo archivo,
+   - lote repetido,
+   - o fuente realmente duplicada.
+
+No abras parche anti-duplicado definitivo en Silver sin cerrar primero esa causa.
+
+### Recomendacion maestra
+1. Mantener ambos dominios como facts separados.
+2. No fusionarlos en `Fact_Evaluacion_Vegetativa`.
+3. No crear Gold para estos dominios en esta fase.
+4. Si luego se construye dataset de modelo, debe salir desde `Silver`, no desde `Gold`.
+
+### Addendum 2026-04-01 - Fisiologia
+- Baseline real vigente: `43900` insertados / `1655` pendientes.
+- Residual actual: solo `9.`.
+- Regla por turno de `Modulo 11`: desactivada por regresion real.
+- No declarar regla final de `9.` hasta completar catalogo y criterio de negocio.
+- No cerrar validaciones de este frente solo con sintaxis.

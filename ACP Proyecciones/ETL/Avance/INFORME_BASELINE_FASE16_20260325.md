@@ -125,3 +125,11 @@ Resultado principal:
 - Los tests ya contemplan `Sector_Climatico` en clima.
 - La suite sirve como smoke tecnico del estado estable actual.
 
+## Addendum 2026-04-01 - Baseline Complementario de Fisiologia
+
+- `Fact_Fisiologia = 43900`
+- `Bronce.Fisiologia.PROCESADO = 43900`
+- `Bronce.Fisiologia.CARGADO = 1655`
+- El residual actual corresponde a backlog controlado de `9.`
+- La regla por turno de `Modulo 11` queda fuera de baseline por regresion real
+

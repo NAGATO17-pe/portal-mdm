@@ -9,66 +9,50 @@ import io
 
 import pandas as pd
 import streamlit as st
+import time
 
 from utils.componentes import badge_html, estado_vacio_html, mostrar_kpis, mostrar_dialogo_confirmacion
 from utils.db import ejecutar_query
 from utils.formato import header_pagina, renderizar_tabla_premium
 
 
-# ── Query cacheada ────────────────────────────────────────────────────────────
+import requests
+URL_BASE = "http://127.0.0.1:8000"
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=5, show_spinner=False)
 def cargar_cuarentena() -> pd.DataFrame:
     """
-    Lee todos los registros con Estado_Carga = 'EN_CUARENTENA'
-    de las tablas Bronce. Retorna columnas estandarizadas.
+    Lee cuarentena desde el Backend FastAPI.
     """
-    tablas = [
-        ("Bronce.Evaluacion_Pesos",      "Variedad_Raw",  "ID_Evaluacion_Pesos"),
-        ("Bronce.Conteo_Fruta",          "Variedad_Raw",  "ID_Conteo_Fruta"),
-        ("Bronce.Calibres",              "Variedad_Raw",  "ID_Calibre"),
-        ("Bronce.Peladas",               "Variedad_Raw",  "ID_Pelada"),
-        ("Bronce.Ciclos_Fenologicos",    "Variedad_Raw",  "ID_Ciclo"),
-        ("Bronce.Fisiologia",            "Variedad_Raw",  "ID_Fisiologia"),
-        ("Bronce.Evaluacion_Vegetativa", "Variedad_Raw",  "ID_Evaluacion_Vegetativa"),
-        ("Bronce.Sanidad_Activo",        "Variedad_Raw",  "ID_Sanidad_Activo"),
-        ("Bronce.Ciclo_Poda",            "Variedad_Raw",  "ID_Ciclo_Poda"),
-        ("Bronce.Tareo",                 "Actividad_Raw", "ID_Tareo"),
-        ("Bronce.Data_SAP",              "Material_Raw",  "ID_Data_SAP"),
-        ("Bronce.Telemetria_Clima",      "Sector_Raw",    "ID_Telemetria"),
+    columnas_vacias = [
+        "Tabla Origen", "ID", "Columna Origen", "Valor Raw",
+        "Archivo", "Fecha ingreso", "Estado", "Severidad", "Motivo",
     ]
-    partes = []
-    for tabla, col_valor, col_id in tablas:
-        try:
-            df = ejecutar_query(f"""
-                SELECT
-                    '{tabla}'                   AS [Tabla Origen],
-                    CAST({col_id} AS VARCHAR)   AS [ID],
-                    '{col_valor}'               AS [Columna Origen],
-                    ISNULL({col_valor}, '(NULL)') AS [Valor Raw],
-                    Nombre_Archivo              AS [Archivo],
-                    Fecha_Sistema               AS [Fecha ingreso],
-                    Estado_Carga                AS [Estado],
-                    'ALTO'                      AS [Severidad],
-                    'Requisito de homologación' AS [Motivo]
-                FROM {tabla}
-                WHERE Estado_Carga = 'EN_CUARENTENA'
-            """)
-            if not df.empty:
-                partes.append(df)
-        except Exception:
-            pass  # Tabla no existe aún — se ignora
+    try:
+        res = requests.get(f"{URL_BASE}/api/cuarentena?pagina=1&tamaño=100")
+        if res.status_code == 200:
+            datos = res.json().get("datos", [])
+            if not datos:
+                return pd.DataFrame(columns=columnas_vacias)
+            
+            df = pd.DataFrame(datos)
+            df.rename(columns={
+                "tabla_origen": "Tabla Origen",
+                "id_registro": "ID",
+                "columna_origen": "Columna Origen",
+                "valor_raw": "Valor Raw",
+                "nombre_archivo": "Archivo",
+                "fecha_ingreso": "Fecha ingreso",
+                "estado": "Estado",
+                "motivo": "Motivo",
+            }, inplace=True)
+            df["Severidad"] = "ALTO"
+            
+            return df
+    except Exception:
+        pass
 
-    if not partes:
-        return pd.DataFrame(columns=[
-            "Tabla Origen", "ID", "Columna Origen", "Valor Raw",
-            "Archivo", "Fecha ingreso", "Estado", "Severidad", "Motivo",
-        ])
-
-    resultado = pd.concat(partes, ignore_index=True)
-    resultado["Fecha ingreso"] = pd.to_datetime(resultado["Fecha ingreso"]).dt.strftime("%Y-%m-%d")
-    return resultado
-
+    return pd.DataFrame(columns=columnas_vacias)
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -308,9 +292,19 @@ def render() -> None:
                 st.markdown("<br>", unsafe_allow_html=True)
                 if st.button("✅ Aprobar homologación", key=f"btn_aprobar_{id_sel}",
                              type="primary", disabled=not valor_homo.strip()):
-                    st.toast(
-                        f"'{fila['Valor Raw']}' → '{valor_homo}' guardado en diccionario.", icon="✅"
-                    )
+                    try:
+                        res = requests.patch(
+                            f"{URL_BASE}/api/cuarentena/{fila['Tabla Origen']}/{id_sel}/resolver",
+                            json={"valor_canonico": valor_homo, "analista": "Analista Portal"}
+                        )
+                        if res.status_code == 200:
+                            st.toast(f"Homologación a '{valor_homo}' procesada por Backend.", icon="✅")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error(f"Error del backend: {res.text}")
+                    except Exception as e:
+                        st.error(f"No se pudo conectar al API: {e}")
 
         elif "Test Block" in opcion:
             with d1:
@@ -334,7 +328,19 @@ def render() -> None:
             with d2:
                 st.markdown("<br>", unsafe_allow_html=True)
                 if st.button("🗑️ Confirmar descarte", key=f"btn_desc_{id_sel}"):
-                    st.toast("Registro descartado exitosamente.", icon="🗑️")
+                    try:
+                        res = requests.patch(
+                            f"{URL_BASE}/api/cuarentena/{fila['Tabla Origen']}/{id_sel}/rechazar",
+                            json={"motivo": "Rechazado manualmente", "analista": "Analista Portal"}
+                        )
+                        if res.status_code == 200:
+                            st.toast("Registro descartado en el Data Warehouse.", icon="🗑️")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error(f"Error del backend: {res.text}")
+                    except Exception as e:
+                        st.error(f"No se pudo conectar al API: {e}")
 
         st.caption(
             "💡 Los cambios se persistirán en la BD cuando la conexión esté activa. "

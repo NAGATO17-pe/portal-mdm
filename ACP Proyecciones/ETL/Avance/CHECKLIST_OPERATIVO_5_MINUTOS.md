@@ -262,3 +262,80 @@ Si hay lote de `Consolidado_Tareos` y todo cae a cuarentena:
 1. Revisar si el archivo trae `Fundo/Modulo`.
 2. Si no los trae, no forzar carga a `Fact_Tareo`; documentar como fuente insuficiente para el modelo actual.
 
+## Addendum 2026-04-01 - Check rapido para Induccion Floral y Tasa de Crecimiento Brotes
+
+### Post-check de Induccion Floral
+```sql
+SELECT TOP (20)
+    *
+FROM Silver.Fact_Induccion_Floral
+ORDER BY ID_Induccion_Floral DESC;
+```
+
+Semaforo:
+1. Verde: carga > 0 y sin cuarentena nueva
+2. Amarillo: carga > 0 pero con `ID_Personal = -1` esperado por `Dim_Personal` vacia
+3. Rojo: cuarentena nueva por fecha/geografia/conteos
+
+Control de duplicado:
+```sql
+SELECT
+    Fecha_Evento,
+    ID_Geografia,
+    ID_Variedad,
+    ID_Personal,
+    Tipo_Evaluacion,
+    Codigo_Consumidor,
+    COUNT(*) AS Filas
+FROM Silver.Fact_Induccion_Floral
+GROUP BY
+    Fecha_Evento,
+    ID_Geografia,
+    ID_Variedad,
+    ID_Personal,
+    Tipo_Evaluacion,
+    Codigo_Consumidor
+HAVING COUNT(*) > 1
+ORDER BY Filas DESC;
+```
+
+Si devuelve filas:
+1. revisar primero si el mismo archivo se cargó dos veces en Bronce;
+2. no culpar al fact sin revisar `Nombre_Archivo` y `Fecha_Sistema`.
+
+### Post-check de Tasa de Crecimiento Brotes
+```sql
+SELECT TOP (20)
+    *
+FROM Silver.Fact_Tasa_Crecimiento_Brotes
+ORDER BY ID_Tasa_Crecimiento_Brotes DESC;
+```
+
+Semaforo:
+1. Verde: carga > 0 y sin cuarentena nueva
+2. Amarillo: `ID_Personal = -1` esperado por `Dim_Personal` vacia
+3. Rojo: cuarentena por geografia, medida negativa o ensayo vacio
+
+### Regla final de operacion
+1. No crear Gold nuevo para estos dominios por ahora.
+2. Si se construye dataset para modelo, usar `Silver` como capa fuente.
+
+## Addendum 2026-04-01 - Check de Fisiologia
+
+### Post-check rapido
+```sql
+SELECT Estado_Carga, COUNT(*) AS Filas
+FROM Bronce.Fisiologia
+GROUP BY Estado_Carga;
+```
+
+```sql
+SELECT COUNT(*) AS Fact_Fisiologia
+FROM Silver.Fact_Fisiologia;
+```
+
+### Semaforo vigente
+1. Verde: `Fact_Fisiologia = 43900` y residual `1655` concentrado en `9.`.
+2. Amarillo: residual estable pero con backlog controlado de `9.`.
+3. Rojo: residual fuerte fuera de `9.` o caida relevante por debajo de `43900`.
+

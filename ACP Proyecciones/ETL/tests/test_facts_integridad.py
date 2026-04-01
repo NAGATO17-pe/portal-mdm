@@ -31,6 +31,20 @@ def test_fk_fact_vegetativa(engine):
     _assert_sin_huerfanas(engine, 'Silver.Fact_Evaluacion_Vegetativa', 'ID_Personal', 'Silver.Dim_Personal', 'ID_Personal')
 
 
+def test_fk_fact_induccion_floral(engine):
+    _assert_sin_huerfanas(engine, 'Silver.Fact_Induccion_Floral', 'ID_Geografia', 'Silver.Dim_Geografia', 'ID_Geografia')
+    _assert_sin_huerfanas(engine, 'Silver.Fact_Induccion_Floral', 'ID_Tiempo', 'Silver.Dim_Tiempo', 'ID_Tiempo')
+    _assert_sin_huerfanas(engine, 'Silver.Fact_Induccion_Floral', 'ID_Variedad', 'Silver.Dim_Variedad', 'ID_Variedad')
+    _assert_sin_huerfanas(engine, 'Silver.Fact_Induccion_Floral', 'ID_Personal', 'Silver.Dim_Personal', 'ID_Personal')
+
+
+def test_fk_fact_tasa_crecimiento_brotes(engine):
+    _assert_sin_huerfanas(engine, 'Silver.Fact_Tasa_Crecimiento_Brotes', 'ID_Geografia', 'Silver.Dim_Geografia', 'ID_Geografia')
+    _assert_sin_huerfanas(engine, 'Silver.Fact_Tasa_Crecimiento_Brotes', 'ID_Tiempo', 'Silver.Dim_Tiempo', 'ID_Tiempo')
+    _assert_sin_huerfanas(engine, 'Silver.Fact_Tasa_Crecimiento_Brotes', 'ID_Variedad', 'Silver.Dim_Variedad', 'ID_Variedad')
+    _assert_sin_huerfanas(engine, 'Silver.Fact_Tasa_Crecimiento_Brotes', 'ID_Personal', 'Silver.Dim_Personal', 'ID_Personal')
+
+
 def test_fk_fact_conteo(engine):
     _assert_sin_huerfanas(engine, 'Silver.Fact_Conteo_Fenologico', 'ID_Geografia', 'Silver.Dim_Geografia', 'ID_Geografia')
     _assert_sin_huerfanas(engine, 'Silver.Fact_Conteo_Fenologico', 'ID_Tiempo', 'Silver.Dim_Tiempo', 'ID_Tiempo')

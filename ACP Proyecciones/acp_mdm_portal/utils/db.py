@@ -48,7 +48,7 @@ def ejecutar_query(query: str, params: dict | None = None) -> pd.DataFrame:
 
 # ── Paginación Server-Side (SQL OFFSET/FETCH) ────────────────────────────────
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def ejecutar_query_paginado(
     query_base: str,
     order_by: str,
@@ -137,14 +137,19 @@ def health_check() -> dict:
             t1 = time.perf_counter()
 
             info["conectado"]   = True
-            info["base_datos"]  = row.base
-            info["version"]     = f"SQL Server {row.ver}"
+            info["base_datos"]  = str(row.base)
+            info["version"]     = f"SQL {row.ver}"
             info["latencia_ms"] = f"{(t1 - t0) * 1000:.0f} ms"
             info["uptime"]      = f"{row.uptime_h}h"
     except Exception:
         pass
 
     return info
+
+@st.cache_data(ttl=3600)
+def obtener_query_cacheada(query: str, params: dict | None = None) -> pd.DataFrame:
+    """Para catálogos estáticos que casi nunca cambian (TTL 1 hora)."""
+    return ejecutar_query(query, params)
 
 
 # ── Ejecución de DML (INSERT/UPDATE) ─────────────────────────────────────────

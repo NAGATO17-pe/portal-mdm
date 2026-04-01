@@ -196,3 +196,38 @@ SI hacer:
 - Los tests ya contemplan `Sector_Climatico` en clima.
 - La suite sirve como smoke tecnico del estado estable actual.
 
+## Addendum 2026-04-01 - Induccion Floral y Tasa de Crecimiento Brotes
+
+### Estado funcional que debes asumir
+1. `Bronce.Induccion_Floral` ya fue ampliada y mapeada con loader especial.
+2. `Bronce.Tasa_Crecimiento_Brotes` ya fue ampliada y mapeada con loader especial.
+3. `Tasa_Crecimiento_Brotes` procesa solo la hoja `BD_General`.
+4. `Valores_Raw` ya no debe contener la estructura principal en ninguno de estos dos dominios.
+5. Existen y cargan:
+   - `Silver.Fact_Induccion_Floral`
+   - `Silver.Fact_Tasa_Crecimiento_Brotes`
+
+### Reglas de interpretacion
+1. `ID_Personal = -1` es esperado si `Dim_Personal` sigue vacia o no resuelve DNIs.
+2. Si ves duplicados en `Fact_Induccion_Floral`, primero revisar si el mismo archivo fue cargado dos veces en Bronce.
+3. No asumir bug del fact sin validar:
+   - duplicados por lote
+   - `Nombre_Archivo`
+   - `Fecha_Sistema`
+4. No abrir Gold nuevo para estos dominios mientras el objetivo siga siendo presentacion.
+5. Para modelado futuro, la fuente correcta es `Silver`, no `Gold`.
+
+### Dictamen vigente
+- `Fact_Induccion_Floral`: funcional
+- `Fact_Tasa_Crecimiento_Brotes`: funcional
+- `Bronce` de ambos dominios: estable
+- residual actual: operativo/catalogo, no estructural
+
+## Addendum 2026-04-01 - Transferencia Rapida de Fisiologia
+
+- Baseline real validado: `43900` insertados / `1655` pendientes.
+- Residual actual: solo `Modulo_Raw = '9.'`.
+- Regla por turno de `Modulo 11`: probada, regresiva y desactivada.
+- Regla final de `9.`: pendiente de cierre por negocio y MDM.
+- Validacion aceptable para este frente: solo con rerun real y evidencia SQL comparativa.
+

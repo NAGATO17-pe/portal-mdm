@@ -98,3 +98,10 @@ FROM Silver.Bridge_Geografia_Cama;
 - Separacion explicita por `SubModulo` y `Tipo_Conduccion`.
 - Menor cuarentena repetitiva por ruido operacional.
 - `VI` controlado como Test Block sin mezclarlo con geografia operativa.
+
+## 9) Addendum 2026-04-01 - Regla por Turno y Baseline Real
+
+- Baseline real validado de `Fisiologia`: `43900` insertados / `1655` pendientes.
+- La regla por turno de `Modulo 11` se probo y quedo desactivada por regresion real contra catalogo incompleto.
+- La regla final de `9.` sigue pendiente; no debe declararse cerrada todavia.
+- Mantener saneamiento tipografico en Python como fuente principal de limpieza antes del resolvedor.

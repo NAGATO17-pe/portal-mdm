@@ -61,46 +61,42 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
 
-    # ── Sección: Principal ──
-    st.markdown('<div class="sidebar-section">Principal</div>', unsafe_allow_html=True)
-    pagina = st.radio(
-        "Navegación",
-        options=[
+    # ── Navegación Unificada (Árbol de Opciones) ──
+    opciones_navegacion = {
+        "📊 PANEL PRINCIPAL": [
             "🏠  Inicio",
             "🔴  Cuarentena",
             "🔗  Homologación",
         ],
-        label_visibility="collapsed",
-        key="nav_principal",
-    )
-
-    # ── Sección: Catálogos ──
-    st.markdown('<div class="sidebar-section">Catálogos</div>', unsafe_allow_html=True)
-    pagina_cat = st.radio(
-        "Catálogos",
-        options=[
+        "📋 CATÁLOGOS MAESTROS": [
             "🍇  Variedades",
             "📍  Geografía",
             "👤  Personal",
         ],
-        label_visibility="collapsed",
-        key="nav_catalogos",
-    )
-
-    # ── Sección: Configuración (solo admin/editor) ──
-    pagina_cfg = None
+    }
+    
+    # Agregar Configuración solo si tiene permisos
     if tiene_permiso("configurar") or tiene_permiso("escribir"):
-        st.markdown('<div class="sidebar-section">Configuración</div>', unsafe_allow_html=True)
-        pagina_cfg = st.radio(
-            "Configuración",
-            options=[
-                "📋  Reglas de Validación",
-                "⚙️  Parámetros Pipeline",
-                "🛠️  Pruebas BD",
-            ],
-            label_visibility="collapsed",
-            key="nav_config",
-        )
+        opciones_navegacion["⚙️ CONFIGURACIÓN"] = [
+            "📋  Reglas de Validación",
+            "⚙️  Parámetros Pipeline",
+            "🛠️  Pruebas BD",
+        ]
+
+    # Lista plana para el combo con etiquetas de grupo (formato árbol)
+    lista_plana = []
+    for grupo, items in opciones_navegacion.items():
+        lista_plana.extend(items)
+
+    st.markdown('<div class="sidebar-section">Navegación del Portal</div>', unsafe_allow_html=True)
+    
+    pagina_activa = st.selectbox(
+        "Seleccione Sección",
+        options=lista_plana,
+        index=0,
+        key="nav_unificada",
+        label_visibility="collapsed"
+    )
 
     # ── Botón de logout ──
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
@@ -114,39 +110,12 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
 
-# ── Consolidar la selección activa ────────────────────────────────────────
-_SECCIONES = {
-    "nav_principal": pagina,
-    "nav_catalogos": pagina_cat,
-}
-if pagina_cfg is not None:
-    _SECCIONES["nav_config"] = pagina_cfg
-
-if "ultima_seccion" not in st.session_state:
-    st.session_state.ultima_seccion = "nav_principal"
-    st.session_state.ultima_pagina  = pagina
-
-# Detectar cuál cambió
-for sec_key, sec_val in _SECCIONES.items():
-    if sec_val is None:
-        continue
-    prev_key = f"_prev_{sec_key}"
-    if prev_key not in st.session_state:
-        st.session_state[prev_key] = sec_val
-    if st.session_state[prev_key] != sec_val:
-        st.session_state.ultima_seccion = sec_key
-        st.session_state.ultima_pagina  = sec_val
-        st.session_state[prev_key]      = sec_val
-
-pagina_activa = st.session_state.ultima_pagina
-
-# ── Limpiar cache al cambiar de página para evitar state leaks ────────────
+# ── Persistencia de estado de página ─────────────────────────────────────
+# Evitamos recargas innecesarias
 if "current_page" not in st.session_state:
     st.session_state.current_page = pagina_activa
 
-if st.session_state.current_page != pagina_activa:
-    st.cache_data.clear()
-    st.session_state.current_page = pagina_activa
+st.session_state.current_page = pagina_activa
 
 # ── Enrutamiento dinámico ─────────────────────────────────────────────────
 _nombre = pagina_activa.split("  ", 1)[-1].strip() if "  " in pagina_activa else pagina_activa.strip()

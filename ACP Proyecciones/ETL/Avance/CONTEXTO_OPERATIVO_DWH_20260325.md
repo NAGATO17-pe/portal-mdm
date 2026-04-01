@@ -162,3 +162,145 @@ Se considera evidencia valida de avance cuando simultaneamente se cumpla:
 - Los tests ya contemplan `Sector_Climatico` en clima.
 - La suite sirve como smoke tecnico del estado estable actual.
 
+
+## 8) Addendum 2026-03-31 - Auditoria profunda y cierre del frente Clima
+
+### 8.1 Decision operativa sobre portal
+- El frente de portal tipo Streamlit NO se considera activo para implementacion inmediata.
+- La definicion vigente es redisenarlo mas adelante por una alternativa mas robusta y con mayor alcance funcional.
+- Cualquier referencia al portal se mantiene solo como contexto historico de planeamiento; no como entregable actual del ETL.
+
+### 8.2 Hallazgo raiz corregido en `Fact_Telemetria_Clima`
+Durante la auditoria de clima sobre la instancia real se identificaron y corrigieron cuatro problemas distintos:
+
+1. **Regla de campana acoplada a parseo de fechas**
+   - `utils/fechas.py` fue ajustado para separar parseo y validacion de campana.
+   - `procesar_fecha()` ahora acepta `validar_campana=False`.
+   - Esto evita rechazar historico climatico valido solo por quedar fuera del rango agronomico de arandano.
+
+2. **FK contra `Silver.Dim_Tiempo` por historico sin seed**
+   - `Fact_Telemetria_Clima` dejo de romper por `FK_Fact_Telemetria_Clima_Tiempo`.
+   - Cuando la fecha parsea pero no existe en `Dim_Tiempo`, ahora va a cuarentena con motivo `Fecha valida pero fuera de Dim_Tiempo`.
+   - Posteriormente se extendio `Silver.Dim_Tiempo` para cubrir historico desde `2020-01-01`.
+
+3. **Uso de columna equivocada para marcar estado en Bronce**
+   - La tabla real `Bronce.Variables_Meteorologicas` usa `ID_Variables_Met` como `IDENTITY` tecnica.
+   - El fact estaba leyendo via alias correcto, pero al cerrar la carga intentaba actualizar estado usando `ID_Variables_Meteorologicas`.
+   - Consecuencia: las filas quedaban en `CARGADO` y se reprocesaban en corridas posteriores, generando backlog artificial y falsa sensacion de bucle.
+   - Correcion aplicada: los updates de estado ahora usan `ID_Variables_Met`.
+
+4. **Perdida de granularidad horaria en Variables Meteorologicas**
+   - La hora no existe como columna fisica en `Bronce.Variables_Meteorologicas`; queda serializada en `Valores_Raw` como `Hora_Raw=HH:MM:SS`.
+   - El fact estaba construyendo `Fecha_Evento` solo con `Fecha_Raw`, colapsando mediciones subdiarias al mismo dia.
+   - Correcion aplicada: se extrae `Hora_Raw` desde `Valores_Raw` y se reconstruye `Fecha_Evento` con granularidad real.
+
+### 8.3 Regla nueva de calidad para duplicado logico de clima
+Se implemento una regla explicita en `Fact_Telemetria_Clima` para resolver duplicados logicos por `Sector_Climatico + Fecha_Evento`.
+
+Comportamiento vigente:
+- Duplicado exacto: se conserva una sola fila.
+- Duplicado conflictivo: ninguna fila entra a Silver y todas se envian a `MDM.Cuarentena`.
+- Motivo registrado: `Duplicado logico conflictivo en Bronce.Variables_Meteorologicas: multiples mediciones para mismo Sector_Climatico + Fecha_Evento`.
+
+Esto se valido con caso real en `F07`, `2025-11-25 14:30:00`, donde existian dos mediciones distintas para la misma clave temporal.
+
+### 8.4 Limpieza operativa ejecutada
+Para validar el frente clima sin arrastre historico se siguio una limpieza controlada de dominio:
+- reset de `Bronce.Reporte_Clima` a `CARGADO`,
+- reset de `Bronce.Variables_Meteorologicas` a `CARGADO`,
+- limpieza de `Silver.Fact_Telemetria_Clima`,
+- reproceso integral del dominio clima.
+
+Despues del reproceso limpio:
+- la hora subdiaria quedo preservada,
+- desaparecio el reproceso masivo artificial,
+- los duplicados conflictivos dejaron de entrar a Silver,
+- la validacion `HAVING COUNT(*) > 1` para clima sin precipitacion quedo en `0` filas.
+
+### 8.5 Queries de control que quedan como canon para clima
+1. Validacion de duplicados en Silver:
+```sql
+SELECT
+    Sector_Climatico,
+    Fecha_Evento,
+    COUNT(*) AS Filas
+FROM Silver.Fact_Telemetria_Clima
+WHERE Precipitacion_mm IS NULL
+  AND (VPD IS NOT NULL OR Radiacion_Solar IS NOT NULL)
+GROUP BY Sector_Climatico, Fecha_Evento
+HAVING COUNT(*) > 1
+ORDER BY Fecha_Evento DESC;
+```
+
+2. Validacion de residuo reciente en cuarentena:
+```sql
+SELECT TOP (20)
+    Fecha_Ingreso,
+    Campo_Origen,
+    Valor_Recibido,
+    Motivo,
+    ID_Registro_Origen
+FROM MDM.Cuarentena
+WHERE Tabla_Origen = 'Bronce.Clima'
+ORDER BY ID_Cuarentena DESC;
+```
+
+3. Validacion de rango en Silver:
+```sql
+SELECT
+    MIN(Fecha_Evento) AS Fecha_Min,
+    MAX(Fecha_Evento) AS Fecha_Max,
+    COUNT(*) AS Filas
+FROM Silver.Fact_Telemetria_Clima;
+```
+
+### 8.6 Estado final consolidado del frente clima al 2026-03-31
+- `Fact_Telemetria_Clima` queda operativo y estable.
+- Historico desde `2022-01-01` hasta `2026-03-29` validado sobre la base actual.
+- Regla de campana ya no bloquea clima historico.
+- `Dim_Tiempo` extendida para historico desde `2020-01-01`.
+- Duplicados logicos conflictivos ya no contaminan Silver.
+- La auditoria confirma que el problema residual del frente clima ya no es estructural.
+
+## 9) Addendum 2026-04-01 - Induccion Floral y Tasa de Crecimiento Brotes
+
+### 9.1 Decision de modelado
+Queda aprobado como criterio vigente:
+- `Induccion_Floral` va a fact propio
+- `Tasa_Crecimiento_Brotes` va a fact propio
+- no deben fusionarse dentro de `Fact_Evaluacion_Vegetativa`
+
+### 9.2 Estado de Bronce
+`Bronce.Induccion_Floral` y `Bronce.Tasa_Crecimiento_Brotes` ya no usan el loader generico.
+
+Situacion consolidada:
+- `Induccion_Floral` ya guarda sus columnas estructurales en campos fisicos y deja `Valores_Raw` vacio para el layout actual
+- `Tasa_Crecimiento_Brotes` solo toma la hoja `BD_General`
+- el cargador ya lee como texto para evitar DNIs o claves con `.0`
+
+### 9.3 Estado de Silver
+Facts nuevos activos:
+- `Silver.Fact_Induccion_Floral`
+- `Silver.Fact_Tasa_Crecimiento_Brotes`
+
+Comportamiento vigente:
+- ambos resuelven `ID_Tiempo`, `ID_Geografia`, `ID_Variedad` e `ID_Personal`
+- ambos usan `validar_campana=False`
+- ambos envian a cuarentena solo por errores reales de fecha, geografia o negocio
+
+### 9.4 Hallazgos operativos
+1. `ID_Personal = -1` queda aceptado por ahora porque `Dim_Personal` aun no esta poblada para estos dominios.
+2. Los duplicados de `Fact_Induccion_Floral` se explicaron por recarga doble del mismo archivo en Bronce; no por bug del fact.
+
+### 9.5 Recomendaciones finales
+1. No abrir Gold nuevo para estos dominios por ahora.
+2. Si luego se arma dataset de modelo, debe salir desde `Silver`.
+3. No meter parche anti-duplicado definitivo hasta definir politica de reingesta por archivo.
+
+## 10) Addendum 2026-04-01 - Estado de Fisiologia
+
+1. Baseline real validado: `43900` insertados.
+2. Residual vigente: `1655` filas en `Bronce.Fisiologia` con `Estado_Carga='CARGADO'`.
+3. El residual actual se concentra solo en `Modulo_Raw = '9.'`.
+4. `Modulo 11` no debe resolverse por turno por ahora; esa regla se desactivo por regresion real.
+5. No cerrar ningun cambio de este frente sin corrida real y evidencia SQL antes/despues.

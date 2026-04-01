@@ -178,13 +178,77 @@ SQL_INSERT_CLIMA_VARIABLES = text("""
 """)
 
 
+def _clave_logica_clima(registro: dict) -> tuple:
+    return (
+        registro['sector_climatico'],
+        registro['fecha_evento'],
+    )
+
+
+def _firma_metricas_clima(registro: dict, campos_metricas: tuple[str, ...]) -> tuple:
+    return tuple(registro.get(campo) for campo in campos_metricas)
+
+
+def _resolver_duplicados_clima(
+    registros: list[dict],
+    *,
+    campos_metricas: tuple[str, ...],
+    resumen: dict,
+    ids_rechazados: list[int],
+    descripcion_origen: str,
+) -> tuple[list[dict], list[int]]:
+    grupos: dict[tuple, list[dict]] = {}
+    for registro in registros:
+        grupos.setdefault(_clave_logica_clima(registro), []).append(registro)
+
+    registros_validos = []
+    ids_insertados = []
+
+    for clave, grupo in grupos.items():
+        if len(grupo) == 1:
+            registros_validos.append(grupo[0])
+            if grupo[0]['id_origen'] is not None:
+                ids_insertados.append(grupo[0]['id_origen'])
+            continue
+
+        firmas = {
+            _firma_metricas_clima(registro, campos_metricas)
+            for registro in grupo
+        }
+
+        if len(firmas) == 1:
+            registro_base = grupo[0]
+            registros_validos.append(registro_base)
+            if registro_base['id_origen'] is not None:
+                ids_insertados.append(registro_base['id_origen'])
+            continue
+
+        sector_climatico, fecha_evento = clave
+        motivo = (
+            f'Duplicado logico conflictivo en {descripcion_origen}: '
+            f'multiples mediciones para mismo Sector_Climatico + Fecha_Evento'
+        )
+        for registro in grupo:
+            _agregar_cuarentena(
+                resumen['cuarentena'],
+                'Fecha_Evento',
+                str(fecha_evento),
+                motivo,
+                registro.get('id_origen'),
+            )
+            resumen['rechazados'] += 1
+            if registro.get('id_origen') is not None:
+                ids_rechazados.append(registro['id_origen'])
+
+    return registros_validos, ids_insertados
+
+
 def cargar_fact_telemetria_clima(engine: Engine) -> dict:
     resumen = {'insertados': 0, 'rechazados': 0, 'cuarentena': []}
 
     df_clima = _leer_bronce_clima(engine)
-    ids_clima_insertados = []
     ids_clima_rechazados = []
-    payload_clima = []
+    registros_clima_validos = []
     total_clima = len(df_clima)
 
     for indice, fila in enumerate(df_clima.to_dict('records'), start=1):
@@ -241,7 +305,8 @@ def cargar_fact_telemetria_clima(engine: Engine) -> dict:
             })
             resumen['cuarentena'].append(error_hum)
 
-        payload_clima.append({
+        registros_clima_validos.append({
+            'id_origen': id_origen,
             'sector_climatico': sector_climatico,
             'id_tiempo': id_tiempo,
             'temp_max': _a_decimal(fila.get('TempMax_Raw')),
@@ -250,12 +315,33 @@ def cargar_fact_telemetria_clima(engine: Engine) -> dict:
             'precipitacion': _a_decimal(fila.get('Precipitacion_Raw')),
             'fecha_evento': fecha,
         })
-        if id_origen is not None:
-            ids_clima_insertados.append(id_origen)
-        resumen['insertados'] += 1
+    payload_clima, ids_clima_insertados = _resolver_duplicados_clima(
+        registros_clima_validos,
+        campos_metricas=('temp_max', 'temp_min', 'humedad', 'precipitacion'),
+        resumen=resumen,
+        ids_rechazados=ids_clima_rechazados,
+        descripcion_origen='Bronce.Reporte_Clima',
+    )
+    resumen['insertados'] += len(payload_clima)
 
     if payload_clima:
-        ejecutar_en_lotes_con_engine(engine, SQL_INSERT_CLIMA_REPORTE, payload_clima, tam_lote=TAM_LOTE_CLIMA)
+        ejecutar_en_lotes_con_engine(
+            engine,
+            SQL_INSERT_CLIMA_REPORTE,
+            [
+                {
+                    'sector_climatico': registro['sector_climatico'],
+                    'id_tiempo': registro['id_tiempo'],
+                    'temp_max': registro['temp_max'],
+                    'temp_min': registro['temp_min'],
+                    'humedad': registro['humedad'],
+                    'precipitacion': registro['precipitacion'],
+                    'fecha_evento': registro['fecha_evento'],
+                }
+                for registro in payload_clima
+            ],
+            tam_lote=TAM_LOTE_CLIMA,
+        )
 
     marcar_estado_carga_por_ids(
         engine, TABLA_CLIMA, 'ID_Reporte_Clima', ids_clima_insertados, estado='PROCESADO'
@@ -265,9 +351,8 @@ def cargar_fact_telemetria_clima(engine: Engine) -> dict:
     )
 
     df_vars = _leer_bronce_variables(engine)
-    ids_vars_insertados = []
     ids_vars_rechazados = []
-    payload_vars = []
+    registros_vars_validos = []
     total_vars = len(df_vars)
 
     for indice, fila in enumerate(df_vars.to_dict('records'), start=1):
@@ -327,7 +412,8 @@ def cargar_fact_telemetria_clima(engine: Engine) -> dict:
             })
             resumen['cuarentena'].append(error_hum)
 
-        payload_vars.append({
+        registros_vars_validos.append({
+            'id_origen': id_origen,
             'sector_climatico': sector_climatico,
             'id_tiempo': id_tiempo,
             'temp_max': _a_decimal(fila.get('TempMax_Raw')),
@@ -337,12 +423,34 @@ def cargar_fact_telemetria_clima(engine: Engine) -> dict:
             'radiacion': _a_decimal(fila.get('Radiacion_Raw')),
             'fecha_evento': fecha,
         })
-        if id_origen is not None:
-            ids_vars_insertados.append(id_origen)
-        resumen['insertados'] += 1
+    payload_vars, ids_vars_insertados = _resolver_duplicados_clima(
+        registros_vars_validos,
+        campos_metricas=('temp_max', 'temp_min', 'humedad', 'vpd', 'radiacion'),
+        resumen=resumen,
+        ids_rechazados=ids_vars_rechazados,
+        descripcion_origen='Bronce.Variables_Meteorologicas',
+    )
+    resumen['insertados'] += len(payload_vars)
 
     if payload_vars:
-        ejecutar_en_lotes_con_engine(engine, SQL_INSERT_CLIMA_VARIABLES, payload_vars, tam_lote=TAM_LOTE_CLIMA)
+        ejecutar_en_lotes_con_engine(
+            engine,
+            SQL_INSERT_CLIMA_VARIABLES,
+            [
+                {
+                    'sector_climatico': registro['sector_climatico'],
+                    'id_tiempo': registro['id_tiempo'],
+                    'temp_max': registro['temp_max'],
+                    'temp_min': registro['temp_min'],
+                    'humedad': registro['humedad'],
+                    'vpd': registro['vpd'],
+                    'radiacion': registro['radiacion'],
+                    'fecha_evento': registro['fecha_evento'],
+                }
+                for registro in payload_vars
+            ],
+            tam_lote=TAM_LOTE_CLIMA,
+        )
 
     marcar_estado_carga_por_ids(
         engine, TABLA_VARIABLES, 'ID_Variables_Met', ids_vars_insertados, estado='PROCESADO'
