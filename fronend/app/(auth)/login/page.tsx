@@ -2,8 +2,13 @@ import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { isAuthenticated } from "@/lib/auth";
 
+<<<<<<< HEAD
 export default async function LoginPage() {
   if (await isAuthenticated()) {
+=======
+export default function LoginPage() {
+  if (isAuthenticated()) {
+>>>>>>> main
     redirect("/dashboard");
   }
 

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 const config = {
   plugins: {
     "@tailwindcss/postcss": {}
@@ -5,3 +6,11 @@ const config = {
 };
 
 export default config;
+=======
+export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {}
+  }
+};
+>>>>>>> main

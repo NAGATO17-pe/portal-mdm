@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 @import "tailwindcss";
 
 :root {
@@ -8,12 +9,27 @@
   --success: 150 65% 38%;
   --warning: 36 92% 50%;
   --danger: 0 72% 52%;
+=======
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 220 23% 97%;
+  --foreground: 224 40% 12%;
+  --primary: 221 83% 53%;
+  --muted: 220 15% 93%;
+  --success: 146 62% 38%;
+  --warning: 38 92% 50%;
+  --danger: 0 72% 51%;
+>>>>>>> main
   --radius-lg: 1rem;
   --radius-md: 0.75rem;
   --radius-sm: 0.5rem;
 }
 
 .dark {
+<<<<<<< HEAD
   --background: 224 40% 8%;
   --foreground: 220 26% 95%;
   --primary: 217 100% 63%;
@@ -61,4 +77,19 @@ body {
 :focus-visible {
   outline: 2px solid hsl(var(--primary));
   outline-offset: 2px;
+=======
+  --background: 224 40% 9%;
+  --foreground: 220 27% 95%;
+  --primary: 217 91% 60%;
+  --muted: 223 30% 15%;
+}
+
+body {
+  @apply bg-background text-foreground antialiased;
+  background-image: radial-gradient(circle at top right, rgb(59 130 246 / 0.15), transparent 40%);
+}
+
+:focus-visible {
+  @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-background;
+>>>>>>> main
 }
