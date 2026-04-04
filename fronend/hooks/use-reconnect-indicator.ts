@@ -1,5 +1,9 @@
 "use client";
 
+<<<<<<< HEAD
+export const useReconnectIndicator = (isConnected: boolean): string =>
+  isConnected ? "connected" : "reconnecting";
+=======
 import { useEffect, useState } from "react";
 
 export const useReconnectIndicator = (isConnected: boolean): string => {
@@ -11,3 +15,4 @@ export const useReconnectIndicator = (isConnected: boolean): string => {
 
   return label;
 };
+>>>>>>> main

@@ -11,8 +11,11 @@ export const useSparkStream = (runId: string) => {
   const [status, setStatus] = useState<"connecting" | "connected" | "error">("connecting");
 
   useEffect(() => {
+<<<<<<< HEAD
+=======
     setStatus("connecting");
 
+>>>>>>> main
     client.connect(getSseUrl(`/api/v1/stream/runs/${runId}`), {
       onOpen: () => setStatus("connected"),
       onError: () => setStatus("error"),

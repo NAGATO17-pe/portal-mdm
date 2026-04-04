@@ -13,7 +13,11 @@ export const RunsTable = () => {
   if (!data?.length) return <EmptyState title="Sin ejecuciones" description="Aún no hay corridas registradas." />;
 
   return (
+<<<<<<< HEAD
+    <div className="glass-card overflow-x-auto p-4">
+=======
     <div className="overflow-x-auto rounded-lg border border-white/10 bg-white/5 p-4 shadow-card">
+>>>>>>> main
       <table className="w-full text-left text-sm">
         <thead className="text-xs uppercase tracking-wide text-foreground/70">
           <tr>
@@ -25,7 +29,11 @@ export const RunsTable = () => {
         </thead>
         <tbody>
           {data.map((run) => (
+<<<<<<< HEAD
+            <tr key={run.id} className="border-t border-white/15 transition hover:bg-white/10">
+=======
             <tr key={run.id} className="border-t border-white/10">
+>>>>>>> main
               <td className="p-2 font-mono text-xs">{run.id}</td>
               <td className="p-2">{run.pipelineName}</td>
               <td className="p-2">

@@ -35,7 +35,26 @@ Implementación inicial del portal de control ETL con **Next.js App Router + Typ
 
 ## Inicio rápido
 
+<<<<<<< HEAD
+Variables útiles en desarrollo:
+
+- `NEXT_PUBLIC_API_URL`: URL base del backend FastAPI.
+- `NEXT_ALLOWED_DEV_ORIGINS`: hosts separados por coma para permitir HMR desde red local (ej. `http://192.168.18.70:3000`).
+
+
+=======
+>>>>>>> main
 ```bash
 npm install
 npm run dev
 ```
+<<<<<<< HEAD
+
+
+## UI Premium y rendimiento
+
+- Estética glassmorphism empresarial con animaciones suaves (`glass-card`, `premium-grid`).
+- Reducción de redirecciones: `/` ahora decide sesión y redirige directo a `/dashboard` o `/login`.
+- Stack actualizado a versiones recientes para mejor compatibilidad y optimización en Next.js 16.
+=======
+>>>>>>> main
