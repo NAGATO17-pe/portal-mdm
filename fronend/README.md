@@ -45,3 +45,10 @@ Variables útiles en desarrollo:
 npm install
 npm run dev
 ```
+
+
+## UI Premium y rendimiento
+
+- Estética glassmorphism empresarial con animaciones suaves (`glass-card`, `premium-grid`).
+- Reducción de redirecciones: `/` ahora decide sesión y redirige directo a `/dashboard` o `/login`.
+- Stack actualizado a versiones recientes para mejor compatibilidad y optimización en Next.js 16.

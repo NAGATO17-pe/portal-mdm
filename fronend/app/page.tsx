@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
+import { isAuthenticated } from "@/lib/auth";
 
-export default function HomePage(): never {
-  redirect("/dashboard");
+export default async function HomePage(): Promise<void> {
+  redirect((await isAuthenticated()) ? "/dashboard" : "/login");
 }

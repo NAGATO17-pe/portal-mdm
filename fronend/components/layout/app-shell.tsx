@@ -5,11 +5,11 @@ import { Topbar } from "@/components/layout/topbar";
 type Props = { children: ReactNode };
 
 export const AppShell = ({ children }: Props) => (
-  <div className="mx-auto flex min-h-screen max-w-[1400px] flex-col gap-4 p-4 md:flex-row">
+  <div className="premium-grid mx-auto flex min-h-screen max-w-[1440px] flex-col gap-4 p-4 md:flex-row">
     <Sidebar />
     <main className="flex-1 space-y-4">
       <Topbar />
-      {children}
+      <section className="glass-card p-4 md:p-6">{children}</section>
     </main>
   </div>
 );

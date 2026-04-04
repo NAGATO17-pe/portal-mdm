@@ -3,11 +3,11 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center rounded-md text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50",
+  "inline-flex items-center justify-center rounded-md text-sm font-medium transition duration-300 disabled:cursor-not-allowed disabled:opacity-50",
   {
     variants: {
       variant: {
-        primary: "bg-primary text-white hover:opacity-90",
+        primary: "bg-primary text-white shadow-[0_6px_24px_rgba(37,99,235,0.4)] hover:scale-[1.01] hover:opacity-95",
         ghost: "bg-transparent hover:bg-white/10"
       },
       size: {
