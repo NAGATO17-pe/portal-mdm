@@ -68,3 +68,7 @@ venv.bak/
 # Temporary status files
 status.txt
 status2.txt
+
+# Permitir carpeta lib del frontend Next.js
+!fronend/lib/
+!fronend/lib/**
