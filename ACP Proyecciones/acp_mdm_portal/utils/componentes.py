@@ -339,66 +339,15 @@ def banner_aviso(mensaje: str) -> None:
 # ── 8. Panel de salud de conexión ────────────────────────────────────────────
 
 def health_status_panel() -> bool:
-    """
-    Renderiza un panel de estado de conexión descriptivo con
-    info de latencia, versión del servidor y uptime.
-
-    Returns:
-        True si la BD está conectada, False si no.
-    """
-    from utils.db import health_check
-
-    info = health_check()
-    conectado = info["conectado"]
-
-    if conectado:
-        st.markdown(
-            f"""
-            <div style="
-                display:flex; gap:24px; align-items:center;
-                background: rgba(30,107,53,0.08);
-                border: 1px solid rgba(30,107,53,0.25);
-                border-radius: 12px; padding: 14px 20px;
-                margin-bottom: 16px;
-            ">
-                <div style="font-size:1.6rem;">🟢</div>
-                <div>
-                    <div style="font-weight:700; color:var(--text-color); font-size:0.95rem;">
-                        Conectado a <code>{info['base_datos']}</code>
-                    </div>
-                    <div style="font-size:0.82rem; color:var(--text-color); opacity:0.65; margin-top:2px;">
-                        {info['version']} · Latencia: {info['latencia_ms']} · Uptime: {info['uptime']}
-                    </div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            """
-            <div style="
-                display:flex; gap:24px; align-items:center;
-                background: rgba(192,57,43,0.08);
-                border: 1px solid rgba(192,57,43,0.25);
-                border-radius: 12px; padding: 14px 20px;
-                margin-bottom: 16px;
-            ">
-                <div style="font-size:1.6rem;">🔴</div>
-                <div>
-                    <div style="font-weight:700; color:var(--text-color); font-size:0.95rem;">
-                        Sin conexión a la base de datos
-                    </div>
-                    <div style="font-size:0.82rem; color:var(--text-color); opacity:0.65; margin-top:2px;">
-                        Verifica la configuración de red y credenciales
-                    </div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    return conectado
+    """Muestra un badge de conexión basado en la disponibilidad del Backend."""
+    from utils.api_client import get_api
+    res = get_api("/health/live", base_url="http://127.0.0.1:8000")
+    if res and res.status_code == 200:
+        st.sidebar.markdown(badge_html("Servidor API Conectado", bg_color="#ECFDF3", text_color="#027A48"), unsafe_allow_html=True)
+        return True
+    
+    st.sidebar.markdown(badge_html("Servidor API Desconectado", bg_color="#FEF3F2", text_color="#B42318"), unsafe_allow_html=True)
+    return False
 
 def mostrar_dialogo_confirmacion(titulo: str, mensaje: str, callback: callable, *args, **kwargs):
     """

@@ -99,10 +99,15 @@ def cerrar_sesion() -> None:
 # ── Validación de credenciales ───────────────────────────────────────────────
 
 def _validar_credenciales(username: str, password: str) -> dict | None:
-    """Retorna el dict del usuario si las credenciales son válidas."""
-    user = _USUARIOS_HARDCODED.get(username.lower().strip())
-    if user and user["password_hash"] == _hash(password):
-        return user
+    """Valida contra el backend y retorna la info del usuario."""
+    from utils.api_client import login_backend
+    token = login_backend(username, password)
+    if token:
+        # Extraer rol desde local por ahora, o mapear desde el JWT (Fase rápida)
+        user = _USUARIOS_HARDCODED.get(username.lower().strip())
+        if user:
+            user["token"] = token
+            return user
     return None
 
 
@@ -303,6 +308,7 @@ def _render_login() -> bool:
                 st.session_state["nombre_usuario"]    = user["nombre"]
                 st.session_state["rol_usuario"]       = user["rol"]
                 st.session_state["avatar_usuario"]    = user["avatar"]
+                st.session_state["jwt_token"]         = user.get("token")
                 st.session_state["login_time"]        = time.time()
                 st.session_state["login_error"]       = False
                 st.rerun()

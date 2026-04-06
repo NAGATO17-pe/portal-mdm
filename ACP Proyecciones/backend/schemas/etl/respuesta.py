@@ -11,11 +11,12 @@ from pydantic import BaseModel, Field
 
 class RespuestaCorridaIniciada(BaseModel):
     """Respuesta al cliente cuando se acepta una corrida ETL."""
-    id_corrida:     str      = Field(description="UUID único de la corrida para suscribirse al SSE.")
-    id_log:         int | None = Field(description="ID del registro en Auditoria.Log_Carga.")
-    iniciado_por:   str      = Field(description="Quién inició la corrida.")
-    fecha_inicio:   datetime = Field(description="Timestamp de inicio registrado.")
-    url_stream:     str      = Field(description="URL para suscribirse al stream SSE de esta corrida.")
+    id_corrida:     str        = Field(description="UUID único de la corrida para suscribirse al SSE.")
+    id_log:         int | None = Field(description="ID del registro en Auditoria.Log_Carga (None hasta que el runner arranca).")
+    iniciado_por:   str        = Field(description="Quién inició la corrida.")
+    fecha_inicio:   datetime   = Field(description="Timestamp de solicitud registrado.")
+    url_stream:     str        = Field(description="URL para suscribirse al stream SSE de esta corrida.")
+    estado:         str        = Field(default="PENDIENTE", description="Estado inicial. El runner lo cambiará a EJECUTANDO.")
 
     model_config = {"from_attributes": True}
 

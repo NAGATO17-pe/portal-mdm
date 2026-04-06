@@ -2,6 +2,7 @@
 schemas/cuarentena/peticion.py
 ===============================
 Schemas de ENTRADA para el módulo Cuarentena.
+Versión 2: analista se elimina del body — se extrae del token JWT.
 """
 
 from pydantic import BaseModel, Field
@@ -19,11 +20,7 @@ class PeticionResolverCuarentena(BaseModel):
         description="Comentario de la decisión MDM.",
         max_length=500,
     )
-    analista: str = Field(
-        default="api_user",
-        description="Identificador del analista que toma la decisión.",
-        max_length=100,
-    )
+    # analista eliminado: se deriva del token JWT en el endpoint
 
 
 class PeticionRechazarCuarentena(BaseModel):
@@ -33,7 +30,4 @@ class PeticionRechazarCuarentena(BaseModel):
         min_length=1,
         max_length=500,
     )
-    analista: str = Field(
-        default="api_user",
-        max_length=100,
-    )
+    # analista eliminado: se deriva del token JWT en el endpoint

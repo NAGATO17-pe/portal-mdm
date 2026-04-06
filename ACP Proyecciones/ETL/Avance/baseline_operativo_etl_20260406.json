@@ -1,0 +1,1250 @@
+{
+  "fecha_corte_referencial": "2026-04-06",
+  "fecha_generacion": "2026-04-06 09:40:21",
+  "contexto": {
+    "servidor_sql": "LCP-PAG-PRACTIC",
+    "base_sql": "ACP_DataWarehose_Proyecciones",
+    "usuario_sql": "CERROPRIETO\\chernandez",
+    "version_sql": "Microsoft SQL Server 2025 (RTM) - 17.0.1000.7 (X64) \n\tOct 21 2025 12:05:57 \n\tCopyright (C) 2025 Microsoft Corporation\n\tEnterprise Developer Edition (64-bit) on Windows 10 Pro 10.0 <X64> (Build 26200: )\n",
+    "fecha_sql": "2026-04-06 09:40:21.377946"
+  },
+  "docs_operativos_contrastados": [
+    "README_OPERATIVO_PIPELINE.md",
+    "Avance/CIERRE_ESTABLE_ETL_20260330.md",
+    "Avance/ACTUALIZACION_OPERATIVA_CLIMA_20260331.md",
+    "Avance/ACTUALIZACION_OPERATIVA_INDUCCION_TASA_20260401.md",
+    "Avance/CHECKLIST_OPERATIVO_5_MINUTOS.md"
+  ],
+  "control_global": {
+    "diccionario_homologacion": {
+      "pendientes": 5,
+      "aprobados": 180
+    },
+    "modulo_9_por_tabla": [
+      {
+        "Tabla": "Bronce.Fisiologia",
+        "Total": 1655
+      },
+      {
+        "Tabla": "Bronce.Evaluacion_Pesos",
+        "Total": 8
+      }
+    ]
+  },
+  "dominios": {
+    "dim_geografia": {
+      "id": "dim_geografia",
+      "nombre": "Dim_Geografia",
+      "tabla_silver": "Silver.Dim_Geografia",
+      "tablas_bronce": [],
+      "es_dimension": true,
+      "nota_doc": "Base del resolvedor geográfico y del bridge cama.",
+      "metricas": {
+        "tabla_silver": "Silver.Dim_Geografia",
+        "total_filas": 1031,
+        "minus1_total": null,
+        "minus1_pct": null
+      },
+      "integridad_fk": {
+        "total_huerfanas": 0,
+        "detalle": []
+      },
+      "duplicados": {},
+      "ultimo_log": {},
+      "bronze": [],
+      "cuarentena": [],
+      "bronze_total_filas": 0,
+      "bronze_total_rechazado": 0,
+      "cuarentena_total_pendiente": 0,
+      "cuarentena_top_motivos": [],
+      "metricas_geo": {
+        "sp_validar_calidad_camas": {
+          "Cama_Fuera_Regla": 0,
+          "Geografias_Saturadas": 0,
+          "Estado_Calidad_Cama": "OK_OPERATIVO"
+        },
+        "bridge_geografia_cama": 3866,
+        "vigentes": 1031,
+        "test_block": 1,
+        "sin_cama_explicita": 1031,
+        "duplicados_vigentes": 0
+      },
+      "dictamen": "CERRADO",
+      "razon_dictamen": "Calidad de camas OK, bridge persistido y sin duplicados vigentes.",
+      "readiness_ml": "LISTO",
+      "residual_dominante": "Bridge=3866, duplicados_vigentes=0, sp_estado=OK_OPERATIVO"
+    },
+    "dim_personal": {
+      "id": "dim_personal",
+      "nombre": "Dim_Personal",
+      "tabla_silver": "Silver.Dim_Personal",
+      "tablas_bronce": [
+        "Bronce.Consolidado_Tareos",
+        "Bronce.Fiscalizacion"
+      ],
+      "es_dimension": true,
+      "nota_doc": "Dimensión conservadora; no debería asumirse como cerrada sin fuente fuerte.",
+      "metricas": {
+        "tabla_silver": "Silver.Dim_Personal",
+        "total_filas": 2,
+        "minus1_total": null,
+        "minus1_pct": null
+      },
+      "integridad_fk": {
+        "total_huerfanas": 0,
+        "detalle": []
+      },
+      "duplicados": {},
+      "ultimo_log": {},
+      "bronze": [
+        {
+          "tabla": "Bronce.Consolidado_Tareos",
+          "total_filas": 0,
+          "por_estado": []
+        },
+        {
+          "tabla": "Bronce.Fiscalizacion",
+          "total_filas": 3632,
+          "por_estado": []
+        }
+      ],
+      "cuarentena": [
+        {
+          "tabla_origen": "Bronce.Consolidado_Tareos",
+          "pendientes": 0,
+          "top_motivos": []
+        },
+        {
+          "tabla_origen": "Bronce.Fiscalizacion",
+          "pendientes": 0,
+          "top_motivos": []
+        }
+      ],
+      "bronze_total_filas": 3632,
+      "bronze_total_rechazado": 0,
+      "cuarentena_total_pendiente": 0,
+      "cuarentena_top_motivos": [],
+      "metricas_dim_personal": {
+        "total": 2,
+        "surrogate_menos_uno": 1,
+        "filas_reales": 1,
+        "sin_nombre": 1,
+        "sin_sexo": 2,
+        "sin_planilla": 1
+      },
+      "dictamen": "PENDIENTE FUNCIONAL",
+      "razon_dictamen": "La dimensión existe, pero sigue siendo demasiado débil para soportar cierre analítico.",
+      "readiness_ml": "NO_LISTO",
+      "residual_dominante": "filas_reales=1, sin_nombre=1"
+    },
+    "conteo": {
+      "id": "conteo",
+      "nombre": "Fact_Conteo_Fenologico",
+      "tabla_silver": "Silver.Fact_Conteo_Fenologico",
+      "tablas_bronce": [
+        "Bronce.Conteo_Fruta"
+      ],
+      "es_dimension": false,
+      "nota_doc": "Fact estable en checkpoint de marzo.",
+      "metricas": {
+        "tabla_silver": "Silver.Fact_Conteo_Fenologico",
+        "total_filas": 12520,
+        "minus1_total": 12520,
+        "minus1_pct": 100.0,
+        "fecha_min_evento": "2026-03-02 00:00:00",
+        "fecha_max_evento": "2026-03-25 00:00:00"
+      },
+      "integridad_fk": {
+        "total_huerfanas": 0,
+        "detalle": [
+          {
+            "fk": "ID_Geografia",
+            "tabla_dim": "Silver.Dim_Geografia",
+            "pk": "ID_Geografia",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Tiempo",
+            "tabla_dim": "Silver.Dim_Tiempo",
+            "pk": "ID_Tiempo",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Variedad",
+            "tabla_dim": "Silver.Dim_Variedad",
+            "pk": "ID_Variedad",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Personal",
+            "tabla_dim": "Silver.Dim_Personal",
+            "pk": "ID_Personal",
+            "huerfanas": 0
+          }
+        ]
+      },
+      "duplicados": {},
+      "ultimo_log": {
+        "Tabla_Destino": "Silver.Fact_Conteo_Fenologico",
+        "Estado_Proceso": "OK",
+        "Filas_Leidas": 0,
+        "Filas_Insertadas": 0,
+        "Filas_Cuarentena": null,
+        "Filas_Rechazadas": 0,
+        "Fecha_Inicio": "2026-04-01 11:50:34.434563",
+        "Fecha_Fin": "2026-04-01 11:50:34.446911",
+        "Nombre_Archivo_Fuente": "PIPELINE_FACT:Fact_Conteo_Fenologico",
+        "Mensaje_Error": null
+      },
+      "bronze": [
+        {
+          "tabla": "Bronce.Conteo_Fruta",
+          "total_filas": 1565,
+          "por_estado": [
+            {
+              "estado_carga": "PROCESADO",
+              "total": 1565
+            }
+          ]
+        }
+      ],
+      "cuarentena": [
+        {
+          "tabla_origen": "Bronce.Conteo_Fruta",
+          "pendientes": 0,
+          "top_motivos": []
+        }
+      ],
+      "bronze_total_filas": 1565,
+      "bronze_total_rechazado": 0,
+      "cuarentena_total_pendiente": 0,
+      "cuarentena_top_motivos": [],
+      "dictamen": "ESTABLE CON RESIDUAL CONTROLADO",
+      "razon_dictamen": "Estructuralmente sano, pero con dependencia total de un Dim_Personal aún conservador.",
+      "readiness_ml": "CONDICIONAL",
+      "residual_dominante": "ID_Personal=-1 100.0%"
+    },
+    "pesos": {
+      "id": "pesos",
+      "nombre": "Fact_Evaluacion_Pesos",
+      "tabla_silver": "Silver.Fact_Evaluacion_Pesos",
+      "tablas_bronce": [
+        "Bronce.Evaluacion_Pesos"
+      ],
+      "es_dimension": false,
+      "nota_doc": "Fact estable con residual controlado y fuerte dependencia de Dim_Personal.",
+      "metricas": {
+        "tabla_silver": "Silver.Fact_Evaluacion_Pesos",
+        "total_filas": 5656,
+        "minus1_total": 5656,
+        "minus1_pct": 100.0,
+        "fecha_min_evento": "2025-05-02 00:00:00",
+        "fecha_max_evento": "2026-03-09 00:00:00"
+      },
+      "integridad_fk": {
+        "total_huerfanas": 0,
+        "detalle": [
+          {
+            "fk": "ID_Geografia",
+            "tabla_dim": "Silver.Dim_Geografia",
+            "pk": "ID_Geografia",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Tiempo",
+            "tabla_dim": "Silver.Dim_Tiempo",
+            "pk": "ID_Tiempo",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Variedad",
+            "tabla_dim": "Silver.Dim_Variedad",
+            "pk": "ID_Variedad",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Personal",
+            "tabla_dim": "Silver.Dim_Personal",
+            "pk": "ID_Personal",
+            "huerfanas": 0
+          }
+        ]
+      },
+      "duplicados": {},
+      "ultimo_log": {
+        "Tabla_Destino": "Silver.Fact_Evaluacion_Pesos",
+        "Estado_Proceso": "OK",
+        "Filas_Leidas": 0,
+        "Filas_Insertadas": 0,
+        "Filas_Cuarentena": null,
+        "Filas_Rechazadas": 0,
+        "Fecha_Inicio": "2026-04-01 11:50:39.466546",
+        "Fecha_Fin": "2026-04-01 11:50:39.478401",
+        "Nombre_Archivo_Fuente": "PIPELINE_FACT:Fact_Evaluacion_Pesos",
+        "Mensaje_Error": null
+      },
+      "bronze": [
+        {
+          "tabla": "Bronce.Evaluacion_Pesos",
+          "total_filas": 5672,
+          "por_estado": [
+            {
+              "estado_carga": "PROCESADO",
+              "total": 5672
+            }
+          ]
+        }
+      ],
+      "cuarentena": [
+        {
+          "tabla_origen": "Bronce.Evaluacion_Pesos",
+          "pendientes": 16,
+          "top_motivos": [
+            {
+              "Motivo": "No se pudo calcular peso promedio de baya",
+              "total": 3
+            },
+            {
+              "Motivo": "Geografia no encontrada en Silver.Dim_Geografia.",
+              "total": 1
+            },
+            {
+              "Motivo": "Peso fuera de rango biológico 0.5–8.0g (recibido: 0.0069)",
+              "total": 1
+            },
+            {
+              "Motivo": "Peso fuera de rango biológico 0.5–8.0g (recibido: 0.0567)",
+              "total": 1
+            },
+            {
+              "Motivo": "Peso fuera de rango biológico 0.5–8.0g (recibido: 0.1427)",
+              "total": 1
+            }
+          ]
+        }
+      ],
+      "bronze_total_filas": 5672,
+      "bronze_total_rechazado": 0,
+      "cuarentena_total_pendiente": 16,
+      "cuarentena_top_motivos": [
+        {
+          "Tabla_Origen": "Bronce.Evaluacion_Pesos",
+          "Motivo": "No se pudo calcular peso promedio de baya",
+          "total": 3
+        }
+      ],
+      "dictamen": "ESTABLE CON RESIDUAL CONTROLADO",
+      "razon_dictamen": "Estructuralmente sano, pero con dependencia total de un Dim_Personal aún conservador.",
+      "readiness_ml": "CONDICIONAL",
+      "residual_dominante": "No se pudo calcular peso promedio de baya (3)"
+    },
+    "vegetativa": {
+      "id": "vegetativa",
+      "nombre": "Fact_Evaluacion_Vegetativa",
+      "tabla_silver": "Silver.Fact_Evaluacion_Vegetativa",
+      "tablas_bronce": [
+        "Bronce.Evaluacion_Vegetativa"
+      ],
+      "es_dimension": false,
+      "nota_doc": "Fact estable con residual dominante de geografía y personal.",
+      "metricas": {
+        "tabla_silver": "Silver.Fact_Evaluacion_Vegetativa",
+        "total_filas": 22872,
+        "minus1_total": 22872,
+        "minus1_pct": 100.0,
+        "fecha_min_evento": "2025-03-04",
+        "fecha_max_evento": "2026-03-13"
+      },
+      "integridad_fk": {
+        "total_huerfanas": 0,
+        "detalle": [
+          {
+            "fk": "ID_Geografia",
+            "tabla_dim": "Silver.Dim_Geografia",
+            "pk": "ID_Geografia",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Tiempo",
+            "tabla_dim": "Silver.Dim_Tiempo",
+            "pk": "ID_Tiempo",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Variedad",
+            "tabla_dim": "Silver.Dim_Variedad",
+            "pk": "ID_Variedad",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Personal",
+            "tabla_dim": "Silver.Dim_Personal",
+            "pk": "ID_Personal",
+            "huerfanas": 0
+          }
+        ]
+      },
+      "duplicados": {},
+      "ultimo_log": {
+        "Tabla_Destino": "Silver.Fact_Evaluacion_Vegetativa",
+        "Estado_Proceso": "OK",
+        "Filas_Leidas": 0,
+        "Filas_Insertadas": 0,
+        "Filas_Cuarentena": null,
+        "Filas_Rechazadas": 0,
+        "Fecha_Inicio": "2026-04-01 11:51:19.774801",
+        "Fecha_Fin": "2026-04-01 11:51:19.831816",
+        "Nombre_Archivo_Fuente": "PIPELINE_FACT:Fact_Evaluacion_Vegetativa",
+        "Mensaje_Error": null
+      },
+      "bronze": [
+        {
+          "tabla": "Bronce.Evaluacion_Vegetativa",
+          "total_filas": 23417,
+          "por_estado": [
+            {
+              "estado_carga": "PROCESADO",
+              "total": 23417
+            }
+          ]
+        }
+      ],
+      "cuarentena": [
+        {
+          "tabla_origen": "Bronce.Evaluacion_Vegetativa",
+          "pendientes": 545,
+          "top_motivos": [
+            {
+              "Motivo": "Geografia no encontrada en Silver.Dim_Geografia.",
+              "total": 455
+            },
+            {
+              "Motivo": "Plantas en floracion invalida o mayor al total evaluado",
+              "total": 75
+            },
+            {
+              "Motivo": "Cantidad de plantas evaluadas invalida",
+              "total": 13
+            },
+            {
+              "Motivo": "Fecha invalida o fuera de campana",
+              "total": 2
+            }
+          ]
+        }
+      ],
+      "bronze_total_filas": 23417,
+      "bronze_total_rechazado": 0,
+      "cuarentena_total_pendiente": 545,
+      "cuarentena_top_motivos": [
+        {
+          "Tabla_Origen": "Bronce.Evaluacion_Vegetativa",
+          "Motivo": "Geografia no encontrada en Silver.Dim_Geografia.",
+          "total": 455
+        }
+      ],
+      "dictamen": "ESTABLE CON RESIDUAL CONTROLADO",
+      "razon_dictamen": "Estructuralmente sano, pero con dependencia total de un Dim_Personal aún conservador.",
+      "readiness_ml": "CONDICIONAL",
+      "residual_dominante": "Geografia no encontrada en Silver.Dim_Geografia. (455)"
+    },
+    "ciclo_poda": {
+      "id": "ciclo_poda",
+      "nombre": "Fact_Ciclo_Poda",
+      "tabla_silver": "Silver.Fact_Ciclo_Poda",
+      "tablas_bronce": [
+        "Bronce.Evaluacion_Calidad_Poda",
+        "Bronce.Ciclos_Fenologicos"
+      ],
+      "es_dimension": false,
+      "nota_doc": "Frente documentado como estable.",
+      "metricas": {
+        "tabla_silver": "Silver.Fact_Ciclo_Poda",
+        "total_filas": 5205,
+        "minus1_total": null,
+        "minus1_pct": null,
+        "fecha_min_evento": "2026-01-05 00:00:00",
+        "fecha_max_evento": "2026-03-16 00:00:00"
+      },
+      "integridad_fk": {
+        "total_huerfanas": 0,
+        "detalle": [
+          {
+            "fk": "ID_Geografia",
+            "tabla_dim": "Silver.Dim_Geografia",
+            "pk": "ID_Geografia",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Tiempo",
+            "tabla_dim": "Silver.Dim_Tiempo",
+            "pk": "ID_Tiempo",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Variedad",
+            "tabla_dim": "Silver.Dim_Variedad",
+            "pk": "ID_Variedad",
+            "huerfanas": 0
+          }
+        ]
+      },
+      "duplicados": {},
+      "ultimo_log": {
+        "Tabla_Destino": "Silver.Fact_Ciclo_Poda",
+        "Estado_Proceso": "OK",
+        "Filas_Leidas": 0,
+        "Filas_Insertadas": 0,
+        "Filas_Cuarentena": null,
+        "Filas_Rechazadas": 0,
+        "Fecha_Inicio": "2026-04-01 11:51:20.050475",
+        "Fecha_Fin": "2026-04-01 11:51:20.110127",
+        "Nombre_Archivo_Fuente": "PIPELINE_FACT:Fact_Ciclo_Poda",
+        "Mensaje_Error": null
+      },
+      "bronze": [
+        {
+          "tabla": "Bronce.Evaluacion_Calidad_Poda",
+          "total_filas": 5205,
+          "por_estado": [
+            {
+              "estado_carga": "PROCESADO",
+              "total": 5205
+            }
+          ]
+        },
+        {
+          "tabla": "Bronce.Ciclos_Fenologicos",
+          "total_filas": 18912,
+          "por_estado": []
+        }
+      ],
+      "cuarentena": [
+        {
+          "tabla_origen": "Bronce.Evaluacion_Calidad_Poda",
+          "pendientes": 0,
+          "top_motivos": []
+        },
+        {
+          "tabla_origen": "Bronce.Ciclos_Fenologicos",
+          "pendientes": 0,
+          "top_motivos": []
+        }
+      ],
+      "bronze_total_filas": 24117,
+      "bronze_total_rechazado": 0,
+      "cuarentena_total_pendiente": 0,
+      "cuarentena_top_motivos": [],
+      "dictamen": "CERRADO",
+      "razon_dictamen": "Dominio sin huérfanas y sin residual dominante abierto.",
+      "readiness_ml": "LISTO",
+      "residual_dominante": "Sin residual dominante documentado"
+    },
+    "maduracion": {
+      "id": "maduracion",
+      "nombre": "Fact_Maduracion",
+      "tabla_silver": "Silver.Fact_Maduracion",
+      "tablas_bronce": [
+        "Bronce.Maduracion"
+      ],
+      "es_dimension": false,
+      "nota_doc": "Dominio estabilizado, pero sigue arrastrando debilidad de Dim_Personal.",
+      "metricas": {
+        "tabla_silver": "Silver.Fact_Maduracion",
+        "total_filas": 25270,
+        "minus1_total": 25270,
+        "minus1_pct": 100.0,
+        "fecha_min_evento": "2026-01-02 00:00:00",
+        "fecha_max_evento": "2026-03-27 00:00:00"
+      },
+      "integridad_fk": {
+        "total_huerfanas": 0,
+        "detalle": [
+          {
+            "fk": "ID_Geografia",
+            "tabla_dim": "Silver.Dim_Geografia",
+            "pk": "ID_Geografia",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Tiempo",
+            "tabla_dim": "Silver.Dim_Tiempo",
+            "pk": "ID_Tiempo",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Variedad",
+            "tabla_dim": "Silver.Dim_Variedad",
+            "pk": "ID_Variedad",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Personal",
+            "tabla_dim": "Silver.Dim_Personal",
+            "pk": "ID_Personal",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Cinta",
+            "tabla_dim": "Silver.Dim_Cinta",
+            "pk": "ID_Cinta",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Estado_Fenologico",
+            "tabla_dim": "Silver.Dim_Estado_Fenologico",
+            "pk": "ID_Estado_Fenologico",
+            "huerfanas": 0
+          }
+        ]
+      },
+      "duplicados": {},
+      "ultimo_log": {
+        "Tabla_Destino": "Silver.Fact_Maduracion",
+        "Estado_Proceso": "OK",
+        "Filas_Leidas": 0,
+        "Filas_Insertadas": 0,
+        "Filas_Cuarentena": null,
+        "Filas_Rechazadas": 0,
+        "Fecha_Inicio": "2026-04-01 11:50:34.463416",
+        "Fecha_Fin": "2026-04-01 11:50:38.583802",
+        "Nombre_Archivo_Fuente": "PIPELINE_FACT:Fact_Maduracion",
+        "Mensaje_Error": null
+      },
+      "bronze": [
+        {
+          "tabla": "Bronce.Maduracion",
+          "total_filas": 26800,
+          "por_estado": []
+        }
+      ],
+      "cuarentena": [
+        {
+          "tabla_origen": "Bronce.Maduracion",
+          "pendientes": 0,
+          "top_motivos": []
+        }
+      ],
+      "bronze_total_filas": 26800,
+      "bronze_total_rechazado": 0,
+      "cuarentena_total_pendiente": 0,
+      "cuarentena_top_motivos": [],
+      "dictamen": "ESTABLE CON RESIDUAL CONTROLADO",
+      "razon_dictamen": "Estructuralmente sano, pero con dependencia total de un Dim_Personal aún conservador.",
+      "readiness_ml": "CONDICIONAL",
+      "residual_dominante": "ID_Personal=-1 100.0%"
+    },
+    "clima": {
+      "id": "clima",
+      "nombre": "Fact_Telemetria_Clima",
+      "tabla_silver": "Silver.Fact_Telemetria_Clima",
+      "tablas_bronce": [
+        "Bronce.Clima",
+        "Bronce.Reporte_Clima",
+        "Bronce.Variables_Meteorologicas"
+      ],
+      "es_dimension": false,
+      "nota_doc": "Clima se documentó como cerrado operativamente al 2026-03-31.",
+      "metricas": {
+        "tabla_silver": "Silver.Fact_Telemetria_Clima",
+        "total_filas": 214725,
+        "minus1_total": null,
+        "minus1_pct": null,
+        "fecha_min_evento": "2022-01-01 01:00:00",
+        "fecha_max_evento": "2026-03-29 23:30:00"
+      },
+      "integridad_fk": {
+        "total_huerfanas": 0,
+        "detalle": [
+          {
+            "fk": "ID_Tiempo",
+            "tabla_dim": "Silver.Dim_Tiempo",
+            "pk": "ID_Tiempo",
+            "huerfanas": 0
+          }
+        ]
+      },
+      "duplicados": {
+        "grupos": 42869,
+        "filas_extra": 85738,
+        "superposicion_total": {
+          "grupos": 42945,
+          "filas_extra": 171780
+        }
+      },
+      "ultimo_log": {
+        "Tabla_Destino": "Silver.Fact_Telemetria_Clima",
+        "Estado_Proceso": "OK",
+        "Filas_Leidas": 0,
+        "Filas_Insertadas": 0,
+        "Filas_Cuarentena": null,
+        "Filas_Rechazadas": 0,
+        "Fecha_Inicio": "2026-04-01 11:50:38.605723",
+        "Fecha_Fin": "2026-04-01 11:50:39.452047",
+        "Nombre_Archivo_Fuente": "PIPELINE_FACT:Fact_Telemetria_Clima",
+        "Mensaje_Error": null
+      },
+      "bronze": [
+        {
+          "tabla": "Bronce.Clima",
+          "total_filas": 0,
+          "por_estado": [],
+          "no_existe": true
+        },
+        {
+          "tabla": "Bronce.Reporte_Clima",
+          "total_filas": 85894,
+          "por_estado": [
+            {
+              "estado_carga": "PROCESADO",
+              "total": 85890
+            },
+            {
+              "estado_carga": "RECHAZADO",
+              "total": 4
+            }
+          ]
+        },
+        {
+          "tabla": "Bronce.Variables_Meteorologicas",
+          "total_filas": 128841,
+          "por_estado": [
+            {
+              "estado_carga": "PROCESADO",
+              "total": 128835
+            },
+            {
+              "estado_carga": "RECHAZADO",
+              "total": 6
+            }
+          ]
+        }
+      ],
+      "cuarentena": [
+        {
+          "tabla_origen": "Bronce.Clima",
+          "pendientes": 1562,
+          "top_motivos": [
+            {
+              "Motivo": "Humedad nula",
+              "total": 1512
+            },
+            {
+              "Motivo": "Humedad no numérica",
+              "total": 36
+            },
+            {
+              "Motivo": "Duplicado logico conflictivo en Bronce.Variables_Meteorologicas: multiples mediciones para mismo Sector_Climatico + Fecha_Evento",
+              "total": 8
+            },
+            {
+              "Motivo": "Duplicado logico conflictivo en Bronce.Reporte_Clima: multiples mediciones para mismo Sector_Climatico + Fecha_Evento",
+              "total": 6
+            }
+          ]
+        },
+        {
+          "tabla_origen": "Bronce.Reporte_Clima",
+          "pendientes": 0,
+          "top_motivos": []
+        },
+        {
+          "tabla_origen": "Bronce.Variables_Meteorologicas",
+          "pendientes": 0,
+          "top_motivos": []
+        }
+      ],
+      "bronze_total_filas": 214735,
+      "bronze_total_rechazado": 10,
+      "cuarentena_total_pendiente": 1562,
+      "cuarentena_top_motivos": [
+        {
+          "Tabla_Origen": "Bronce.Clima",
+          "Motivo": "Humedad nula",
+          "total": 1512
+        }
+      ],
+      "dictamen": "ESTABLE CON RESIDUAL CONTROLADO",
+      "razon_dictamen": "Carga viva y sin huérfanas, pero el criterio canónico de no duplicados ya no coincide con el cierre documental.",
+      "readiness_ml": "CONDICIONAL",
+      "residual_dominante": "Humedad nula (1512)"
+    },
+    "induccion": {
+      "id": "induccion",
+      "nombre": "Fact_Induccion_Floral",
+      "tabla_silver": "Silver.Fact_Induccion_Floral",
+      "tablas_bronce": [
+        "Bronce.Induccion_Floral"
+      ],
+      "es_dimension": false,
+      "nota_doc": "Dominio funcional; el modelo futuro debe consumirlo desde Silver.",
+      "metricas": {
+        "tabla_silver": "Silver.Fact_Induccion_Floral",
+        "total_filas": 1424,
+        "minus1_total": 1424,
+        "minus1_pct": 100.0,
+        "fecha_min_evento": "2026-02-04",
+        "fecha_max_evento": "2026-03-31"
+      },
+      "integridad_fk": {
+        "total_huerfanas": 0,
+        "detalle": [
+          {
+            "fk": "ID_Geografia",
+            "tabla_dim": "Silver.Dim_Geografia",
+            "pk": "ID_Geografia",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Tiempo",
+            "tabla_dim": "Silver.Dim_Tiempo",
+            "pk": "ID_Tiempo",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Variedad",
+            "tabla_dim": "Silver.Dim_Variedad",
+            "pk": "ID_Variedad",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Personal",
+            "tabla_dim": "Silver.Dim_Personal",
+            "pk": "ID_Personal",
+            "huerfanas": 0
+          }
+        ]
+      },
+      "duplicados": {
+        "grupos": 24,
+        "filas_extra": 30
+      },
+      "ultimo_log": {
+        "Tabla_Destino": "Silver.Fact_Induccion_Floral",
+        "Estado_Proceso": "OK",
+        "Filas_Leidas": 0,
+        "Filas_Insertadas": 0,
+        "Filas_Cuarentena": null,
+        "Filas_Rechazadas": 0,
+        "Fecha_Inicio": "2026-04-01 11:51:19.839044",
+        "Fecha_Fin": "2026-04-01 11:51:19.864884",
+        "Nombre_Archivo_Fuente": "PIPELINE_FACT:Fact_Induccion_Floral",
+        "Mensaje_Error": null
+      },
+      "bronze": [
+        {
+          "tabla": "Bronce.Induccion_Floral",
+          "total_filas": 1448,
+          "por_estado": [
+            {
+              "estado_carga": "PROCESADO",
+              "total": 1424
+            },
+            {
+              "estado_carga": "RECHAZADO",
+              "total": 24
+            }
+          ]
+        }
+      ],
+      "cuarentena": [
+        {
+          "tabla_origen": "Bronce.Induccion_Floral",
+          "pendientes": 24,
+          "top_motivos": [
+            {
+              "Motivo": "Geografia no encontrada en Silver.Dim_Geografia.",
+              "total": 18
+            },
+            {
+              "Motivo": "Brotes con induccion invalida o mayor al total de brotes",
+              "total": 5
+            },
+            {
+              "Motivo": "Cantidad de brotes totales invalida",
+              "total": 1
+            }
+          ]
+        }
+      ],
+      "bronze_total_filas": 1448,
+      "bronze_total_rechazado": 24,
+      "cuarentena_total_pendiente": 24,
+      "cuarentena_top_motivos": [
+        {
+          "Tabla_Origen": "Bronce.Induccion_Floral",
+          "Motivo": "Geografia no encontrada en Silver.Dim_Geografia.",
+          "total": 18
+        }
+      ],
+      "dictamen": "ESTABLE CON RESIDUAL CONTROLADO",
+      "razon_dictamen": "Estructuralmente sano, pero con dependencia total de un Dim_Personal aún conservador.",
+      "readiness_ml": "CONDICIONAL",
+      "residual_dominante": "Geografia no encontrada en Silver.Dim_Geografia. (18)"
+    },
+    "tasa": {
+      "id": "tasa",
+      "nombre": "Fact_Tasa_Crecimiento_Brotes",
+      "tabla_silver": "Silver.Fact_Tasa_Crecimiento_Brotes",
+      "tablas_bronce": [
+        "Bronce.Tasa_Crecimiento_Brotes"
+      ],
+      "es_dimension": false,
+      "nota_doc": "Dominio funcional documentado, pero muy sensible a geografía/MDM.",
+      "metricas": {
+        "tabla_silver": "Silver.Fact_Tasa_Crecimiento_Brotes",
+        "total_filas": 378222,
+        "minus1_total": 378222,
+        "minus1_pct": 100.0,
+        "fecha_min_evento": "2024-02-12",
+        "fecha_max_evento": "2025-11-17"
+      },
+      "integridad_fk": {
+        "total_huerfanas": 0,
+        "detalle": [
+          {
+            "fk": "ID_Geografia",
+            "tabla_dim": "Silver.Dim_Geografia",
+            "pk": "ID_Geografia",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Tiempo",
+            "tabla_dim": "Silver.Dim_Tiempo",
+            "pk": "ID_Tiempo",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Variedad",
+            "tabla_dim": "Silver.Dim_Variedad",
+            "pk": "ID_Variedad",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Personal",
+            "tabla_dim": "Silver.Dim_Personal",
+            "pk": "ID_Personal",
+            "huerfanas": 0
+          }
+        ]
+      },
+      "duplicados": {
+        "grupos": 120379,
+        "filas_extra": 257843
+      },
+      "ultimo_log": {
+        "Tabla_Destino": "Silver.Fact_Tasa_Crecimiento_Brotes",
+        "Estado_Proceso": "OK",
+        "Filas_Leidas": 0,
+        "Filas_Insertadas": 0,
+        "Filas_Cuarentena": null,
+        "Filas_Rechazadas": 0,
+        "Fecha_Inicio": "2026-04-01 11:51:19.872506",
+        "Fecha_Fin": "2026-04-01 11:51:19.923750",
+        "Nombre_Archivo_Fuente": "PIPELINE_FACT:Fact_Tasa_Crecimiento_Brotes",
+        "Mensaje_Error": null
+      },
+      "bronze": [
+        {
+          "tabla": "Bronce.Tasa_Crecimiento_Brotes",
+          "total_filas": 536948,
+          "por_estado": [
+            {
+              "estado_carga": "PROCESADO",
+              "total": 378222
+            },
+            {
+              "estado_carga": "RECHAZADO",
+              "total": 158726
+            }
+          ]
+        }
+      ],
+      "cuarentena": [
+        {
+          "tabla_origen": "Bronce.Tasa_Crecimiento_Brotes",
+          "pendientes": 160956,
+          "top_motivos": [
+            {
+              "Motivo": "Geografia no encontrada en Silver.Dim_Geografia.",
+              "total": 140416
+            },
+            {
+              "Motivo": "Geografia especial requiere catalogacion o regla en MDM_Geografia.",
+              "total": 18310
+            },
+            {
+              "Motivo": "Variedad no reconocida — requiere revisión en MDM",
+              "total": 2230
+            }
+          ]
+        }
+      ],
+      "bronze_total_filas": 536948,
+      "bronze_total_rechazado": 158726,
+      "cuarentena_total_pendiente": 160956,
+      "cuarentena_top_motivos": [
+        {
+          "Tabla_Origen": "Bronce.Tasa_Crecimiento_Brotes",
+          "Motivo": "Geografia no encontrada en Silver.Dim_Geografia.",
+          "total": 140416
+        }
+      ],
+      "dictamen": "PENDIENTE DE DECISIÓN DE NEGOCIO/MDM",
+      "razon_dictamen": "La geografía y MDM siguen explicando un residual masivo.",
+      "readiness_ml": "NO_LISTO",
+      "residual_dominante": "Geografia no encontrada en Silver.Dim_Geografia. (140416)"
+    },
+    "tareo": {
+      "id": "tareo",
+      "nombre": "Fact_Tareo",
+      "tabla_silver": "Silver.Fact_Tareo",
+      "tablas_bronce": [
+        "Bronce.Consolidado_Tareos"
+      ],
+      "es_dimension": false,
+      "nota_doc": "Debe tratarse como dominio pendiente hasta tener fuente suficiente.",
+      "metricas": {
+        "tabla_silver": "Silver.Fact_Tareo",
+        "total_filas": 0,
+        "minus1_total": 0,
+        "minus1_pct": null,
+        "fecha_min_evento": null,
+        "fecha_max_evento": null
+      },
+      "integridad_fk": {
+        "total_huerfanas": 0,
+        "detalle": [
+          {
+            "fk": "ID_Geografia",
+            "tabla_dim": "Silver.Dim_Geografia",
+            "pk": "ID_Geografia",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Tiempo",
+            "tabla_dim": "Silver.Dim_Tiempo",
+            "pk": "ID_Tiempo",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Personal",
+            "tabla_dim": "Silver.Dim_Personal",
+            "pk": "ID_Personal",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Actividad_Operativa",
+            "tabla_dim": "Silver.Dim_Actividad_Operativa",
+            "pk": "ID_Actividad",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Personal_Supervisor",
+            "tabla_dim": "Silver.Dim_Personal",
+            "pk": "ID_Personal",
+            "huerfanas": 0
+          }
+        ]
+      },
+      "duplicados": {},
+      "ultimo_log": {
+        "Tabla_Destino": "Silver.Fact_Tareo",
+        "Estado_Proceso": "OK",
+        "Filas_Leidas": 0,
+        "Filas_Insertadas": 0,
+        "Filas_Cuarentena": null,
+        "Filas_Rechazadas": 0,
+        "Fecha_Inicio": "2026-04-01 11:50:39.491443",
+        "Fecha_Fin": "2026-04-01 11:50:39.498883",
+        "Nombre_Archivo_Fuente": "PIPELINE_FACT:Fact_Tareo",
+        "Mensaje_Error": null
+      },
+      "bronze": [
+        {
+          "tabla": "Bronce.Consolidado_Tareos",
+          "total_filas": 0,
+          "por_estado": []
+        }
+      ],
+      "cuarentena": [
+        {
+          "tabla_origen": "Bronce.Consolidado_Tareos",
+          "pendientes": 0,
+          "top_motivos": []
+        }
+      ],
+      "bronze_total_filas": 0,
+      "bronze_total_rechazado": 0,
+      "cuarentena_total_pendiente": 0,
+      "cuarentena_top_motivos": [],
+      "dictamen": "BLOQUEADO POR FUENTE",
+      "razon_dictamen": "No hay fuente vigente cargada en Bronce para validar o cerrar el dominio.",
+      "readiness_ml": "NO_LISTO",
+      "residual_dominante": "Bronce=0, Silver=0"
+    },
+    "fisiologia": {
+      "id": "fisiologia",
+      "nombre": "Fact_Fisiologia",
+      "tabla_silver": "Silver.Fact_Fisiologia",
+      "tablas_bronce": [
+        "Bronce.Fisiologia"
+      ],
+      "es_dimension": false,
+      "nota_doc": "Dominio activo documentado; residual concentrado en Modulo_Raw = '9.'.",
+      "metricas": {
+        "tabla_silver": "Silver.Fact_Fisiologia",
+        "total_filas": 43900,
+        "minus1_total": null,
+        "minus1_pct": null,
+        "fecha_min_evento": "2025-05-02 00:00:00",
+        "fecha_max_evento": "2026-01-16 00:00:00"
+      },
+      "integridad_fk": {
+        "total_huerfanas": 0,
+        "detalle": [
+          {
+            "fk": "ID_Geografia",
+            "tabla_dim": "Silver.Dim_Geografia",
+            "pk": "ID_Geografia",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Tiempo",
+            "tabla_dim": "Silver.Dim_Tiempo",
+            "pk": "ID_Tiempo",
+            "huerfanas": 0
+          },
+          {
+            "fk": "ID_Variedad",
+            "tabla_dim": "Silver.Dim_Variedad",
+            "pk": "ID_Variedad",
+            "huerfanas": 0
+          }
+        ]
+      },
+      "duplicados": {},
+      "ultimo_log": {
+        "Tabla_Destino": "Silver.Fact_Fisiologia",
+        "Estado_Proceso": "OK",
+        "Filas_Leidas": 0,
+        "Filas_Insertadas": 43900,
+        "Filas_Cuarentena": null,
+        "Filas_Rechazadas": 1655,
+        "Fecha_Inicio": "2026-04-01 11:50:39.513611",
+        "Fecha_Fin": "2026-04-01 11:51:19.761523",
+        "Nombre_Archivo_Fuente": "PIPELINE_FACT:Fact_Fisiologia",
+        "Mensaje_Error": null
+      },
+      "bronze": [
+        {
+          "tabla": "Bronce.Fisiologia",
+          "total_filas": 45555,
+          "por_estado": [
+            {
+              "estado_carga": "CARGADO",
+              "total": 1655
+            },
+            {
+              "estado_carga": "PROCESADO",
+              "total": 43900
+            }
+          ]
+        }
+      ],
+      "cuarentena": [
+        {
+          "tabla_origen": "Bronce.Fisiologia",
+          "pendientes": 0,
+          "top_motivos": []
+        }
+      ],
+      "bronze_total_filas": 45555,
+      "bronze_total_rechazado": 0,
+      "cuarentena_total_pendiente": 0,
+      "cuarentena_top_motivos": [],
+      "dictamen": "ESTABLE CON RESIDUAL CONTROLADO",
+      "razon_dictamen": "Dominio operativo con residual abierto de módulo 9.",
+      "readiness_ml": "LISTO",
+      "residual_dominante": "Sin residual dominante documentado"
+    }
+  },
+  "doc_vs_sql": [
+    {
+      "afirmacion": "Servidor/base operativos siguen siendo LCP-PAG-PRACTIC / ACP_DataWarehose_Proyecciones.",
+      "clasificacion": "VALIDADA EN SQL",
+      "evidencia": "LCP-PAG-PRACTIC / ACP_DataWarehose_Proyecciones"
+    },
+    {
+      "afirmacion": "sp_Validar_Calidad_Camas debe quedar en OK_OPERATIVO.",
+      "clasificacion": "VALIDADA EN SQL",
+      "evidencia": "{'Cama_Fuera_Regla': 0, 'Geografias_Saturadas': 0, 'Estado_Calidad_Cama': 'OK_OPERATIVO'}"
+    },
+    {
+      "afirmacion": "Fact_Telemetria_Clima quedó cerrado operativamente y sin duplicados canónicos.",
+      "clasificacion": "INCONSISTENTE ENTRE DOC Y REALIDAD",
+      "evidencia": "Duplicados canónicos: 42869 grupos; cuarentena pendiente: 1562"
+    },
+    {
+      "afirmacion": "Inducción floral se mantiene funcional desde Silver.",
+      "clasificacion": "VALIDADA CON RESIDUAL CONTROLADO",
+      "evidencia": "Filas Silver: 1424; cuarentena pendiente: 24; duplicados: 24 grupos"
+    },
+    {
+      "afirmacion": "Tasa de crecimiento se mantiene funcional sin residual crítico nuevo.",
+      "clasificacion": "ABIERTA POR FUENTE/NEGOCIO",
+      "evidencia": "Filas Silver: 378222; cuarentena pendiente: 160956; bronce rechazado: 158726"
+    },
+    {
+      "afirmacion": "Dim_Personal sigue en estado conservador y pendiente de validación fuerte.",
+      "clasificacion": "VALIDADA EN SQL",
+      "evidencia": "Filas reales: 1; sin nombre: 1"
+    },
+    {
+      "afirmacion": "Fact_Tareo sigue diagnosticado y pendiente hasta contar con fuente suficiente.",
+      "clasificacion": "VALIDADA EN SQL",
+      "evidencia": "Silver: 0 filas; Bronce: 0 filas"
+    },
+    {
+      "afirmacion": "El residual vigente de módulo 9. sigue abierto y no debe inferirse automáticamente.",
+      "clasificacion": "VALIDADA CON RESIDUAL CONTROLADO",
+      "evidencia": "Total residual detectado: 1663"
+    }
+  ],
+  "resumen_global": {
+    "conteo_dictamenes": {
+      "CERRADO": 2,
+      "PENDIENTE FUNCIONAL": 1,
+      "ESTABLE CON RESIDUAL CONTROLADO": 7,
+      "PENDIENTE DE DECISIÓN DE NEGOCIO/MDM": 1,
+      "BLOQUEADO POR FUENTE": 1
+    },
+    "pendientes_criticos": [
+      {
+        "dominio": "Dim_Personal",
+        "dictamen": "PENDIENTE FUNCIONAL",
+        "razon": "La dimensión existe, pero sigue siendo demasiado débil para soportar cierre analítico."
+      },
+      {
+        "dominio": "Fact_Tasa_Crecimiento_Brotes",
+        "dictamen": "PENDIENTE DE DECISIÓN DE NEGOCIO/MDM",
+        "razon": "La geografía y MDM siguen explicando un residual masivo."
+      },
+      {
+        "dominio": "Fact_Tareo",
+        "dictamen": "BLOQUEADO POR FUENTE",
+        "razon": "No hay fuente vigente cargada en Bronce para validar o cerrar el dominio."
+      }
+    ],
+    "ready_ml": [
+      "Dim_Geografia",
+      "Fact_Ciclo_Poda",
+      "Fact_Fisiologia"
+    ],
+    "no_ready_ml": [
+      "Dim_Personal",
+      "Fact_Tasa_Crecimiento_Brotes",
+      "Fact_Tareo"
+    ]
+  }
+}

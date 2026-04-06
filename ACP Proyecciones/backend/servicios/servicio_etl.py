@@ -1,120 +1,163 @@
 """
 servicios/servicio_etl.py
 =========================
-Lógica de negocio para la ejecución del pipeline ETL.
-Encapsula el lanzamiento del subproceso, el registro de auditoría
-y la alimentación del broker SSE. El router solo llama a iniciar_corrida().
+Servicio ETL v3 — modelo controlado persistente.
+
+Ya NO lanza subprocess directamente.
+Ya NO usa broker SSE en memoria.
+
+Responsabilidades:
+  1. insertar_corrida → crea registro en Control.Corrida + encola en Control.Comando_Ejecucion
+  2. El runner externo (runner/runner.py) lee la cola y ejecuta el pipeline
+  3. stream_corrida → genera eventos SSE leyendo de Control.Corrida_Evento (poll persistente)
 """
 
-import os
-import sys
-import uuid
-import subprocess
+from __future__ import annotations
+
 import asyncio
+import uuid
 from datetime import datetime
+from typing import AsyncGenerator
 
-from nucleo.auditoria import registrar_inicio_corrida, registrar_fin_corrida
-from broker.broker_sse import registrar_corrida, publicar_linea, finalizar_corrida
+import repositorios.repo_control as rc
+from nucleo.logging import obtener_logger
 
-# Ruta al script del pipeline (un nivel arriba del backend → ETL/)
-_DIR_BASE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "ETL"))
-_SCRIPT_PIPELINE = os.path.join(_DIR_BASE, "pipeline.py")
+log = obtener_logger(__name__)
 
-# Resuelve el ejecutable de Python del entorno virtual
-def _resolver_python() -> str:
+_POLL_INTERVALO_SEG     = 2.0   # Frecuencia de polling SSE al DB
+_POLL_TIMEOUT_TOTAL_SEG = 7200  # Tiempo máximo que el SSE espera (2h)
+
+
+async def iniciar_corrida(
+    iniciado_por: str,
+    comentario: str | None = None,
+    max_reintentos: int = 0,
+    timeout_segundos: int = 3600,
+) -> dict:
     """
-    Devuelve la ruta al python.exe del entorno virtual,
-    corrigiendo el caso en que sys.executable apunte a uvicorn.exe.
-    """
-    ejecutable = sys.executable
-    if "uvicorn" in ejecutable.lower():
-        return os.path.join(os.path.dirname(ejecutable), "python.exe")
-    return ejecutable
-
-
-def _ejecutar_pipeline_en_hilo(id_corrida: str, id_log: int | None) -> None:
-    """
-    Función SÍNCRONA que corre en un thread separado (asyncio.to_thread).
-    Lanza el subproceso, lee stdout línea a línea y publica al broker SSE.
-    Al terminar, registra el resultado en la auditoría y publica el sentinel.
-    """
-    proceso = None
-    codigo_retorno = -1
-
-    try:
-        python = _resolver_python()
-        proceso = subprocess.Popen(
-            [python, _SCRIPT_PIPELINE],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            cwd=_DIR_BASE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-
-        if proceso.stdout is not None:
-            for linea in proceso.stdout:
-                publicar_linea(id_corrida, linea)
-
-        proceso.wait()
-        codigo_retorno = proceso.returncode
-    except Exception as error:
-        publicar_linea(id_corrida, f"--- ERROR AL LANZAR PIPELINE: {error} ---")
-    finally:
-        estado_final = "OK" if codigo_retorno == 0 else "ERROR"
-        mensaje_error = None if codigo_retorno == 0 else f"Pipeline terminó con código {codigo_retorno}"
-
-        if id_log is not None:
-            registrar_fin_corrida(
-                id_log=id_log,
-                estado=estado_final,
-                mensaje_error=mensaje_error,
-            )
-
-        resumen = (
-            "--- PIPELINE FINALIZADO CON ÉXITO ---"
-            if codigo_retorno == 0
-            else f"--- PIPELINE FINALIZÓ CON ERROR (código: {codigo_retorno}) ---"
-        )
-        publicar_linea(id_corrida, resumen)
-        finalizar_corrida(id_corrida)
-
-
-async def iniciar_corrida(iniciado_por: str, comentario: str | None) -> dict:
-    """
-    Punto de entrada del servicio. Retorna metadatos de la corrida
-    para que el router construya la respuesta al cliente.
-
-    1. Genera el id_corrida (UUID).
-    2. Registra el inicio en Auditoria.Log_Carga.
-    3. Registra la cola SSE en el broker.
-    4. Lanza el subproceso en un thread (no bloquea el event loop).
-    5. Retorna los datos para la respuesta HTTP inmediata.
+    Registra la corrida en Control.* y la pone en la cola del runner.
+    Retorna inmediatamente con los metadatos de la corrida — no espera ejecución.
     """
     id_corrida = str(uuid.uuid4())
+    ahora      = datetime.now()
 
-    # Registro de auditoría antes de arrancar
-    id_log = registrar_inicio_corrida(
-        nombre_proceso="API_ETL_PIPELINE",
-        tabla_destino="PIPELINE_COMPLETO",
-        nombre_archivo=f"corrida_{id_corrida[:8]}",
+    # 1. Crear registro maestro
+    await asyncio.to_thread(
+        rc.insertar_corrida,
+        id_corrida     = id_corrida,
+        iniciado_por   = iniciado_por,
+        comentario     = comentario,
+        max_reintentos = max_reintentos,
+        timeout_segundos = timeout_segundos,
     )
 
-    # Crear la cola en el broker SSE
-    registrar_corrida(id_corrida)
+    # 2. Encolar comando para el runner
+    await asyncio.to_thread(
+        rc.encolar_comando,
+        id_corrida     = id_corrida,
+        iniciado_por   = iniciado_por,
+        tipo_comando   = "INICIAR",
+        comentario     = comentario,
+        max_reintentos = max_reintentos,
+        timeout_seg    = timeout_segundos,
+    )
 
-    # Lanzar subproceso sin bloquear: asyncio.to_thread lo manda a un ThreadPool
-    asyncio.get_running_loop().run_in_executor(
-        None,
-        _ejecutar_pipeline_en_hilo,
-        id_corrida,
-        id_log,
+    log.info(
+        "Corrida encolada",
+        extra={"id_corrida": id_corrida, "iniciado_por": iniciado_por},
     )
 
     return {
         "id_corrida":   id_corrida,
-        "id_log":       id_log,
+        "id_log":       None,   # Se rellena cuando el runner arranca
         "iniciado_por": iniciado_por,
-        "fecha_inicio": datetime.now(),
+        "fecha_inicio": ahora,
+        "estado":       "PENDIENTE",
     }
+
+
+async def cancelar_corrida(id_corrida: str, solicitado_por: str) -> bool:
+    """
+    Solicita la cancelación de una corrida activa.
+    Retorna True si la corrida estaba en estado cancelable.
+    """
+    resultado = await asyncio.to_thread(
+        rc.solicitar_cancelacion,
+        id_corrida, solicitado_por
+    )
+    if resultado:
+        await asyncio.to_thread(
+            rc.insertar_evento,
+            id_corrida,
+            f"[CANCELADO] Solicitado por {solicitado_por}",
+            "FIN",
+        )
+    return resultado
+
+
+async def stream_eventos_corrida(id_corrida: str) -> AsyncGenerator[dict, None]:
+    """
+    Generador asíncrono para EventSourceResponse.
+    Lee Control.Corrida_Evento en polling incremental.
+    Termina cuando:
+      - La corrida llega a estado terminal (OK/ERROR/CANCELADO/TIMEOUT)
+      - Se alcanza el timeout global de streaming
+    """
+    ultimo_id_visto = 0
+    tiempo_total    = 0.0
+    estados_terminal = {"OK", "ERROR", "CANCELADO", "TIMEOUT"}
+
+    while tiempo_total < _POLL_TIMEOUT_TOTAL_SEG:
+        # Leer eventos nuevos desde el último ID visto
+        eventos = await asyncio.to_thread(
+            rc.listar_eventos,
+            id_corrida,
+            ultimo_id_visto,
+        )
+
+        for evento in eventos:
+            ultimo_id_visto = evento["id_evento"]
+            yield {
+                "event": evento["tipo"].lower(),
+                "data":  evento["mensaje"],
+                "id":    str(evento["id_evento"]),
+            }
+
+        # Verificar si la corrida terminó
+        corrida = await asyncio.to_thread(rc.obtener_corrida, id_corrida)
+        if corrida and corrida.get("estado") in estados_terminal:
+            # Emitir cualquier evento final pendiente que pudo haberse insertado
+            # justo antes de que verifiquemos el estado
+            eventos_finales = await asyncio.to_thread(
+                rc.listar_eventos, id_corrida, ultimo_id_visto
+            )
+            for evento in eventos_finales:
+                ultimo_id_visto = evento["id_evento"]
+                yield {
+                    "event": evento["tipo"].lower(),
+                    "data":  evento["mensaje"],
+                    "id":    str(evento["id_evento"]),
+                }
+            # Sentinel de cierre para el cliente
+            yield {"event": "fin", "data": "[FIN_CORRIDA]"}
+            return
+
+        await asyncio.sleep(_POLL_INTERVALO_SEG)
+        tiempo_total += _POLL_INTERVALO_SEG
+
+    yield {"event": "error", "data": "[TIMEOUT_STREAM] La corrida excedió el tiempo de streaming."}
+
+
+def corrida_existe(id_corrida: str) -> bool:
+    """Verificación rápida de existencia para el endpoint de stream."""
+    return rc.obtener_corrida(id_corrida) is not None
+
+
+def obtener_corrida(id_corrida: str) -> dict | None:
+    """Retorna el estado actual de una corrida."""
+    return rc.obtener_corrida(id_corrida)
+
+
+def listar_corridas_activas() -> list[dict]:
+    """Retorna corridas PENDIENTE o EJECUTANDO."""
+    return rc.listar_corridas(limite=10, solo_activas=True)

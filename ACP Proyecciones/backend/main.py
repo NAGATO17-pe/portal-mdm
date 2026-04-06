@@ -27,6 +27,7 @@ from nucleo.excepciones import manejar_error_generico, manejar_error_http
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 from api.rutas_health import enrutador_health
+from api.rutas_auth import enrutador_auth
 from api.rutas_etl import enrutador_etl
 from api.rutas_cuarentena import enrutador_cuarentena
 from api.rutas_catalogos import enrutador_catalogos
@@ -101,8 +102,12 @@ aplicacion.add_middleware(
 aplicacion.add_exception_handler(HTTPException, manejar_error_http)
 aplicacion.add_exception_handler(Exception, manejar_error_generico)
 
-# ── Routers ───────────────────────────────────────────────────────────────────
-aplicacion.include_router(enrutador_health)          # /health, /health/live, /health/ready
+# ── Routers ──────────────────────────────────────────────────────────────────
+# Infraestructura (sin versionar)
+aplicacion.include_router(enrutador_health)      # /health, /health/live, /health/ready
+# Autenticación (sin versionar, estable por diseño)
+aplicacion.include_router(enrutador_auth)          # /auth/login, /auth/me, /auth/usuarios
+# Dominio — todos bajo /api con versionado /v1 en el propio router
 aplicacion.include_router(enrutador_etl,        prefix="/api")
 aplicacion.include_router(enrutador_cuarentena, prefix="/api")
 aplicacion.include_router(enrutador_catalogos,  prefix="/api")

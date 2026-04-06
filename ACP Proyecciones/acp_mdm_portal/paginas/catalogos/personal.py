@@ -1,76 +1,36 @@
-"""
-paginas/catalogos/personal.py — Catálogo de Personal (Enterprise)
-Paginación delegada a SQL Server via OFFSET/FETCH.
-"""
-
+﻿import pandas as pd
 import streamlit as st
-
-from utils.componentes import (
-    health_status_panel,
-    mostrar_kpis,
-    seccion_tabla_sql_paginada,
-)
-from utils.db import ejecutar_query
+from utils.componentes import badge_html, estado_vacio_html, seccion_tabla_con_guardar
 from utils.formato import header_pagina
+from utils.api_client import get_api
 
+@st.cache_data(ttl=60, show_spinner=False)
+def cargar_personal() -> pd.DataFrame:
+    res = get_api("/catalogos/personal?pagina=1&tamano=1000")
+    if res and res.status_code == 200:
+        datos = res.json().get("datos", [])
+        if datos:
+            return pd.DataFrame(datos)
+    return pd.DataFrame()
 
-_KPI_QUERY = """
-    SELECT
-        COUNT(*)                     AS total,
-        SUM(CASE WHEN Rol <> 'Administrativo' THEN 1 ELSE 0 END) AS campo,
-        ROUND(AVG(Pct_Asertividad), 1) AS prod_avg
-    FROM Silver.Dim_Personal
-"""
+def render() -> None:
+    header_pagina("👤", "Personal Agricola", "Nómina y supervisores.")
+    df = cargar_personal()
+    
+    if df.empty:
+        st.warning("No se pudo cargar el catálogo o está vacío. Revisa la conectividad al backend.")
+        return
 
-_TABLA_QUERY = """
-    SELECT
-        DNI,
-        Nombre_Completo AS [Nombre],
-        Rol,
-        Sexo,
-        ID_Planilla     AS [Sede],
-        Pct_Asertividad AS [Productividad],
-        Dias_Ausentismo AS [Faltas]
-    FROM Silver.Dim_Personal
-"""
+    # Renombramos
+    df = df.rename(columns={
+        "dni": "DNI", "nombre_completo": "Nombre Completo", 
+        "rol": "Rol", "sexo": "Sexo", "id_planilla": "ID Planilla",
+        "pct_asertividad": "% Asertividad", "dias_ausentismo": "Días Ausentismo"
+    })
 
-_ORDER_BY = "Nombre_Completo"
+    total = len(df)
+    c1, c2 = st.columns(2)
+    c1.metric("👤 Total Evaluadores/Personal", total)
 
-
-def render():
-    header_pagina("👤", "Catálogos · Personal", "Gestión de trabajadores y roles")
-
-    conectado = health_status_panel()
-
-    # ── KPIs ──
-    total = campo = 0
-    prod_avg = 0.0
-    if conectado:
-        try:
-            row = ejecutar_query(_KPI_QUERY)
-            if not row.empty:
-                total    = int(row["total"].iloc[0])
-                campo    = int(row["campo"].iloc[0])
-                prod_avg = float(row["prod_avg"].iloc[0] or 0)
-        except Exception:
-            pass
-
-    mostrar_kpis([
-        {"label": "Personal total",     "value": total},
-        {"label": "En campo",           "value": campo},
-        {"label": "Productividad avg",  "value": f"{prod_avg}%"},
-    ])
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── Tabla con paginación SQL ──
-    if conectado:
-        seccion_tabla_sql_paginada(
-            query_base=_TABLA_QUERY,
-            order_by=_ORDER_BY,
-            key="personal_cat",
-            titulo="📋 Personal registrado",
-            page_size=15,
-            btn_key="btn_per_guardar",
-            caption="Paginación SQL Server · solo viajan 15 registros por request.",
-        )
+    st.markdown("<hr style='margin:16px 0;'>", unsafe_allow_html=True)
+    seccion_tabla_con_guardar(df, key="personal", titulo="📥 Catálogo Consolidado", page_size=20, mostrar_boton_guardar=False)

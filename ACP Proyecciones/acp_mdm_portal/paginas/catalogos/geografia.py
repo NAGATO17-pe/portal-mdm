@@ -1,105 +1,36 @@
-"""
-paginas/catalogos/geografia.py — Catálogo de Geografía (Enterprise)
-Paginación delegada a SQL Server via OFFSET/FETCH.
-"""
-
+﻿import pandas as pd
 import streamlit as st
-
-from utils.componentes import (
-    banner_aviso,
-    health_status_panel,
-    mostrar_kpis,
-    seccion_tabla_sql_paginada,
-    mostrar_dialogo_confirmacion,
-)
-from utils.db import ejecutar_query
+from utils.componentes import badge_html, estado_vacio_html, seccion_tabla_con_guardar
 from utils.formato import header_pagina
+from utils.api_client import get_api
 
+@st.cache_data(ttl=60, show_spinner=False)
+def cargar_geografia() -> pd.DataFrame:
+    res = get_api("/catalogos/geografia?pagina=1&tamano=1000")
+    if res and res.status_code == 200:
+        datos = res.json().get("datos", [])
+        if datos:
+            return pd.DataFrame(datos)
+    return pd.DataFrame()
 
-_KPI_QUERY = """
-    SELECT
-        COUNT(*)                                          AS total,
-        SUM(CAST(Es_Vigente AS INT))                     AS activos,
-        SUM(CAST(Es_Test_Block AS INT))                  AS test_blocks
-    FROM Silver.Dim_Geografia
-"""
+def render() -> None:
+    header_pagina("📍", "Geografía y Módulos", "Estructura jerárquica: Fundo → Lote → Módulo.")
+    df = cargar_geografia()
+    
+    if df.empty:
+        st.warning("No se pudo cargar el catálogo o está vacío. Revisa la conectividad al backend.")
+        return
 
-_TABLA_QUERY = """
-    SELECT
-        Fundo,
-        Sector,
-        Modulo        AS [Módulo],
-        Turno,
-        Es_Test_Block AS [Es Test Block],
-        Es_Vigente    AS [Activa]
-    FROM Silver.Dim_Geografia
-"""
+    # Mapeo a títulos bonitos
+    df = df.rename(columns={
+        "fundo": "Fundo", "sector": "Sector", "modulo": "Módulo", 
+        "turno": "Turno", "valvula": "Válvula", "cama": "Cama",
+        "es_test_block": "Test Block", "codigo_sap_campo": "SAP", "es_vigente": "Vigente"
+    })
 
-_ORDER_BY = "Fundo, Sector, Modulo"
+    total = len(df)
+    c1, c2 = st.columns(2)
+    c1.metric("📍 Total Ubicaciones Mapeadas", total)
 
-
-def render():
-    header_pagina("📍", "Catálogos · Geografía", "Fundos, sectores y módulos · cambios activan SCD2")
-
-    banner_aviso("Los cambios en geografía activan <b>SCD Tipo 2</b> en la próxima ejecución del ETL.")
-
-    conectado = health_status_panel()
-
-    # ── KPIs ──
-    total = activos = test_blocks = 0
-    if conectado:
-        try:
-            row = ejecutar_query(_KPI_QUERY)
-            if not row.empty:
-                total       = int(row["total"].iloc[0])
-                activos     = int(row["activos"].iloc[0])
-                test_blocks = int(row["test_blocks"].iloc[0])
-        except Exception:
-            pass
-
-    mostrar_kpis([
-        {"label": "Módulos totales", "value": total},
-        {"label": "Activos",         "value": activos},
-        {"label": "Test Blocks",     "value": test_blocks},
-    ])
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── Agregar módulo ──
-    with st.expander("➕ Agregar módulo nuevo", expanded=False):
-        g1, g2, g3, g4 = st.columns(4)
-        with g1:
-            fundo = st.text_input("Fundo", key="geo_fundo", placeholder="Ej: Santa Patricia")
-        with g2:
-            sector = st.text_input("Sector", key="geo_sector", placeholder="Ej: Sector A")
-        with g3:
-            modulo = st.text_input("Módulo", key="geo_modulo", placeholder="Ej: MCA-01")
-        with g4:
-            st.selectbox("Turno", ["Mañana", "Tarde"], key="geo_turno")
-
-        campos_ok = all(v and v.strip() for v in [fundo, sector, modulo])
-        if st.button("✅ Agregar", key="btn_geo_agregar", type="primary", disabled=not campos_ok):
-            def do_agregar(m, f):
-                st.toast(f"Módulo '{m}' en fundo '{f}' agregado correctamente.", icon="✅")
-            mostrar_dialogo_confirmacion(
-                "Confirmación de Geografía",
-                f"¿Dar de alta el módulo '{modulo}' en el fundo '{fundo}'?",
-                do_agregar, modulo, fundo
-            )
-        if not campos_ok:
-            st.caption("Completa Fundo, Sector y Módulo para habilitar.")
-
-    st.markdown("---")
-
-    # ── Tabla con paginación SQL ──
-    if conectado:
-        seccion_tabla_sql_paginada(
-            query_base=_TABLA_QUERY,
-            order_by=_ORDER_BY,
-            key="geografia_cat",
-            titulo="📋 Módulos registrados",
-            page_size=15,
-            columnas_check=["Es Test Block", "Activa"],
-            btn_key="btn_geo_guardar",
-            caption="Paginación SQL Server · solo viajan 15 registros por request.",
-        )
+    st.markdown("<hr style='margin:16px 0;'>", unsafe_allow_html=True)
+    seccion_tabla_con_guardar(df, key="geografia", titulo="📥 Catálogo Consolidado", page_size=20, mostrar_boton_guardar=False)

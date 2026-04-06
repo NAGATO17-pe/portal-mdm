@@ -1,70 +1,186 @@
 """
 api/rutas_etl.py
 ================
-Router del módulo ETL.
-Responsabilidades: validar entrada, llamar al servicio, retornar schema de respuesta.
-Nunca contiene lógica de negocio ni acceso directo a la BD.
+Router /api/v1/etl — Pipeline ETL v3 (modelo controlado persistente)
+
+Endpoints:
+  POST   /api/v1/etl/corridas                         — Encola corrida
+  GET    /api/v1/etl/corridas                         — Historial
+  GET    /api/v1/etl/corridas/activas                 — Solo PENDIENTE/EJECUTANDO
+  GET    /api/v1/etl/corridas/{id}                    — Estado de una corrida
+  GET    /api/v1/etl/corridas/{id}/eventos            — Stream SSE
+  DELETE /api/v1/etl/corridas/{id}                    — Solicitar cancelación
+
+Seguridad:
+  - GET   → viewer+
+  - POST  → operador_etl+
+  - DELETE → operador_etl+
 """
 
-from datetime import datetime
+from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query, Request
 from sse_starlette.sse import EventSourceResponse
 
-from broker.broker_sse import corrida_existe, generar_eventos
-from nucleo.excepciones import ErrorCorridaNoEncontrada
+from nucleo.auth import UsuarioActual, obtener_usuario_actual, require_rol
+from nucleo.excepciones import ErrorRecursoNoEncontrado
 from schemas.etl.peticion import PeticionIniciarCorrida
 from schemas.etl.respuesta import RespuestaCorridaIniciada, RespuestaHistorialCorrida
-from servicios.servicio_etl import iniciar_corrida
+from servicios.servicio_auth import registrar_accion
+from servicios.servicio_etl import (
+    cancelar_corrida,
+    corrida_existe,
+    iniciar_corrida,
+    listar_corridas_activas,
+    obtener_corrida,
+    stream_eventos_corrida,
+)
 from servicios.servicio_auditoria import obtener_historial
 
-enrutador_etl = APIRouter(prefix="/etl", tags=["ETL"])
+enrutador_etl = APIRouter(prefix="/v1/etl", tags=["ETL"])
 
+
+def _ip(request: Request) -> str | None:
+    fwd = request.headers.get("X-Forwarded-For")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else None
+
+
+# ── POST /corridas ─────────────────────────────────────────────────────────────
 
 @enrutador_etl.post(
     "/corridas",
     response_model=RespuestaCorridaIniciada,
-    summary="Inicia una corrida del pipeline ETL",
+    summary="Encola una corrida del pipeline ETL",
     description=(
-        "Registra la corrida en Auditoria.Log_Carga, crea la cola SSE "
-        "y lanza el subproceso pipeline.py en segundo plano."
+        "Crea el registro en Control.Corrida y lo pone en la cola del runner externo. "
+        "Retorna inmediatamente. El runner procesará la corrida de forma asíncrona. "
+        "Requiere rol **operador_etl** o superior."
     ),
+    dependencies=[Depends(require_rol("operador_etl"))],
 )
-async def iniciar_corrida_etl(cuerpo: PeticionIniciarCorrida) -> RespuestaCorridaIniciada:
+async def iniciar_corrida_etl(
+    cuerpo: PeticionIniciarCorrida,
+    request: Request,
+    usuario: Annotated[UsuarioActual, Depends(obtener_usuario_actual)],
+) -> RespuestaCorridaIniciada:
     datos = await iniciar_corrida(
-        iniciado_por=cuerpo.iniciado_por,
+        iniciado_por=usuario.nombre_usuario,
         comentario=cuerpo.comentario,
+    )
+    registrar_accion(
+        nombre_usuario=usuario.nombre_usuario,
+        accion="LANZAR_ETL",
+        endpoint=str(request.url),
+        request_id=getattr(request.state, "request_id", None),
+        ip_origen=_ip(request),
+        detalle=f"id_corrida={datos['id_corrida']}",
     )
     return RespuestaCorridaIniciada(
         id_corrida=datos["id_corrida"],
-        id_log=datos["id_log"],
+        id_log=datos.get("id_log"),
         iniciado_por=datos["iniciado_por"],
         fecha_inicio=datos["fecha_inicio"],
-        url_stream=f"/api/etl/corridas/{datos['id_corrida']}/eventos",
+        url_stream=f"/api/v1/etl/corridas/{datos['id_corrida']}/eventos",
     )
 
 
-@enrutador_etl.get(
-    "/corridas/{id_corrida}/eventos",
-    summary="Stream SSE de una corrida activa",
-    description=(
-        "Abre un canal Server-Sent Events que transmite las líneas del pipeline "
-        "en tiempo real hasta recibir el sentinel [FIN_CORRIDA]."
-    ),
-)
-async def stream_eventos_corrida(id_corrida: str, request: Request) -> EventSourceResponse:
-    if not corrida_existe(id_corrida):
-        raise ErrorCorridaNoEncontrada(id_corrida)
-
-    return EventSourceResponse(generar_eventos(id_corrida))
-
+# ── GET /corridas ──────────────────────────────────────────────────────────────
 
 @enrutador_etl.get(
     "/corridas",
     response_model=list[RespuestaHistorialCorrida],
     summary="Historial de corridas ETL",
-    description="Retorna las últimas N ejecuciones registradas en Auditoria.Log_Carga.",
+    description="Retorna las últimas N ejecuciones desde Auditoria.Log_Carga.",
+    dependencies=[Depends(require_rol("viewer"))],
 )
-def listar_historial(limite: int = 50) -> list[RespuestaHistorialCorrida]:
+def listar_historial(
+    limite: int = Query(default=50, ge=1, le=500),
+) -> list[RespuestaHistorialCorrida]:
     registros = obtener_historial(limite=limite)
     return [RespuestaHistorialCorrida(**r) for r in registros]
+
+
+# ── GET /corridas/activas ──────────────────────────────────────────────────────
+
+@enrutador_etl.get(
+    "/corridas/activas",
+    summary="Corridas activas (PENDIENTE o EJECUTANDO)",
+    dependencies=[Depends(require_rol("viewer"))],
+)
+def corridas_activas() -> list[dict]:
+    return listar_corridas_activas()
+
+
+# ── GET /corridas/{id} ─────────────────────────────────────────────────────────
+
+@enrutador_etl.get(
+    "/corridas/{id_corrida}",
+    summary="Estado de una corrida",
+    dependencies=[Depends(require_rol("viewer"))],
+)
+def estado_corrida(id_corrida: str) -> dict:
+    datos = obtener_corrida(id_corrida)
+    if datos is None:
+        raise ErrorRecursoNoEncontrado(f"Corrida '{id_corrida}'")
+    return datos
+
+
+# ── GET /corridas/{id}/eventos (SSE) ──────────────────────────────────────────
+
+@enrutador_etl.get(
+    "/corridas/{id_corrida}/eventos",
+    summary="Stream SSE de una corrida",
+    description=(
+        "Abre un canal SSE que transmite eventos de la corrida leyendo de "
+        "Control.Corrida_Evento. Sobrevive reinicios del servidor web. "
+        "Múltiples clientes pueden suscribirse simultáneamente. "
+        "Termina cuando la corrida llega a estado terminal. "
+        "Requiere rol **viewer** o superior."
+    ),
+    dependencies=[Depends(require_rol("viewer"))],
+)
+async def stream_corrida(id_corrida: str) -> EventSourceResponse:
+    if not corrida_existe(id_corrida):
+        raise ErrorRecursoNoEncontrado(f"Corrida '{id_corrida}'")
+    return EventSourceResponse(stream_eventos_corrida(id_corrida))
+
+
+# ── DELETE /corridas/{id} — Cancelar ─────────────────────────────────────────
+
+@enrutador_etl.delete(
+    "/corridas/{id_corrida}",
+    summary="Solicitar cancelación de una corrida",
+    description=(
+        "Marca la corrida como CANCELADO. "
+        "El runner detecta el cambio en su próximo ciclo de heartbeat (≤30s). "
+        "Requiere rol **operador_etl** o superior."
+    ),
+    dependencies=[Depends(require_rol("operador_etl"))],
+)
+async def cancelar(
+    id_corrida: str,
+    request: Request,
+    usuario: Annotated[UsuarioActual, Depends(obtener_usuario_actual)],
+) -> dict:
+    datos = obtener_corrida(id_corrida)
+    if datos is None:
+        raise ErrorRecursoNoEncontrado(f"Corrida '{id_corrida}'")
+
+    cancelado = await cancelar_corrida(id_corrida, usuario.nombre_usuario)
+
+    registrar_accion(
+        nombre_usuario=usuario.nombre_usuario,
+        accion="CANCELAR_ETL",
+        endpoint=str(request.url),
+        request_id=getattr(request.state, "request_id", None),
+        ip_origen=_ip(request),
+        detalle=f"id_corrida={id_corrida} cancelado={cancelado}",
+    )
+
+    if not cancelado:
+        return {"mensaje": "La corrida ya no estaba en estado activo.", "cancelado": False}
+    return {"mensaje": "Cancelación solicitada. El runner detendrá el proceso en breve.", "cancelado": True}

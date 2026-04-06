@@ -1,102 +1,39 @@
-"""
-paginas/catalogos/variedades.py — Catálogo de Variedades (Enterprise)
-Paginación delegada a SQL Server via OFFSET/FETCH.
-"""
-
+﻿import pandas as pd
 import streamlit as st
-
-from utils.componentes import (
-    banner_aviso,
-    health_status_panel,
-    mostrar_kpis,
-    seccion_tabla_sql_paginada,
-    mostrar_dialogo_confirmacion,
-)
-from utils.db import ejecutar_query
+from utils.componentes import badge_html, estado_vacio_html, seccion_tabla_con_guardar
 from utils.formato import header_pagina
+from utils.api_client import get_api
 
+@st.cache_data(ttl=60, show_spinner=False)
+def cargar_variedades() -> pd.DataFrame:
+    res = get_api("/catalogos/variedades?pagina=1&tamano=1000")
+    if res and res.status_code == 200:
+        datos = res.json().get("datos", [])
+        if datos:
+            return pd.DataFrame(datos)
+    return pd.DataFrame()
 
-# Query para KPIs (liviana, sin paginar)
-_KPI_QUERY = """
-    SELECT
-        COUNT(*)                         AS total,
-        SUM(CAST(Es_Activa AS INT))      AS activas,
-        COUNT(*) - SUM(CAST(Es_Activa AS INT)) AS inactivas
-    FROM MDM.Catalogo_Variedades
-"""
+def render() -> None:
+    header_pagina("🍇", "Variedades (MDM)", "Catálogo maestro de variedades de cultivo.")
+    df = cargar_variedades()
+    
+    if df.empty:
+        st.warning("No se pudo cargar el catálogo o está vacío. Revisa la conectividad al backend.")
+        return
 
-# Query base para la tabla paginada (sin ORDER BY)
-_TABLA_QUERY = """
-    SELECT
-        Nombre_Canonico AS [Nombre canónico],
-        Breeder,
-        Es_Activa       AS [Activa]
-    FROM MDM.Catalogo_Variedades
-"""
+    # Mapeo reverso para nombres limpios
+    df = df.rename(columns={
+        "nombre_canonico": "Nombre Canónico", 
+        "breeder": "Breeder", 
+        "es_activa": "Activa"
+    })
 
-_ORDER_BY = "Nombre_Canonico"
+    total = len(df)
+    activas = int(df["Activa"].sum()) if "Activa" in df.columns else total
 
+    c1, c2 = st.columns(2)
+    c1.metric("🍇 Total", total)
+    c2.metric("🟢 Activas", activas)
 
-def render():
-    header_pagina("🍇", "Catálogos · Variedades", "Gestión del catálogo oficial de variedades")
-
-    conectado = health_status_panel()
-
-    # ── KPIs ──
-    total = activas = inactivas = 0
-    if conectado:
-        try:
-            row = ejecutar_query(_KPI_QUERY)
-            if not row.empty:
-                total     = int(row["total"].iloc[0])
-                activas   = int(row["activas"].iloc[0])
-                inactivas = int(row["inactivas"].iloc[0])
-        except Exception:
-            pass
-
-    mostrar_kpis([
-        {"label": "Total variedades", "value": total},
-        {"label": "Activas",          "value": activas},
-        {"label": "Inactivas",        "value": inactivas},
-    ])
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # ── Agregar variedad ──
-    with st.expander("➕ Agregar variedad nueva", expanded=False):
-        a1, a2, a3 = st.columns([2, 2, 1])
-        with a1:
-            nombre = st.text_input("Nombre canónico", key="var_nuevo_nombre",
-                                   placeholder="Ej: Biloxi, Emerald")
-        with a2:
-            breeder = st.text_input("Breeder", key="var_nuevo_breeder",
-                                    placeholder="Ej: Fall Creek")
-        with a3:
-            st.markdown("<br>", unsafe_allow_html=True)
-            btn_disabled = not (nombre and nombre.strip())
-            if st.button("✅ Agregar", key="btn_var_agregar", type="primary",
-                      disabled=btn_disabled):
-                def do_agregar(nom):
-                    st.toast(f"Variedad '{nom}' agregada correctamente.", icon="✅")
-                mostrar_dialogo_confirmacion(
-                    "Confirmación de Catálogo",
-                    f"¿Estás seguro de que deseas agregar la variedad '{nombre}'?",
-                    do_agregar, nombre
-                )
-        if nombre and not nombre.strip():
-            st.warning("El nombre canónico es obligatorio.", icon="⚠️")
-
-    st.markdown("---")
-
-    # ── Tabla con paginación SQL ──
-    if conectado:
-        seccion_tabla_sql_paginada(
-            query_base=_TABLA_QUERY,
-            order_by=_ORDER_BY,
-            key="variedades_cat",
-            titulo="📋 Variedades registradas",
-            page_size=15,
-            columnas_check=["Activa"],
-            btn_key="btn_var_guardar",
-            caption="Paginación SQL Server · solo viajan 15 registros por request.",
-        )
+    st.markdown("<hr style='margin:16px 0;'>", unsafe_allow_html=True)
+    seccion_tabla_con_guardar(df, key="variedades", titulo="📥 Catálogo Consolidado", page_size=20, mostrar_boton_guardar=False)

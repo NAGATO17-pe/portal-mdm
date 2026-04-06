@@ -20,7 +20,13 @@ DDL v2 â€” MDM.Diccionario_Homologacion:
 """
 
 import pandas as pd
-from rapidfuzz import fuzz, process
+try:
+    from rapidfuzz import fuzz, process
+except ModuleNotFoundError as exc:
+    raise ModuleNotFoundError(
+        "Falta la dependencia 'rapidfuzz' en el entorno actual. "
+        "Instala las dependencias del proyecto antes de ejecutar el ETL."
+    ) from exc
 from sqlalchemy.engine import Engine
 from sqlalchemy import text
 from datetime import datetime

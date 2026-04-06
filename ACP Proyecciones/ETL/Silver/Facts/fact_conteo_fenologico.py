@@ -130,6 +130,7 @@ def cargar_fact_conteo_fenologico(engine: Engine) -> dict:
     resumen['cuarentena'].extend(cuarentenas_var)
 
     ids_procesados: set[int] = set()
+    ids_rechazados: set[int] = set()
 
     with engine.begin() as conexion:
         for _, fila in df.iterrows():
@@ -138,6 +139,7 @@ def cargar_fact_conteo_fenologico(engine: Engine) -> dict:
             fecha, fecha_valida = procesar_fecha(fila.get('Fecha_Raw'))
             if not fecha_valida:
                 resumen['rechazados'] += 1
+                ids_rechazados.add(id_origen)
                 resumen['cuarentena'].append({
                     'columna': 'Fecha_Raw',
                     'valor': fila.get('Fecha_Raw'),
@@ -164,6 +166,7 @@ def cargar_fact_conteo_fenologico(engine: Engine) -> dict:
             )
             if not id_geo:
                 resumen['rechazados'] += 1
+                ids_rechazados.add(id_origen)
                 resumen['cuarentena'].append({
                     'columna': 'Modulo_Raw',
                     'valor': f"Modulo={modulo_raw} | Turno={fila.get('Turno_Raw')} | Valvula={fila.get('Valvula_Raw')}",
@@ -176,6 +179,7 @@ def cargar_fact_conteo_fenologico(engine: Engine) -> dict:
             id_variedad = obtener_id_variedad(fila.get('Variedad_Canonica'), engine)
             if not id_variedad:
                 resumen['rechazados'] += 1
+                ids_rechazados.add(id_origen)
                 resumen['cuarentena'].append({
                     'columna': 'Variedad_Raw',
                     'valor': fila.get('Variedad_Raw'),
@@ -191,6 +195,7 @@ def cargar_fact_conteo_fenologico(engine: Engine) -> dict:
             estados_cantidades = _extraer_estados_desde_fila(fila)
             if not estados_cantidades:
                 resumen['rechazados'] += 1
+                ids_rechazados.add(id_origen)
                 resumen['cuarentena'].append({
                     'columna': 'Valores_Raw',
                     'valor': fila.get('Valores_Raw'),
@@ -241,6 +246,7 @@ def cargar_fact_conteo_fenologico(engine: Engine) -> dict:
                 resumen['insertados'] += insertados_fila
             else:
                 resumen['rechazados'] += 1
+                ids_rechazados.add(id_origen)
 
     if ids_procesados:
         marcar_estado_carga_por_ids(
@@ -248,6 +254,14 @@ def cargar_fact_conteo_fenologico(engine: Engine) -> dict:
             TABLA_ORIGEN,
             'ID_Conteo_Fruta',
             sorted(ids_procesados),
+        )
+    if ids_rechazados:
+        marcar_estado_carga_por_ids(
+            engine,
+            TABLA_ORIGEN,
+            'ID_Conteo_Fruta',
+            sorted(ids_rechazados),
+            estado='RECHAZADO',
         )
 
     if resumen['cuarentena']:

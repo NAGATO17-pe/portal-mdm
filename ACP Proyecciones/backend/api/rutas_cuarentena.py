@@ -1,17 +1,30 @@
 """
 api/rutas_cuarentena.py
 ========================
-Router del módulo Cuarentena.
-Solo valida entrada, llama al servicio y serializa la respuesta.
+Router /api/v1/cuarentena — MDM Cuarentena
+
+Seguridad:
+  - GET   /           → viewer+
+  - PATCH /resolver   → analista_mdm+
+  - PATCH /rechazar   → analista_mdm+
+
+Contratos v2:
+  - analista se extrae del token JWT (no del body)
 """
 
-from fastapi import APIRouter, Query
+from __future__ import annotations
 
-from schemas.cuarentena.peticion import PeticionResolverCuarentena, PeticionRechazarCuarentena
-from schemas.cuarentena.respuesta import RespuestaPaginada, RespuestaAccionCuarentena, RespuestaCuarentena
-from servicios.servicio_cuarentena import listar_cuarentena, resolver_registro, rechazar_registro
+from typing import Annotated
 
-enrutador_cuarentena = APIRouter(prefix="/cuarentena", tags=["Cuarentena"])
+from fastapi import APIRouter, Depends, Query, Request
+
+from nucleo.auth import UsuarioActual, obtener_usuario_actual, require_rol
+from schemas.cuarentena.peticion import PeticionRechazarCuarentena, PeticionResolverCuarentena
+from schemas.cuarentena.respuesta import RespuestaAccionCuarentena, RespuestaCuarentena, RespuestaPaginada
+from servicios.servicio_auth import registrar_accion
+from servicios.servicio_cuarentena import listar_cuarentena, rechazar_registro, resolver_registro
+
+enrutador_cuarentena = APIRouter(prefix="/v1/cuarentena", tags=["Cuarentena"])
 
 
 @enrutador_cuarentena.get(
@@ -20,40 +33,51 @@ enrutador_cuarentena = APIRouter(prefix="/cuarentena", tags=["Cuarentena"])
     summary="Lista registros en cuarentena",
     description=(
         "Lista registros pendientes desde MDM.Cuarentena. "
-        "Soporta filtro por tabla origen y paginacion server-side."
+        "Soporta filtro por tabla origen y paginación server-side."
     ),
+    dependencies=[Depends(require_rol("viewer"))],
 )
 def listar(
-    pagina:        int = Query(default=1,  ge=1,   description="Número de página (inicia en 1)."),
-    tamano:        int = Query(default=20, ge=1,   le=100, description="Registros por pagina."),
-    tabla_filtro:  str | None = Query(default=None, description="Filtrar por nombre de tabla Bronce."),
+    pagina:       int = Query(default=1,  ge=1,        description="Número de página."),
+    tamano:       int = Query(default=20, ge=1, le=100, description="Registros por página."),
+    tabla_filtro: str | None = Query(default=None,      description="Filtrar por tabla Bronce."),
 ) -> RespuestaPaginada:
     resultado = listar_cuarentena(pagina=pagina, tamano=tamano, tabla_filtro=tabla_filtro)
-    datos = [RespuestaCuarentena(**r) for r in resultado["datos"]]
     return RespuestaPaginada(
         total=resultado["total"],
         pagina=resultado["pagina"],
         tamano=resultado["tamano"],
-        datos=datos,
+        datos=[RespuestaCuarentena(**r) for r in resultado["datos"]],
     )
 
 
 @enrutador_cuarentena.patch(
     "/{tabla_origen}/{id_registro}/resolver",
     response_model=RespuestaAccionCuarentena,
-    summary="Marca un registro de cuarentena como resuelto",
+    summary="Resuelve un registro de cuarentena",
+    description="Marca el registro como RESUELTO con el valor canónico. Requiere rol **analista_mdm**.",
+    dependencies=[Depends(require_rol("analista_mdm"))],
 )
 def resolver(
     tabla_origen: str,
     id_registro:  str,
     cuerpo:       PeticionResolverCuarentena,
+    request:      Request,
+    usuario:      Annotated[UsuarioActual, Depends(obtener_usuario_actual)],
 ) -> RespuestaAccionCuarentena:
     resultado = resolver_registro(
         tabla_origen=tabla_origen,
         id_registro=id_registro,
         valor_canonico=cuerpo.valor_canonico,
-        analista=cuerpo.analista,
+        analista=usuario.nombre_usuario,    # ← del JWT
         comentario=cuerpo.comentario,
+    )
+    registrar_accion(
+        nombre_usuario=usuario.nombre_usuario,
+        accion="RESOLVER_CUARENTENA",
+        endpoint=str(request.url),
+        request_id=getattr(request.state, "request_id", None),
+        detalle=f"tabla={tabla_origen} id={id_registro}",
     )
     return RespuestaAccionCuarentena(**resultado)
 
@@ -61,17 +85,28 @@ def resolver(
 @enrutador_cuarentena.patch(
     "/{tabla_origen}/{id_registro}/rechazar",
     response_model=RespuestaAccionCuarentena,
-    summary="Marca un registro de cuarentena como descartado",
+    summary="Rechaza un registro de cuarentena",
+    description="Marca el registro como DESCARTADO. Requiere rol **analista_mdm**.",
+    dependencies=[Depends(require_rol("analista_mdm"))],
 )
 def rechazar(
     tabla_origen: str,
     id_registro:  str,
     cuerpo:       PeticionRechazarCuarentena,
+    request:      Request,
+    usuario:      Annotated[UsuarioActual, Depends(obtener_usuario_actual)],
 ) -> RespuestaAccionCuarentena:
     resultado = rechazar_registro(
         tabla_origen=tabla_origen,
         id_registro=id_registro,
         motivo=cuerpo.motivo,
-        analista=cuerpo.analista,
+        analista=usuario.nombre_usuario,    # ← del JWT
+    )
+    registrar_accion(
+        nombre_usuario=usuario.nombre_usuario,
+        accion="RECHAZAR_CUARENTENA",
+        endpoint=str(request.url),
+        request_id=getattr(request.state, "request_id", None),
+        detalle=f"tabla={tabla_origen} id={id_registro}",
     )
     return RespuestaAccionCuarentena(**resultado)

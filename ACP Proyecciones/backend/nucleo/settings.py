@@ -124,6 +124,22 @@ class Settings(BaseSettings):
         alias="ACP_API_VERSION",
     )
 
+    # ── JWT / Autenticación ────────────────────────────────────────────────
+    jwt_secreto: str = Field(
+        default="CAMBIAR_EN_PRODUCCION_CLAVE_MINIMO_32_CHARS_XXXXXXXX",
+        alias="ACP_JWT_SECRETO",
+        description="Clave HMAC para firmar JWT. Mínimo 32 chars en prod.",
+    )
+    jwt_ttl_min: int = Field(
+        default=480,   # 8 horas
+        alias="ACP_JWT_TTL_MIN",
+        description="Tiempo de vida del token en minutos.",
+    )
+    jwt_algoritmo: str = Field(
+        default="HS256",
+        alias="ACP_JWT_ALGORITMO",
+    )
+
     @field_validator("cors_origenes", mode="before")
     @classmethod
     def parsear_cors(cls, v: str | list[str]) -> list[str]:

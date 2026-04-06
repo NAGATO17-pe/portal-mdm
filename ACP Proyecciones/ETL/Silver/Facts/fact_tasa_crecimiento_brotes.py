@@ -92,7 +92,7 @@ def _obtener_columnas_tabla(engine: Engine, tabla_completa: str) -> set[str]:
 def _motivo_cuarentena_geografia(resultado_geo: dict) -> str:
     estado = resultado_geo.get('estado')
     if estado in ('TEST_BLOCK_NO_MAPEADO', 'TEST_BLOCK_AMBIGUO'):
-        return 'Test block (VI) sin mapeo unico en Dim_Geografia.'
+        return 'Test block sin mapeo unico en Dim_Geografia.'
     if estado in ('PENDIENTE_CASO_ESPECIAL', 'CASO_ESPECIAL_MODULO'):
         return 'Geografia especial requiere catalogacion o regla en MDM_Geografia.'
     if estado in ('PENDIENTE_CAMA_GENERICA', 'CAMA_NO_RELACION'):
@@ -224,7 +224,8 @@ def cargar_fact_tasa_crecimiento_brotes(engine: Engine) -> dict:
             })
             continue
 
-        modulo = None if es_test_block(fila.get('Modulo_Raw')) else normalizar_modulo(fila.get('Modulo_Raw'))
+        modulo_raw = fila.get('Modulo_Raw')
+        modulo = modulo_raw if es_test_block(modulo_raw) else normalizar_modulo(modulo_raw)
         resultado_geo = resolver_geografia(
             None,
             None,

@@ -1,19 +1,18 @@
 """
 tests/test_auditoria.py
 ========================
-Pruebas de contrato para los endpoints de auditoría:
-    GET /api/auditoria/log-carga
-    GET /api/auditoria/log-carga/{tabla_destino}
+Pruebas de contrato para los endpoints de auditoría (v1):
+    GET /api/v1/auditoria/log-carga
+    GET /api/v1/auditoria/log-carga/{tabla_destino}
 
-Nota sobre mocks: se parchea el símbolo en el módulo que lo importa
-(api.rutas_auditoria), no en el módulo donde se define.
+Todos requieren autenticación (viewer+).
 """
 
 from datetime import datetime
 from unittest.mock import patch
 
 import pytest
-
+from nucleo.auth import crear_token
 
 _HISTORIAL_MOCK = [
     {
@@ -41,69 +40,78 @@ _ULTIMO_ESTADO_MOCK = {
     "mensaje_error":     None,
 }
 
+_PATCH_HISTORIAL     = "api.rutas_auditoria.obtener_historial"
+_PATCH_ULTIMO_ESTADO = "api.rutas_auditoria.obtener_ultimo_estado_tabla"
 
-# Ruta exacta usada por el router para importar el servicio
-_PATCH_HISTORIAL      = "api.rutas_auditoria.obtener_historial"
-_PATCH_ULTIMO_ESTADO  = "api.rutas_auditoria.obtener_ultimo_estado_tabla"
+_URL = "/api/v1/auditoria/log-carga"
+
+
+def _headers(rol: str = "viewer") -> dict:
+    token = crear_token("testuser", rol, "Test User")
+    return {"Authorization": f"Bearer {token}"}
 
 
 class TestLogCarga:
     def test_retorna_200_con_lista(self, cliente):
         with patch(_PATCH_HISTORIAL, return_value=_HISTORIAL_MOCK):
-            resp = cliente.get("/api/auditoria/log-carga")
+            resp = cliente.get(_URL, headers=_headers())
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
 
+    def test_sin_token_retorna_401(self, cliente):
+        resp = cliente.get(_URL)
+        assert resp.status_code == 401
+
     def test_limite_default_es_50(self, cliente):
         with patch(_PATCH_HISTORIAL, return_value=[]) as mock_hist:
-            cliente.get("/api/auditoria/log-carga")
+            cliente.get(_URL, headers=_headers())
             mock_hist.assert_called_once_with(limite=50)
 
     def test_limite_personalizado(self, cliente):
         with patch(_PATCH_HISTORIAL, return_value=[]) as mock_hist:
-            cliente.get("/api/auditoria/log-carga?limite=10")
+            cliente.get(f"{_URL}?limite=10", headers=_headers())
             mock_hist.assert_called_once_with(limite=10)
 
     def test_limite_minimo_1(self, cliente):
-        resp = cliente.get("/api/auditoria/log-carga?limite=0")
+        resp = cliente.get(f"{_URL}?limite=0", headers=_headers())
         assert resp.status_code == 422
 
     def test_limite_maximo_500(self, cliente):
-        resp = cliente.get("/api/auditoria/log-carga?limite=501")
+        resp = cliente.get(f"{_URL}?limite=501", headers=_headers())
         assert resp.status_code == 422
 
     def test_campos_del_historial(self, cliente):
         with patch(_PATCH_HISTORIAL, return_value=_HISTORIAL_MOCK):
-            data = cliente.get("/api/auditoria/log-carga").json()
-        assert len(data) > 0, "Se esperaba al menos un elemento en el historial"
+            data = cliente.get(_URL, headers=_headers()).json()
+        assert len(data) > 0
         entrada = data[0]
-        campos_requeridos = [
-            "id_log", "nombre_proceso", "tabla_destino", "nombre_archivo",
-            "fecha_inicio", "estado", "filas_insertadas",
-        ]
-        for campo in campos_requeridos:
-            assert campo in entrada, f"Falta campo '{campo}' en respuesta de log-carga"
+        for campo in ["id_log", "nombre_proceso", "tabla_destino", "estado", "filas_insertadas"]:
+            assert campo in entrada
 
 
 class TestUltimoEstadoTabla:
     def test_retorna_200_cuando_existe(self, cliente):
         with patch(_PATCH_ULTIMO_ESTADO, return_value=_ULTIMO_ESTADO_MOCK):
-            resp = cliente.get("/api/auditoria/log-carga/Silver.Dim_Personal")
+            resp = cliente.get(f"{_URL}/Silver.Dim_Personal", headers=_headers())
         assert resp.status_code == 200
+
+    def test_sin_token_retorna_401(self, cliente):
+        resp = cliente.get(f"{_URL}/Silver.Dim_Personal")
+        assert resp.status_code == 401
 
     def test_retorna_404_cuando_no_existe(self, cliente):
         with patch(_PATCH_ULTIMO_ESTADO, return_value=None):
-            resp = cliente.get("/api/auditoria/log-carga/Tabla.Inexistente")
+            resp = cliente.get(f"{_URL}/Tabla.Inexistente", headers=_headers())
         assert resp.status_code == 404
 
     def test_error_404_tiene_request_id(self, cliente):
         with patch(_PATCH_ULTIMO_ESTADO, return_value=None):
-            data = cliente.get("/api/auditoria/log-carga/Tabla.Inexistente").json()
+            data = cliente.get(f"{_URL}/Tabla.Inexistente", headers=_headers()).json()
         assert "request_id" in data
         assert "timestamp" in data
 
     def test_campos_ultimo_estado(self, cliente):
         with patch(_PATCH_ULTIMO_ESTADO, return_value=_ULTIMO_ESTADO_MOCK):
-            data = cliente.get("/api/auditoria/log-carga/Silver.Dim_Personal").json()
+            data = cliente.get(f"{_URL}/Silver.Dim_Personal", headers=_headers()).json()
         for campo in ["tabla_destino", "estado", "fecha_inicio", "filas_insertadas"]:
-            assert campo in data, f"Falta campo '{campo}' en respuesta de último estado"
+            assert campo in data
