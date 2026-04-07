@@ -76,6 +76,7 @@ def cargar_fact_ciclo_poda(engine: Engine) -> dict:
 
     # ── Evaluacion Calidad Poda ───────────────────────────────
     df_poda = _leer_bronce_poda(engine)
+    resumen['leidos'] = len(df_poda)
     df_poda, cuar_var = homologar_columna(
         df_poda, 'Variedad_Raw', 'Variedad_Canonica', TABLA_PODA, engine,
         columna_id_origen='ID_Evaluacion_Poda'
@@ -85,7 +86,10 @@ def cargar_fact_ciclo_poda(engine: Engine) -> dict:
     ids_poda = []
     with engine.begin() as conexion:
         for _, fila in df_poda.iterrows():
-            fecha, valida = procesar_fecha(fila.get('Fecha_Raw'))
+            fecha, valida = procesar_fecha(
+                fila.get('Fecha_Raw'),
+                dominio='ciclo_poda',
+            )
             if not valida:
                 resumen['rechazados'] += 1
                 continue

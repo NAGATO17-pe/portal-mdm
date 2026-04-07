@@ -11,19 +11,118 @@ from typing import Optional
 
 
 FORMATOS_ACEPTADOS = [
-    '%d/%m/%Y',
-    '%d/%m/%y',
+    '%Y-%m-%d %H:%M:%S',
+    '%Y-%m-%d %H:%M',
     '%Y-%m-%d',
-    '%d-%m-%Y',
-    '%d.%m.%Y',
+    '%Y/%m/%d %H:%M:%S',
+    '%Y/%m/%d %H:%M',
+    '%Y/%m/%d',
+    '%Y%m%d %H:%M:%S',
+    '%Y%m%d %H:%M',
     '%Y%m%d',
     '%d/%m/%Y %H:%M:%S',
-    '%Y-%m-%d %H:%M:%S',
-    '%Y-%m-%dT%H:%M:%S',
+    '%d/%m/%Y %H:%M',
+    '%d/%m/%Y',
+    '%d-%m-%Y %H:%M:%S',
+    '%d-%m-%Y %H:%M',
+    '%d-%m-%Y',
+    '%d.%m.%Y',
 ]
 
 FECHA_CAMPANA_INICIO = '2025-03-01'
 FECHA_CAMPANA_FIN = '2026-06-30'
+
+POLITICAS_FECHA_POR_DOMINIO = {
+    'default': {
+        'validar_campana': True,
+        'inicio': FECHA_CAMPANA_INICIO,
+        'fin': FECHA_CAMPANA_FIN,
+    },
+    'clima': {
+        'validar_campana': False,
+        'inicio': None,
+        'fin': None,
+    },
+    'historico': {
+        'validar_campana': False,
+        'inicio': None,
+        'fin': None,
+    },
+    'conteo_fenologico': {
+        'validar_campana': True,
+        'inicio': FECHA_CAMPANA_INICIO,
+        'fin': FECHA_CAMPANA_FIN,
+    },
+    'cosecha_sap': {
+        'validar_campana': True,
+        'inicio': FECHA_CAMPANA_INICIO,
+        'fin': FECHA_CAMPANA_FIN,
+    },
+    'evaluacion_pesos': {
+        'validar_campana': True,
+        'inicio': FECHA_CAMPANA_INICIO,
+        'fin': FECHA_CAMPANA_FIN,
+    },
+    'evaluacion_vegetativa': {
+        'validar_campana': True,
+        'inicio': FECHA_CAMPANA_INICIO,
+        'fin': FECHA_CAMPANA_FIN,
+    },
+    'fisiologia': {
+        'validar_campana': True,
+        'inicio': FECHA_CAMPANA_INICIO,
+        'fin': FECHA_CAMPANA_FIN,
+    },
+    'maduracion': {
+        'validar_campana': True,
+        'inicio': FECHA_CAMPANA_INICIO,
+        'fin': FECHA_CAMPANA_FIN,
+    },
+    'peladas': {
+        'validar_campana': True,
+        'inicio': FECHA_CAMPANA_INICIO,
+        'fin': FECHA_CAMPANA_FIN,
+    },
+    'sanidad': {
+        'validar_campana': True,
+        'inicio': FECHA_CAMPANA_INICIO,
+        'fin': FECHA_CAMPANA_FIN,
+    },
+    'sanidad_activo': {
+        'validar_campana': True,
+        'inicio': FECHA_CAMPANA_INICIO,
+        'fin': FECHA_CAMPANA_FIN,
+    },
+    'tareo': {
+        'validar_campana': True,
+        'inicio': FECHA_CAMPANA_INICIO,
+        'fin': FECHA_CAMPANA_FIN,
+    },
+    'ciclo_poda': {
+        'validar_campana': True,
+        'inicio': FECHA_CAMPANA_INICIO,
+        'fin': FECHA_CAMPANA_FIN,
+    },
+    'induccion_floral': {
+        'validar_campana': False,
+        'inicio': None,
+        'fin': None,
+    },
+    'tasa_crecimiento_brotes': {
+        'validar_campana': False,
+        'inicio': None,
+        'fin': None,
+    },
+}
+
+
+def obtener_politica_fecha(dominio: str | None = None) -> dict:
+    """
+    Retorna la politica de validacion temporal para un dominio/fact.
+    Si el dominio no existe, usa la politica default.
+    """
+    clave = str(dominio).strip().lower() if dominio else 'default'
+    return POLITICAS_FECHA_POR_DOMINIO.get(clave, POLITICAS_FECHA_POR_DOMINIO['default']).copy()
 
 
 def parsear_serie_fechas(serie: 'pd.Series') -> 'pd.Series':
@@ -96,32 +195,17 @@ def parsear_fecha(valor: str | None) -> Optional[datetime]:
     if not valor:
         return None
 
-    if re.fullmatch(r'\d{4}-\d{2}-\d{2}', valor):
-        try:
-            return datetime.strptime(valor, '%Y-%m-%d')
-        except ValueError:
-            pass
+    valor = re.sub(r'\s+', ' ', valor.replace('T', ' ')).strip()
 
-    if re.fullmatch(r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}', valor):
-        try:
-            return datetime.strptime(valor, '%Y-%m-%d %H:%M:%S')
-        except ValueError:
-            pass
+    fecha_corta = _parsear_fecha_corta_ambigua(valor)
+    if fecha_corta is not None:
+        return fecha_corta
 
-    if re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}', valor):
+    for formato in FORMATOS_ACEPTADOS:
         try:
-            return datetime.strptime(valor, '%Y-%m-%dT%H:%M:%S')
+            return datetime.strptime(valor, formato)
         except ValueError:
-            pass
-
-    # Intento rápido con inferencia automática
-    try:
-        import pandas as _pd
-        resultado = _pd.to_datetime(valor, dayfirst=True)
-        if resultado is not _pd.NaT:
-            return resultado.to_pydatetime()
-    except Exception:
-        pass
+            continue
 
     # Excel a veces entrega float (número de serie de fecha)
     try:
@@ -133,7 +217,61 @@ def parsear_fecha(valor: str | None) -> Optional[datetime]:
     except ValueError:
         pass
 
-    for formato in FORMATOS_ACEPTADOS:
+    # Fallback conservador solo para formatos no contemplados.
+    try:
+        import pandas as _pd
+        es_anio_primero = bool(
+            re.match(r'^\d{4}[-/]', valor)
+            or re.match(r'^\d{8}(?:\s|$)', valor)
+        )
+        resultado = _pd.to_datetime(
+            valor,
+            dayfirst=not es_anio_primero,
+            yearfirst=es_anio_primero,
+            errors='coerce',
+        )
+        if resultado is not _pd.NaT:
+            return resultado.to_pydatetime()
+    except Exception:
+        pass
+
+    return None
+
+
+def _parsear_fecha_corta_ambigua(valor: str) -> Optional[datetime]:
+    coincidencia = re.fullmatch(
+        r'(?P<primero>\d{2})(?P<separador>[/-])(?P<segundo>\d{2})(?P=separador)(?P<tercero>\d{2})(?: (?P<hora>\d{1,2}:\d{2}(?::\d{2})?))?',
+        valor,
+    )
+    if not coincidencia:
+        return None
+
+    primero = int(coincidencia.group('primero'))
+    tercero = int(coincidencia.group('tercero'))
+    separador = coincidencia.group('separador')
+    hora = coincidencia.group('hora')
+
+    base_dia_primero = f'%d{separador}%m{separador}%y'
+    base_anio_primero = f'%y{separador}%m{separador}%d'
+    formatos = []
+
+    if hora:
+        sufijos = [' %H:%M:%S', ' %H:%M']
+    else:
+        sufijos = ['']
+
+    if primero >= 20 and tercero <= 31:
+        bases = [base_anio_primero, base_dia_primero]
+    elif tercero >= 20 and primero <= 31:
+        bases = [base_dia_primero, base_anio_primero]
+    else:
+        bases = [base_dia_primero, base_anio_primero]
+
+    for base in bases:
+        for sufijo in sufijos:
+            formatos.append(f'{base}{sufijo}')
+
+    for formato in formatos:
         try:
             return datetime.strptime(valor, formato)
         except ValueError:
@@ -183,6 +321,7 @@ def es_fecha_valida_campana(fecha: datetime | date | None,
 
 def procesar_fecha(valor: str | None,
                    *,
+                   dominio: str | None = None,
                    validar_campana: bool = True,
                    inicio_campana: str | None = None,
                    fin_campana: str | None = None) -> tuple[Optional[datetime], bool]:
@@ -193,6 +332,14 @@ def procesar_fecha(valor: str | None,
     fecha = parsear_fecha(valor)
     if fecha is None:
         return None, False
+
+    politica = obtener_politica_fecha(dominio)
+    if dominio is not None and inicio_campana is None:
+        inicio_campana = politica.get('inicio')
+    if dominio is not None and fin_campana is None:
+        fin_campana = politica.get('fin')
+    if dominio is not None:
+        validar_campana = bool(politica.get('validar_campana', True))
 
     if not validar_campana:
         return fecha, True

@@ -234,6 +234,39 @@ FUNCIONES_MARTS = {
 }
 
 
+def refrescar_marts_seleccionados(
+    engine: Engine,
+    marts: list[str] | tuple[str, ...],
+    resumen_etl: dict | None = None,
+) -> dict:
+    """
+    Refresca solo los marts solicitados.
+    """
+    marts_set = set(marts)
+    marts_solicitados = [mart for mart in MARTS if mart in marts_set]
+    if not marts_solicitados:
+        return {}
+
+    if resumen_etl is not None:
+        fallas = _hay_fallas_criticas(resumen_etl)
+        if fallas:
+            msg = f'Gold bloqueado â€” facts con error: {fallas}'
+            print(f'  â›” {msg}')
+            return {'BLOQUEADO': msg}
+
+    resumen = {}
+    with engine.begin() as conexion:
+        for mart in marts_solicitados:
+            _truncar(conexion, mart)
+
+        for mart in marts_solicitados:
+            filas = FUNCIONES_MARTS[mart](conexion)
+            resumen[mart] = filas
+            print(f'  âœ… {mart}: {filas} filas')
+
+    return resumen
+
+
 def refrescar_todos_los_marts(engine: Engine,
                                resumen_etl: dict | None = None) -> dict:
     """

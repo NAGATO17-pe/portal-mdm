@@ -16,14 +16,17 @@ Responsabilidades:
 from __future__ import annotations
 
 import os
+import re
 import sys
 import subprocess
 import threading
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
+from nucleo.etl_argumentos import construir_argumentos_pipeline, deserializar_comentario_etl
 from nucleo.auditoria import registrar_inicio_corrida, registrar_fin_corrida
 from nucleo.logging import obtener_logger
 import repositorios.repo_control as rc
@@ -34,6 +37,16 @@ EstadoFinal = Literal["OK", "ERROR", "CANCELADO", "TIMEOUT"]
 
 _DIR_ETL = Path(__file__).resolve().parents[2] / "ETL"
 _SCRIPT  = _DIR_ETL / "pipeline.py"
+_PATRON_PASO = re.compile(r"^\[(?P<orden>\d+)/(?:\d+)\]\s+(?P<descripcion>.+?)\s*$")
+_PATRON_ERROR = re.compile(r"^\s*ERROR(?:\s+en\s+(?P<objetivo>[^:]+))?:\s*(?P<detalle>.+)$")
+
+
+@dataclass
+class _PasoActivo:
+    id_paso: int
+    nombre_paso: str
+    orden: int
+    cerrado: bool = False
 
 
 def _resolver_python() -> str:
@@ -44,9 +57,61 @@ def _resolver_python() -> str:
     return exe
 
 
+def _normalizar_nombre_paso(descripcion: str) -> str:
+    return descripcion.strip().rstrip(".").strip()
+
+
+def _extraer_inicio_paso(linea: str) -> tuple[int, str] | None:
+    coincidencia = _PATRON_PASO.match(linea.strip())
+    if not coincidencia:
+        return None
+    return (
+        int(coincidencia.group("orden")),
+        _normalizar_nombre_paso(coincidencia.group("descripcion")),
+    )
+
+
+def _linea_es_error_de_paso(linea: str, paso_activo: _PasoActivo | None) -> tuple[bool, str | None]:
+    coincidencia = _PATRON_ERROR.match(linea.strip())
+    if not coincidencia:
+        return False, None
+
+    objetivo = (coincidencia.group("objetivo") or "").strip()
+    if paso_activo is None or not objetivo:
+        return True, linea.strip()
+    if objetivo in paso_activo.nombre_paso:
+        return True, linea.strip()
+    return False, None
+
+
+def _cerrar_paso_activo(
+    paso_activo: _PasoActivo | None,
+    *,
+    estado: str,
+    mensaje_error: str | None = None,
+) -> None:
+    if paso_activo is None or paso_activo.cerrado or paso_activo.id_paso < 0:
+        return
+    rc.cerrar_paso(
+        paso_activo.id_paso,
+        estado=estado,
+        mensaje_error=mensaje_error,
+    )
+    paso_activo.cerrado = True
+
+
+def _abrir_nuevo_paso(id_corrida: str, orden: int, nombre_paso: str) -> _PasoActivo:
+    return _PasoActivo(
+        id_paso=rc.insertar_paso(id_corrida, nombre_paso, orden=orden),
+        nombre_paso=nombre_paso,
+        orden=orden,
+    )
+
+
 def ejecutar_corrida(
     id_corrida: str,
     iniciado_por: str,
+    comentario: str | None = None,
     timeout_segundos: int = 3600,
     heartbeat_intervalo_seg: int = 30,
 ) -> EstadoFinal:
@@ -67,13 +132,17 @@ def ejecutar_corrida(
     estado_final: EstadoFinal = "ERROR"
     codigo_retorno = -1
     id_log: int | None = None
+    parametros = deserializar_comentario_etl(comentario)
+    modo_ejecucion = parametros["modo_ejecucion"]
+    nombre_pipeline = "PIPELINE_COMPLETO" if modo_ejecucion == "completo" else "PIPELINE_FACTS"
+    argumentos_pipeline = construir_argumentos_pipeline(comentario)
 
     # ── 1. Auditoría de inicio ─────────────────────────────────────────────────
     try:
         id_log = registrar_inicio_corrida(
             nombre_proceso="ETL_RUNNER",
-            tabla_destino="PIPELINE_COMPLETO",
-            nombre_archivo=f"corrida_{id_corrida[:8]}",
+            tabla_destino=nombre_pipeline,
+            nombre_archivo=f"corrida_{id_corrida[:8]}_{modo_ejecucion}",
         )
     except Exception:
         log.warning("No se pudo registrar inicio en auditoría", extra={"id_corrida": id_corrida})
@@ -85,8 +154,8 @@ def ejecutar_corrida(
         pid_runner=pid,
         id_log_auditoria=id_log,
     )
-    id_paso = rc.insertar_paso(id_corrida, "PIPELINE_COMPLETO", orden=1)
     rc.insertar_evento(id_corrida, f"[RUNNER] Inicio. PID={pid}", tipo="LOG")
+    paso_activo: _PasoActivo | None = None
 
     # ── 3. Lanzar subprocess ──────────────────────────────────────────────────
     proceso: subprocess.Popen | None = None
@@ -94,7 +163,7 @@ def ejecutar_corrida(
 
     try:
         proceso = subprocess.Popen(
-            [_resolver_python(), str(_SCRIPT)],
+            [_resolver_python(), str(_SCRIPT), *argumentos_pipeline],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             cwd=str(_DIR_ETL),
@@ -113,6 +182,19 @@ def ejecutar_corrida(
                 linea_limpia = linea.rstrip("\n")
 
                 rc.insertar_evento(id_corrida, linea_limpia, tipo="LOG")
+                inicio_paso = _extraer_inicio_paso(linea_limpia)
+                if inicio_paso is not None:
+                    orden_paso, nombre_paso = inicio_paso
+                    _cerrar_paso_activo(paso_activo, estado="OK")
+                    paso_activo = _abrir_nuevo_paso(id_corrida, orden_paso, nombre_paso)
+                else:
+                    es_error_paso, mensaje_error = _linea_es_error_de_paso(linea_limpia, paso_activo)
+                    if es_error_paso:
+                        _cerrar_paso_activo(
+                            paso_activo,
+                            estado="ERROR",
+                            mensaje_error=mensaje_error,
+                        )
 
                 # ── 5. Heartbeat y verificación de cancelación ─────────────────
                 if ahora - ultimo_heartbeat >= heartbeat_intervalo_seg:
@@ -162,9 +244,8 @@ def ejecutar_corrida(
     # Evento de cierre
     rc.insertar_evento(id_corrida, f"[FIN] {msg_final}", tipo="FIN")
 
-    # Cerrar el paso
-    rc.cerrar_paso(
-        id_paso,
+    _cerrar_paso_activo(
+        paso_activo,
         estado="OK" if estado_final == "OK" else "ERROR",
         mensaje_error=msg_final if estado_final != "OK" else None,
     )

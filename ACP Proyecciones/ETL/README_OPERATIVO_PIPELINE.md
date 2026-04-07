@@ -43,6 +43,38 @@ Archivos historicos/descartados:
    - `Estado fenologico no reconocido en maduracion`
    - `Cinta no reconocida o ausente en maduracion`
 
+## 3.1) Modos de ejecucion soportados
+
+El pipeline ya opera en dos modos:
+
+- `completo`: ejecuta flujo diario end-to-end.
+- `facts`: reprocesa solo facts declaradas en el manifiesto oficial.
+
+Comandos operativos:
+
+```powershell
+Set-Location 'D:\Proyecto2026\ACP_DWH\ACP Proyecciones\ETL'
+py pipeline.py
+
+py pipeline.py --modo-ejecucion facts --facts Fact_Telemetria_Clima
+py pipeline.py --modo-ejecucion facts --facts Fact_Evaluacion_Pesos Fact_Tareo
+```
+
+Tambien queda soportado desde la raiz:
+
+```powershell
+Set-Location 'D:\Proyecto2026\ACP_DWH\ACP Proyecciones'
+.\ejecutar_etl_acp.bat
+.\ejecutar_etl_acp.bat --modo-ejecucion facts --facts Fact_Telemetria_Clima
+```
+
+Contrato operativo:
+
+- Toda fact usada en `rerun` debe existir en `utils/ejecucion.py`.
+- Toda fact soportada debe declarar `estrategia_rerun`.
+- Si una fact no tiene estrategia declarada, el ETL falla rapido y no ejecuta un reproceso ambiguo.
+- `Gold` solo se refresca para los marts impactados por las facts del plan parcial.
+
 ## 4) Reglas activas de cama y modulo
 - Catalogo permitido de cama: `1..100`.
 - `Cama_Raw` nula/vacia/0: se resuelve solo geografia base.
@@ -96,6 +128,43 @@ EXEC Silver.sp_Validar_Calidad_Camas
     @Cama_Max_Permitida=100,
     @Max_Camas_Por_Geografia=100;
 ```
+
+## 5.1) DQ y backlog operativo
+
+Consultas listas para operacion:
+
+- `consultas_dq_operativas.sql`
+
+Uso esperado:
+
+- ver top motivos en `MDM.Cuarentena`
+- ver backlog pendiente por tabla/campo/dia
+- inspeccionar valores crudos repetidos
+- aislar anomalias de clima sin tocar codigo
+
+Regla operativa:
+
+- `rechazados` y `cuarentena` siguen siendo salidas validas del ETL
+- no se implementa autocorreccion heuristica en esta fase
+- el saneamiento se hace en origen o por decision MDM
+
+## 5.2) Idempotencia de cuarentena
+
+El envio a `MDM.Cuarentena` ya es idempotente para filas pendientes repetidas.
+
+Clave de deduplicacion aplicada:
+
+- `Tabla_Origen`
+- `Campo_Origen`
+- `Valor_Recibido`
+- `Motivo`
+- `ID_Registro_Origen`
+- `Estado = 'PENDIENTE'`
+
+Implicancia:
+
+- un `rerun` del mismo error no debe inflar artificialmente el backlog pendiente
+- la repeticion solo reaparece si cambia el valor, el motivo o si el caso previo ya fue resuelto
 
 ## 6) Criterios de exito
 - `Estado_Calidad_Cama = 'OK_OPERATIVO'`
@@ -171,12 +240,10 @@ Implicancia operativa:
 - Las filas rechazadas corresponden a historico meteorologico de `2022`, no a error de parseo del Excel.
 
 ### Hallazgo tecnico critico
-- La validacion de campana en `utils/fechas.py` sigue globalizada con rango fijo `2025-03-01` a `2026-06-30`.
-- Esa regla hoy afecta a todas las facts que llaman `procesar_fecha()`.
-- Conclusion aprobada:
-  - la validacion de campana no debe seguir siendo global;
-  - debe separarse por fact o por dominio;
-  - clima debe poder conservar historico aunque este fuera de la campana vigente.
+- La validacion temporal ya no es global.
+- `utils/fechas.py` opera por dominio/fact.
+- Clima conserva historico valido y el resto de dominios mantiene su politica explicita.
+- El criterio correcto ahora es revisar el dominio afectado antes de diagnosticar una fecha como fuera de ventana.
 
 ### Tareo
 - Se corrigieron aliases reales del layout de `Consolidado_Tareos`.
@@ -201,4 +268,17 @@ Implicancia operativa:
 2. No reactivar regla por turno de `Modulo 11` sin catalogo completo.
 3. Tratar `9.` como backlog controlado mientras negocio no cierre regla final.
 4. No cerrar cambios de este frente sin rerun real y evidencia SQL.
+
+## Addendum 2026-04-07 - Baseline operativa actual
+
+Baseline cerrada:
+
+- `pytest` local ETL verde.
+- Separacion formal entre pruebas locales y `--sql-integration`.
+- Telemetria uniforme por fact en resumen final.
+- `Fact_Telemetria_Clima` ya validada con historico y parser estable.
+- `rerun` dirigido operativo con refresh selectivo de `Gold`.
+- soporte SQL de control-plane endurecido con:
+  - `fase21_endurecimiento_control_plane.sql`
+  - `fase22_retencion_control_plane.sql`
 

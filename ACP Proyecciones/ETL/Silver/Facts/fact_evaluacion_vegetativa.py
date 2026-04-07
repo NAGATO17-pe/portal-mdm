@@ -178,6 +178,7 @@ def cargar_fact_evaluacion_vegetativa(engine: Engine) -> dict:
     df = _leer_bronce(engine, columna_id)
     if df.empty:
         return resumen
+    resumen['leidos'] = len(df)
 
     df, cuar_var = homologar_columna(
         df, 'Descripcion_Raw', 'Variedad_Canonica', TABLA_ORIGEN, engine,
@@ -194,7 +195,10 @@ def cargar_fact_evaluacion_vegetativa(engine: Engine) -> dict:
         if id_origen is not None:
             ids_leidos.append(id_origen)
 
-        fecha, valida = procesar_fecha(fila.get('Fecha_Raw'))
+        fecha, valida = procesar_fecha(
+            fila.get('Fecha_Raw'),
+            dominio='evaluacion_vegetativa',
+        )
         if not valida:
             resumen['rechazados'] += 1
             resumen['cuarentena'].append({

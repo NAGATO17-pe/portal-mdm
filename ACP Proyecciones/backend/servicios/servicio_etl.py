@@ -20,6 +20,9 @@ from datetime import datetime
 from typing import AsyncGenerator
 
 import repositorios.repo_control as rc
+from nucleo.etl_catalogo import listar_facts_disponibles
+from nucleo.etl_argumentos import enriquecer_corrida_con_parametros, serializar_comentario_etl
+from nucleo.excepciones import ErrorValidacion
 from nucleo.logging import obtener_logger
 
 log = obtener_logger(__name__)
@@ -31,6 +34,11 @@ _POLL_TIMEOUT_TOTAL_SEG = 7200  # Tiempo máximo que el SSE espera (2h)
 async def iniciar_corrida(
     iniciado_por: str,
     comentario: str | None = None,
+    modo_ejecucion: str = "completo",
+    facts: list[str] | None = None,
+    incluir_dependencias: bool = True,
+    refrescar_gold: bool = True,
+    forzar_relectura_bronce: bool = True,
     max_reintentos: int = 0,
     timeout_segundos: int = 3600,
 ) -> dict:
@@ -40,13 +48,24 @@ async def iniciar_corrida(
     """
     id_corrida = str(uuid.uuid4())
     ahora      = datetime.now()
+    try:
+        comentario_persistido = serializar_comentario_etl(
+            comentario_usuario=comentario,
+            modo_ejecucion=modo_ejecucion,
+            facts=facts,
+            incluir_dependencias=incluir_dependencias,
+            refrescar_gold=refrescar_gold,
+            forzar_relectura_bronce=forzar_relectura_bronce,
+        )
+    except ValueError as error:
+        raise ErrorValidacion(str(error)) from error
 
     # 1. Crear registro maestro
     await asyncio.to_thread(
         rc.insertar_corrida,
         id_corrida     = id_corrida,
         iniciado_por   = iniciado_por,
-        comentario     = comentario,
+        comentario     = comentario_persistido,
         max_reintentos = max_reintentos,
         timeout_segundos = timeout_segundos,
     )
@@ -57,7 +76,7 @@ async def iniciar_corrida(
         id_corrida     = id_corrida,
         iniciado_por   = iniciado_por,
         tipo_comando   = "INICIAR",
-        comentario     = comentario,
+        comentario     = comentario_persistido,
         max_reintentos = max_reintentos,
         timeout_seg    = timeout_segundos,
     )
@@ -155,9 +174,26 @@ def corrida_existe(id_corrida: str) -> bool:
 
 def obtener_corrida(id_corrida: str) -> dict | None:
     """Retorna el estado actual de una corrida."""
-    return rc.obtener_corrida(id_corrida)
+    corrida = enriquecer_corrida_con_parametros(rc.obtener_corrida(id_corrida))
+    if corrida is None:
+        return None
+    corrida["pasos"] = rc.listar_pasos_corrida(id_corrida)
+    return corrida
+
+
+def obtener_pasos_corrida(id_corrida: str) -> list[dict]:
+    """Retorna la traza persistida de pasos para una corrida."""
+    return rc.listar_pasos_corrida(id_corrida)
 
 
 def listar_corridas_activas() -> list[dict]:
     """Retorna corridas PENDIENTE o EJECUTANDO."""
-    return rc.listar_corridas(limite=10, solo_activas=True)
+    return [
+        enriquecer_corrida_con_parametros(corrida)
+        for corrida in rc.listar_corridas(limite=10, solo_activas=True)
+    ]
+
+
+def listar_catalogo_facts() -> list[dict]:
+    """Retorna el catálogo oficial de facts soportadas por rerun."""
+    return listar_facts_disponibles()

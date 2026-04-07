@@ -33,7 +33,7 @@ INSERT INTO Silver.Dim_Tiempo (
     Es_Fin_Semana
 )
 SELECT
-    CAST(FORMAT(fecha, 'yyyyMMdd') AS INT)       AS ID_Tiempo,
+    CAST(CONVERT(CHAR(8), fecha, 112) AS INT)    AS ID_Tiempo,
     fecha                                         AS Fecha,
     YEAR(fecha)                                   AS Anio,
     MONTH(fecha)                                  AS Mes,
@@ -44,7 +44,12 @@ SELECT
     CASE WHEN DATEPART(WEEKDAY, fecha) IN (1,7)
          THEN 1 ELSE 0 END                        AS Es_Fin_Semana
 FROM fechas
-OPTION (MAXRECURSION 400);
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM Silver.Dim_Tiempo dt
+    WHERE dt.ID_Tiempo = CAST(CONVERT(CHAR(8), fecha, 112) AS INT)
+)
+OPTION (MAXRECURSION 0);
 
 PRINT '  OK — ' + CAST(@@ROWCOUNT AS NVARCHAR) + ' dias cargados.';
 GO

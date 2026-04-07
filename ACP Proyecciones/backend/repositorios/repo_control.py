@@ -286,11 +286,16 @@ def insertar_paso(id_corrida: str, nombre_paso: str, orden: int = 1) -> int:
             resultado = con.execute(
                 text("""
                     INSERT INTO Control.Corrida_Paso
-                        (ID_Corrida, Nombre_Paso, Orden, Estado)
+                        (ID_Corrida, Nombre_Paso, Orden, Estado, Fecha_Inicio)
                     OUTPUT INSERTED.ID_Paso
-                    VALUES (:id, :nombre, :orden, 'EJECUTANDO')
+                    VALUES (:id, :nombre, :orden, 'EJECUTANDO', :ahora)
                 """),
-                {"id": id_corrida, "nombre": nombre_paso, "orden": orden},
+                {
+                    "id": id_corrida,
+                    "nombre": nombre_paso,
+                    "orden": orden,
+                    "ahora": datetime.now(),
+                },
             )
             return resultado.fetchone()[0]
     except SQLAlchemyError:
@@ -312,6 +317,33 @@ def cerrar_paso(id_paso: int, estado: str, mensaje_error: str | None = None) -> 
             )
     except SQLAlchemyError:
         log.warning("No se pudo cerrar paso", extra={"id_paso": id_paso})
+
+
+def listar_pasos_corrida(id_corrida: str) -> list[dict]:
+    """Retorna la traza de pasos de una corrida en orden operativo."""
+    try:
+        with obtener_engine().connect() as con:
+            filas = con.execute(
+                text("""
+                    SELECT
+                        ID_Paso        AS id_paso,
+                        ID_Corrida     AS id_corrida,
+                        Nombre_Paso    AS nombre_paso,
+                        Orden          AS orden,
+                        Estado         AS estado,
+                        Fecha_Inicio   AS fecha_inicio,
+                        Fecha_Fin      AS fecha_fin,
+                        Mensaje_Error  AS mensaje_error
+                    FROM Control.Corrida_Paso
+                    WHERE ID_Corrida = :id
+                    ORDER BY Orden ASC, ID_Paso ASC
+                """),
+                {"id": id_corrida},
+            ).fetchall()
+            return [dict(fila._mapping) for fila in filas]
+    except SQLAlchemyError:
+        log.exception("Error al listar pasos de corrida", extra={"id_corrida": id_corrida})
+        raise ErrorBaseDatos()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -398,6 +430,73 @@ def lock_activo() -> dict | None:
             return dict(fila._mapping) if fila else None
     except SQLAlchemyError:
         return None
+
+
+def obtener_estado_lock(timeout_lock_seg: int = 120) -> dict:
+    """
+    Retorna el estado operativo del lock único del runner.
+    Distingue lock libre, activo y heartbeat vencido.
+    """
+    try:
+        with obtener_engine().connect() as con:
+            fila = con.execute(
+                text("""
+                    SELECT
+                        ID_Lock                 AS id_lock,
+                        ID_Corrida_Activa       AS id_corrida_activa,
+                        Adquirido_Por           AS adquirido_por,
+                        Fecha_Adquisicion       AS fecha_adquisicion,
+                        Heartbeat               AS heartbeat,
+                        CASE
+                            WHEN ID_Corrida_Activa IS NULL THEN 'LIBRE'
+                            WHEN Heartbeat IS NULL THEN 'VENCIDO'
+                            WHEN DATEDIFF(SECOND, Heartbeat, GETDATE()) > :timeout_lock THEN 'VENCIDO'
+                            ELSE 'ACTIVO'
+                        END AS estado_lock,
+                        CASE
+                            WHEN Heartbeat IS NULL THEN NULL
+                            ELSE DATEDIFF(SECOND, Heartbeat, GETDATE())
+                        END AS segundos_desde_heartbeat
+                    FROM Control.Bloqueo_Ejecucion
+                    WHERE ID_Lock = 1
+                """),
+                {"timeout_lock": timeout_lock_seg},
+            ).fetchone()
+            if not fila:
+                raise ErrorRecursoNoEncontrado()
+            return dict(fila._mapping)
+    except SQLAlchemyError:
+        log.exception("Error al consultar estado del lock")
+        raise ErrorBaseDatos()
+
+
+def obtener_resumen_control_plane() -> dict:
+    """
+    Retorna contadores operativos del control-plane ETL.
+    """
+    try:
+        with obtener_engine().connect() as con:
+            fila = con.execute(
+                text("""
+                    SELECT
+                        (SELECT COUNT(*) FROM Control.Corrida
+                         WHERE Estado IN ('PENDIENTE', 'EJECUTANDO')) AS corridas_activas,
+                        (SELECT COUNT(*) FROM Control.Comando_Ejecucion
+                         WHERE Estado_Cmd = 'PENDIENTE') AS comandos_pendientes,
+                        (SELECT COUNT(*) FROM Control.Comando_Ejecucion
+                         WHERE Estado_Cmd = 'PROCESANDO') AS comandos_procesando
+                """)
+            ).fetchone()
+            if not fila:
+                return {
+                    "corridas_activas": 0,
+                    "comandos_pendientes": 0,
+                    "comandos_procesando": 0,
+                }
+            return dict(fila._mapping)
+    except SQLAlchemyError:
+        log.exception("Error al consultar resumen del control-plane")
+        raise ErrorBaseDatos()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

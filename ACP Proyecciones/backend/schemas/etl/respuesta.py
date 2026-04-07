@@ -36,3 +36,54 @@ class RespuestaHistorialCorrida(BaseModel):
     mensaje_error:      str | None
 
     model_config = {"from_attributes": True}
+
+
+class RespuestaPasoCorrida(BaseModel):
+    id_paso: int
+    id_corrida: str
+    nombre_paso: str
+    orden: int
+    estado: str
+    fecha_inicio: datetime | None
+    fecha_fin: datetime | None
+    mensaje_error: str | None
+
+    model_config = {"from_attributes": True}
+
+
+class RespuestaDetalleCorrida(BaseModel):
+    id_corrida: str
+    iniciado_por: str
+    comentario: str | None
+    estado: str
+    intento_numero: int
+    max_reintentos: int
+    fecha_solicitud: datetime | None
+    fecha_inicio: datetime | None
+    fecha_fin: datetime | None
+    pid_runner: int | None
+    heartbeat_ultimo: datetime | None
+    timeout_segundos: int
+    mensaje_final: str | None
+    id_log_auditoria: int | None
+    modo_ejecucion: str
+    facts: list[str]
+    incluir_dependencias: bool
+    refrescar_gold: bool
+    forzar_relectura_bronce: bool
+    pasos: list[RespuestaPasoCorrida] = Field(default_factory=list)
+
+    model_config = {"from_attributes": True}
+
+
+class RespuestaFactDisponible(BaseModel):
+    nombre_fact: str
+    orden: int
+    tabla_destino: str
+    fuentes_bronce: list[str]
+    dependencias: list[str]
+    marts: list[str]
+    releer_bronce_por_estado: bool
+    estrategia_rerun: str
+
+    model_config = {"from_attributes": True}

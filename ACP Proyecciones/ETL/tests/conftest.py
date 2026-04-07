@@ -14,8 +14,22 @@ if str(RAIZ_PROYECTO) not in sys.path:
 from config.conexion import obtener_engine  # noqa: E402
 
 
+def pytest_addoption(parser):
+    parser.addoption(
+        "--sql-integration",
+        action="store_true",
+        default=False,
+        help="Ejecuta pruebas ETL que requieren SQL Server real.",
+    )
+
+
 @pytest.fixture(scope='session')
-def engine():
+def engine(pytestconfig):
+    if not pytestconfig.getoption("--sql-integration"):
+        pytest.skip(
+            "Pruebas ETL de integracion SQL omitidas. "
+            "Usa --sql-integration para ejecutarlas contra SQL Server real."
+        )
     return obtener_engine()
 
 

@@ -195,6 +195,7 @@ def cargar_fact_maduracion(engine: Engine) -> dict:
     df = _leer_bronce(engine)
     if df.empty:
         return resumen
+    resumen['leidos'] = len(df)
 
     claves_existentes = _cargar_claves_existentes(engine)
     diccionario_variedades = cargar_diccionario(engine, TABLA_ORIGEN)
@@ -207,7 +208,10 @@ def cargar_fact_maduracion(engine: Engine) -> dict:
             payload = _parsear_valores_raw(fila.get('Valores_Raw'))
 
             fecha_raw = _obtener_valor(payload, 'FECHA_Raw', 'Fecha_Raw') or fila.get('Fecha_Raw')
-            fecha, fecha_valida = procesar_fecha(fecha_raw)
+            fecha, fecha_valida = procesar_fecha(
+                fecha_raw,
+                dominio='maduracion',
+            )
             if not fecha_valida:
                 resumen['rechazados'] += 1
                 resumen['cuarentena'].append({

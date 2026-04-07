@@ -9,7 +9,42 @@ from datetime import datetime
 from sqlalchemy.engine import Engine
 from sqlalchemy import text
 
-from utils.sql_lotes import ejecutar_en_lotes_con_engine
+from utils.sql_lotes import TAM_LOTE_DEFECTO
+
+
+def _normalizar_payload_cuarentena(tabla_origen: str, fila: dict, fecha_ingreso: datetime) -> dict:
+    return {
+        'tabla_origen': tabla_origen,
+        'campo_origen': str(fila.get('columna', 'DESCONOCIDA') or 'DESCONOCIDA'),
+        'valor_recibido': str(fila.get('valor', '')),
+        'motivo': str(fila.get('motivo', 'Sin motivo') or 'Sin motivo'),
+        'tipo_regla': str(fila.get('tipo_regla', 'DQ') or 'DQ'),
+        'score': fila.get('score_levenshtein', None),
+        'id_registro_origen': fila.get('id_registro_origen', None),
+        'fecha_ingreso': fecha_ingreso,
+    }
+
+
+def _clave_dedupe_pendiente(payload: dict) -> tuple:
+    return (
+        payload['tabla_origen'],
+        payload['campo_origen'],
+        payload['valor_recibido'],
+        payload['motivo'],
+        payload['id_registro_origen'],
+    )
+
+
+def _deduplicar_payload_pendiente(payload: list[dict]) -> list[dict]:
+    deduplicados = []
+    vistos = set()
+    for fila in payload:
+        clave = _clave_dedupe_pendiente(fila)
+        if clave in vistos:
+            continue
+        vistos.add(clave)
+        deduplicados.append(fila)
+    return deduplicados
 
 
 def enviar_a_cuarentena(
@@ -28,19 +63,10 @@ def enviar_a_cuarentena(
         return 0
 
     ahora = datetime.now()
-    payload = [
-        {
-            'tabla_origen': tabla_origen,
-            'campo_origen': fila.get('columna', 'DESCONOCIDA'),
-            'valor_recibido': str(fila.get('valor', '')),
-            'motivo': fila.get('motivo', 'Sin motivo'),
-            'tipo_regla': fila.get('tipo_regla', 'DQ'),
-            'score': fila.get('score_levenshtein', None),
-            'id_registro_origen': fila.get('id_registro_origen', None),
-            'fecha_ingreso': ahora,
-        }
+    payload = _deduplicar_payload_pendiente([
+        _normalizar_payload_cuarentena(tabla_origen, fila, ahora)
         for fila in filas
-    ]
+    ])
 
     sentencia = text("""
         INSERT INTO MDM.Cuarentena (
@@ -53,7 +79,8 @@ def enviar_a_cuarentena(
             Estado,
             ID_Registro_Origen,
             Fecha_Ingreso
-        ) VALUES (
+        )
+        SELECT
             :tabla_origen,
             :campo_origen,
             :valor_recibido,
@@ -63,8 +90,27 @@ def enviar_a_cuarentena(
             'PENDIENTE',
             :id_registro_origen,
             :fecha_ingreso
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM MDM.Cuarentena q
+            WHERE q.Tabla_Origen = :tabla_origen
+              AND q.Campo_Origen = :campo_origen
+              AND q.Valor_Recibido = :valor_recibido
+              AND q.Motivo = :motivo
+              AND q.Estado = 'PENDIENTE'
+              AND (
+                    q.ID_Registro_Origen = :id_registro_origen
+                    OR (q.ID_Registro_Origen IS NULL AND :id_registro_origen IS NULL)
+              )
         )
     """)
 
-    ejecutar_en_lotes_con_engine(engine, sentencia, payload)
-    return len(filas)
+    insertadas = 0
+    with engine.begin() as conexion:
+        for inicio in range(0, len(payload), TAM_LOTE_DEFECTO):
+            resultado = conexion.execute(
+                sentencia,
+                payload[inicio:inicio + TAM_LOTE_DEFECTO],
+            )
+            insertadas += int(resultado.rowcount or 0)
+    return insertadas

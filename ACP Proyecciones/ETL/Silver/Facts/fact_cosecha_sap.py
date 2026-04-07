@@ -93,6 +93,7 @@ def cargar_fact_cosecha_sap(engine: Engine) -> dict:
 
     # ── Reporte Cosecha ───────────────────────────────────────
     df_cosecha = _leer_bronce_cosecha(engine)
+    resumen['leidos'] = len(df_cosecha)
     df_cosecha, cuar_var = homologar_columna(
         df_cosecha, 'Variedad_Raw', 'Variedad_Canonica',
         TABLA_COSECHA, engine
@@ -102,7 +103,10 @@ def cargar_fact_cosecha_sap(engine: Engine) -> dict:
     ids_cosecha = []
     with engine.begin() as conexion:
         for _, fila in df_cosecha.iterrows():
-            fecha, valida = procesar_fecha(fila.get('Fecha_Raw'))
+            fecha, valida = procesar_fecha(
+                fila.get('Fecha_Raw'),
+                dominio='cosecha_sap',
+            )
             if not valida:
                 resumen['rechazados'] += 1
                 continue
@@ -152,6 +156,7 @@ def cargar_fact_cosecha_sap(engine: Engine) -> dict:
 
     # ── Data SAP ──────────────────────────────────────────────
     df_sap = _leer_bronce_sap(engine)
+    resumen['leidos'] += len(df_sap)
     df_sap, cuar_sap = homologar_columna(
         df_sap, 'Variedad_Raw', 'Variedad_Canonica',
         TABLA_SAP, engine
@@ -161,7 +166,10 @@ def cargar_fact_cosecha_sap(engine: Engine) -> dict:
     ids_sap = []
     with engine.begin() as conexion:
         for _, fila in df_sap.iterrows():
-            fecha, valida = procesar_fecha(fila.get('Fecha_Raw'))
+            fecha, valida = procesar_fecha(
+                fila.get('Fecha_Raw'),
+                dominio='cosecha_sap',
+            )
             if not valida:
                 resumen['rechazados'] += 1
                 continue
@@ -180,7 +188,10 @@ def cargar_fact_cosecha_sap(engine: Engine) -> dict:
                 except (ValueError, TypeError):
                     return None
 
-            fecha_recepcion, _ = procesar_fecha(fila.get('Fecha_Recepcion_Raw'))
+            fecha_recepcion, _ = procesar_fecha(
+                fila.get('Fecha_Recepcion_Raw'),
+                dominio='historico',
+            )
 
             _insertar_fila(conexion, {
                 'id_geo':         id_geo,

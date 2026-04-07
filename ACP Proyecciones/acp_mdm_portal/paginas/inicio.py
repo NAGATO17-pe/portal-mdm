@@ -26,7 +26,7 @@ def _cargar_log_reciente() -> pd.DataFrame:
     return pd.DataFrame()
 
 def render():
-    header_pagina("🏠", "Inicio", "Estado del pipeline · Data Warehouse ACP")
+    header_pagina("Inicio", "Estado del pipeline · Data Warehouse ACP")
     conectado = health_status_panel()
 
     df_estado = _cargar_resumen_ultima_carga()

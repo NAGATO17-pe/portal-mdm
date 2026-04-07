@@ -1,0 +1,14 @@
+version: '3.8'
+services:
+  airflow:
+    image: apache/airflow:2.8.3
+    container_name: airflow_test_standalone
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+    environment:
+      - AIRFLOW__CORE__LOAD_EXAMPLES=true # Cambia a false si no quieres los DAGs de ejemplo
+    command: standalone

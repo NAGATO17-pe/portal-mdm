@@ -43,12 +43,13 @@ htmlcov/
 .coverage
 .coverage.*
 .cache
+.pytest_cache/
+pytest-cache-files-*/
 nosetests.xml
 coverage.xml
 *.cover
 *.spherdir
 .hypothesis/
-.pytest_cache/
 cover/
 
 # Environments
@@ -69,6 +70,9 @@ venv.bak/
 status.txt
 status2.txt
 
-# Permitir carpeta lib del frontend Next.js
-!fronend/lib/
-!fronend/lib/**
+# Bases y caches locales
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3

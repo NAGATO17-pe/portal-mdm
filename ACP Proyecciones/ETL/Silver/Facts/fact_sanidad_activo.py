@@ -41,6 +41,7 @@ def cargar_fact_sanidad_activo(engine: Engine) -> dict:
     df = _leer_bronce(engine)
     if df.empty:
         return resumen
+    resumen['leidos'] = len(df)
 
     df, cuar_var = homologar_columna(
         df, 'Variedad_Raw', 'Variedad_Canonica', TABLA_ORIGEN, engine
@@ -51,7 +52,10 @@ def cargar_fact_sanidad_activo(engine: Engine) -> dict:
 
     with engine.begin() as conexion:
         for _, fila in df.iterrows():
-            fecha, valida = procesar_fecha(fila.get('Fecha_Raw'))
+            fecha, valida = procesar_fecha(
+                fila.get('Fecha_Raw'),
+                dominio='sanidad_activo',
+            )
             if not valida:
                 resumen['rechazados'] += 1
                 continue

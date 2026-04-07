@@ -15,6 +15,11 @@ echo   Ejecutando ETL ACP DWH
 echo ============================================================
 echo Python : "%PYTHON_EXE%"
 echo Proyecto: "%ETL_DIR%"
+if "%~1"=="" (
+    echo Modo   : completo
+) else (
+    echo Args   : %*
+)
 echo.
 
 if not exist "%PYTHON_EXE%" (
@@ -28,7 +33,11 @@ if not exist "%PIPELINE_SCRIPT%" (
 )
 
 pushd "%ETL_DIR%"
-"%PYTHON_EXE%" "%PIPELINE_SCRIPT%"
+if "%~1"=="" (
+    "%PYTHON_EXE%" "%PIPELINE_SCRIPT%"
+) else (
+    "%PYTHON_EXE%" "%PIPELINE_SCRIPT%" %*
+)
 set "EXIT_CODE=%ERRORLEVEL%"
 popd
 

@@ -190,6 +190,7 @@ def cargar_fact_induccion_floral(engine: Engine) -> dict:
     df = _leer_bronce(engine, columna_id)
     if df.empty:
         return resumen
+    resumen['leidos'] = len(df)
 
     df['Variedad_Fuente_Raw'] = df['Variedad_Raw'].where(
         df['Variedad_Raw'].notna(),
@@ -212,7 +213,10 @@ def cargar_fact_induccion_floral(engine: Engine) -> dict:
     for _, fila in df.iterrows():
         id_origen = _a_entero_nulo(fila.get('ID_Registro_Origen'))
 
-        fecha, valida = procesar_fecha(fila.get('Fecha_Raw'), validar_campana=False)
+        fecha, valida = procesar_fecha(
+            fila.get('Fecha_Raw'),
+            dominio='induccion_floral',
+        )
         if not valida:
             resumen['rechazados'] += 1
             if id_origen is not None:

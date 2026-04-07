@@ -55,6 +55,7 @@ def registrar_fin(id_log: int, resultado: dict) -> None:
     fin     = datetime.now()
     estado  = resultado.get('estado', 'ERROR')
     filas   = resultado.get('filas', 0)
+    filas_leidas = resultado.get('filas_leidas', filas + resultado.get('rechazadas', 0))
     mensaje = resultado.get('mensaje', '')
 
     with engine.begin() as conexion:
@@ -63,6 +64,7 @@ def registrar_fin(id_log: int, resultado: dict) -> None:
             SET
                 Fecha_Fin             = :fecha_fin,
                 Estado_Proceso        = :estado,
+                Filas_Leidas          = :filas_leidas,
                 Filas_Insertadas      = :filas_insertadas,
                 Filas_Rechazadas      = :filas_rechazadas,
                 Duracion_Segundos     = DATEDIFF(
@@ -73,6 +75,7 @@ def registrar_fin(id_log: int, resultado: dict) -> None:
         """), {
             'fecha_fin':        fin,
             'estado':           estado,
+            'filas_leidas':     filas_leidas,
             'filas_insertadas': filas if estado == 'OK' else 0,
             'filas_rechazadas': resultado.get('rechazadas', 0),
             'mensaje_error':    mensaje if estado != 'OK' else None,

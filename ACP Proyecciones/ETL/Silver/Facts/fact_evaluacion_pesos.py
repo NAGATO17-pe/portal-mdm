@@ -135,6 +135,7 @@ def cargar_fact_evaluacion_pesos(engine: Engine) -> dict:
     df = _leer_bronce(engine)
     if df.empty:
         return resumen
+    resumen['leidos'] = len(df)
 
     # Homologar variedades
     df, cuarentenas_var = homologar_columna(
@@ -156,7 +157,10 @@ def cargar_fact_evaluacion_pesos(engine: Engine) -> dict:
                 pass
 
             # Ã¢â€â‚¬Ã¢â€â‚¬ Fecha Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
-            fecha, fecha_valida = procesar_fecha(fila.get('Fecha_Raw'))
+            fecha, fecha_valida = procesar_fecha(
+                fila.get('Fecha_Raw'),
+                dominio='evaluacion_pesos',
+            )
             if not fecha_valida:
                 resumen['rechazados'] += 1
                 resumen['cuarentena'].append({

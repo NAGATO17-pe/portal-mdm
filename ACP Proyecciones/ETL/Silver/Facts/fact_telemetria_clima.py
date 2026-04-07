@@ -10,6 +10,7 @@ Transformacion critica: Humedad proporcion (0-1) -> porcentaje (0-100).
 """
 
 import re
+import math
 
 import pandas as pd
 from sqlalchemy import text
@@ -58,9 +59,19 @@ def _leer_bronce_variables(engine: Engine) -> pd.DataFrame:
         return pd.DataFrame(resultado.fetchall(), columns=resultado.keys())
 
 
-def _a_decimal(valor) -> float | None:
+def _a_decimal(valor, decimales: int | None = None) -> float | None:
     try:
-        return float(str(valor).replace(',', '.'))
+        if valor is None:
+            return None
+        texto = str(valor).strip()
+        if not texto or texto.upper() in {'NONE', 'NULL', 'NAN'}:
+            return None
+        numero = float(texto.replace(',', '.'))
+        if not math.isfinite(numero):
+            return None
+        if decimales is not None:
+            numero = round(numero, decimales)
+        return numero
     except (ValueError, TypeError):
         return None
 
@@ -247,6 +258,8 @@ def cargar_fact_telemetria_clima(engine: Engine) -> dict:
     resumen = {'insertados': 0, 'rechazados': 0, 'cuarentena': []}
 
     df_clima = _leer_bronce_clima(engine)
+    df_vars = _leer_bronce_variables(engine)
+    resumen['leidos'] = len(df_clima) + len(df_vars)
     ids_clima_rechazados = []
     registros_clima_validos = []
     total_clima = len(df_clima)
@@ -254,7 +267,7 @@ def cargar_fact_telemetria_clima(engine: Engine) -> dict:
     for indice, fila in enumerate(df_clima.to_dict('records'), start=1):
         id_origen = _a_entero_nulo(fila.get('ID_Reporte_Clima'))
         fecha_str = f"{fila.get('Fecha_Raw')} {fila.get('Hora_Raw', '00:00')}"
-        fecha, valida = procesar_fecha(fecha_str, validar_campana=False)
+        fecha, valida = procesar_fecha(fecha_str, dominio='clima')
         if not valida:
             _agregar_cuarentena(
                 resumen['cuarentena'],
@@ -309,10 +322,10 @@ def cargar_fact_telemetria_clima(engine: Engine) -> dict:
             'id_origen': id_origen,
             'sector_climatico': sector_climatico,
             'id_tiempo': id_tiempo,
-            'temp_max': _a_decimal(fila.get('TempMax_Raw')),
-            'temp_min': _a_decimal(fila.get('TempMin_Raw')),
+            'temp_max': _a_decimal(fila.get('TempMax_Raw'), decimales=2),
+            'temp_min': _a_decimal(fila.get('TempMin_Raw'), decimales=2),
             'humedad': humedad,
-            'precipitacion': _a_decimal(fila.get('Precipitacion_Raw')),
+            'precipitacion': _a_decimal(fila.get('Precipitacion_Raw'), decimales=3),
             'fecha_evento': fecha,
         })
     payload_clima, ids_clima_insertados = _resolver_duplicados_clima(
@@ -350,7 +363,6 @@ def cargar_fact_telemetria_clima(engine: Engine) -> dict:
         engine, TABLA_CLIMA, 'ID_Reporte_Clima', ids_clima_rechazados, estado='RECHAZADO'
     )
 
-    df_vars = _leer_bronce_variables(engine)
     ids_vars_rechazados = []
     registros_vars_validos = []
     total_vars = len(df_vars)
@@ -361,7 +373,7 @@ def cargar_fact_telemetria_clima(engine: Engine) -> dict:
             fila.get('Fecha_Raw'),
             valores_raw=fila.get('Valores_Raw'),
         )
-        fecha, valida = procesar_fecha(fecha_str, validar_campana=False)
+        fecha, valida = procesar_fecha(fecha_str, dominio='clima')
         if not valida:
             _agregar_cuarentena(
                 resumen['cuarentena'],
@@ -416,11 +428,11 @@ def cargar_fact_telemetria_clima(engine: Engine) -> dict:
             'id_origen': id_origen,
             'sector_climatico': sector_climatico,
             'id_tiempo': id_tiempo,
-            'temp_max': _a_decimal(fila.get('TempMax_Raw')),
-            'temp_min': _a_decimal(fila.get('TempMin_Raw')),
+            'temp_max': _a_decimal(fila.get('TempMax_Raw'), decimales=2),
+            'temp_min': _a_decimal(fila.get('TempMin_Raw'), decimales=2),
             'humedad': humedad,
-            'vpd': _a_decimal(fila.get('VPD_Raw')),
-            'radiacion': _a_decimal(fila.get('Radiacion_Raw')),
+            'vpd': _a_decimal(fila.get('VPD_Raw'), decimales=3),
+            'radiacion': _a_decimal(fila.get('Radiacion_Raw'), decimales=3),
             'fecha_evento': fecha,
         })
     payload_vars, ids_vars_insertados = _resolver_duplicados_clima(

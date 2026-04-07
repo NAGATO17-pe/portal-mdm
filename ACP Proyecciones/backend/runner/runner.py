@@ -67,6 +67,7 @@ def _procesar_comando(cmd: dict) -> None:
     id_corrida   = cmd["ID_Corrida"]
     id_comando   = cmd["ID_Comando"]
     iniciado_por = cmd["Iniciado_Por"]
+    comentario   = cmd.get("Comentario")
     max_ret      = int(cmd["Max_Reintentos"] or 0)
     timeout      = int(cmd["Timeout_Seg"]    or 3600)
 
@@ -89,6 +90,7 @@ def _procesar_comando(cmd: dict) -> None:
         estado = ejecutar_corrida(
             id_corrida=id_corrida,
             iniciado_por=iniciado_por,
+            comentario=comentario,
             timeout_segundos=timeout,
         )
     finally:

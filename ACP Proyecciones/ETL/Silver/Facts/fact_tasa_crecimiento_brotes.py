@@ -74,7 +74,54 @@ def _texto_nulo(valor) -> str | None:
     if valor is None:
         return None
     texto = str(valor).strip()
-    return texto if texto and texto.lower() != 'none' else None
+    return texto if texto and texto.lower() not in ('none', 'nan') else None
+
+
+def _clave_cache_fecha(valor) -> str:
+    return str(valor).strip() if valor is not None else ''
+
+
+def _resolver_fecha_evento_cache(valor, engine: Engine, cache: dict[str, tuple]) -> tuple:
+    clave = _clave_cache_fecha(valor)
+    if clave not in cache:
+        fecha_evento, valida = procesar_fecha(
+            valor,
+            dominio='tasa_crecimiento_brotes',
+        )
+        id_tiempo = None
+        if valida and fecha_evento is not None:
+            id_tiempo = obtener_id_tiempo(construir_id_tiempo(fecha_evento), engine)
+        cache[clave] = (fecha_evento, valida, id_tiempo)
+    return cache[clave]
+
+
+def _resolver_fecha_poda_cache(valor, cache: dict[str, tuple]) -> tuple:
+    clave = _clave_cache_fecha(valor)
+    if clave not in cache:
+        cache[clave] = procesar_fecha(valor, dominio='historico')
+    return cache[clave]
+
+
+def _registrar_rechazo(
+    resumen: dict,
+    ids_rechazados: set[int],
+    id_origen: int | None,
+    *,
+    columna: str,
+    valor,
+    motivo: str,
+    tipo_regla: str,
+) -> None:
+    resumen['rechazados'] += 1
+    if id_origen is not None:
+        ids_rechazados.add(id_origen)
+    resumen['cuarentena'].append({
+        'columna': columna,
+        'valor': valor,
+        'motivo': motivo,
+        'tipo_regla': tipo_regla,
+        'id_registro_origen': id_origen,
+    })
 
 
 def _obtener_columnas_tabla(engine: Engine, tabla_completa: str) -> set[str]:
@@ -192,6 +239,7 @@ def cargar_fact_tasa_crecimiento_brotes(engine: Engine) -> dict:
     df = _leer_bronce(engine, columna_id)
     if df.empty:
         return resumen
+    resumen['leidos'] = len(df)
 
     df, cuar_var = homologar_columna(
         df,
@@ -204,24 +252,29 @@ def cargar_fact_tasa_crecimiento_brotes(engine: Engine) -> dict:
     resumen['cuarentena'].extend(cuar_var)
 
     payload_inserts = []
-    ids_insertados: list[int] = []
-    ids_rechazados: list[int] = []
+    ids_insertados: set[int] = set()
+    ids_rechazados: set[int] = set()
+    cache_fechas_evento: dict[str, tuple] = {}
+    cache_fechas_poda: dict[str, tuple] = {}
 
     for _, fila in df.iterrows():
         id_origen = _a_entero_nulo(fila.get('ID_Registro_Origen'))
 
-        fecha_evento, valida = procesar_fecha(fila.get('Fecha_Raw'), validar_campana=False)
+        fecha_evento, valida, id_tiempo = _resolver_fecha_evento_cache(
+            fila.get('Fecha_Raw'),
+            engine,
+            cache_fechas_evento,
+        )
         if not valida:
-            resumen['rechazados'] += 1
-            if id_origen is not None:
-                ids_rechazados.append(id_origen)
-            resumen['cuarentena'].append({
-                'columna': 'Fecha_Raw',
-                'valor': fila.get('Fecha_Raw'),
-                'motivo': 'Fecha invalida en tasa de crecimiento',
-                'tipo_regla': 'DQ',
-                'id_registro_origen': id_origen,
-            })
+            _registrar_rechazo(
+                resumen,
+                ids_rechazados,
+                id_origen,
+                columna='Fecha_Raw',
+                valor=fila.get('Fecha_Raw'),
+                motivo='Fecha invalida en tasa de crecimiento',
+                tipo_regla='DQ',
+            )
             continue
 
         modulo_raw = fila.get('Modulo_Raw')
@@ -237,100 +290,96 @@ def cargar_fact_tasa_crecimiento_brotes(engine: Engine) -> dict:
         )
         id_geo = resultado_geo.get('id_geografia')
         if not id_geo:
-            resumen['rechazados'] += 1
-            if id_origen is not None:
-                ids_rechazados.append(id_origen)
-            resumen['cuarentena'].append({
-                'columna': 'Modulo_Raw',
-                'valor': (
+            _registrar_rechazo(
+                resumen,
+                ids_rechazados,
+                id_origen,
+                columna='Modulo_Raw',
+                valor=(
                     f"Modulo={fila.get('Modulo_Raw')} | Turno={fila.get('Turno_Raw')} | "
                     f"Valvula={fila.get('Valvula_Raw')} | Cama={fila.get('Cama_Raw')}"
                 ),
-                'motivo': _motivo_cuarentena_geografia(resultado_geo),
-                'tipo_regla': 'MDM',
-                'id_registro_origen': id_origen,
-            })
+                motivo=_motivo_cuarentena_geografia(resultado_geo),
+                tipo_regla='MDM',
+            )
             continue
 
         id_variedad = obtener_id_variedad(fila.get('Variedad_Canonica'), engine)
         if not id_variedad:
             resumen['rechazados'] += 1
             if id_origen is not None:
-                ids_rechazados.append(id_origen)
+                ids_rechazados.add(id_origen)
             continue
 
-        id_tiempo = obtener_id_tiempo(construir_id_tiempo(fecha_evento), engine)
         if id_tiempo is None:
-            resumen['rechazados'] += 1
-            if id_origen is not None:
-                ids_rechazados.append(id_origen)
-            resumen['cuarentena'].append({
-                'columna': 'Fecha_Raw',
-                'valor': fila.get('Fecha_Raw'),
-                'motivo': 'Fecha valida pero fuera de Dim_Tiempo',
-                'tipo_regla': 'DQ',
-                'id_registro_origen': id_origen,
-            })
+            _registrar_rechazo(
+                resumen,
+                ids_rechazados,
+                id_origen,
+                columna='Fecha_Raw',
+                valor=fila.get('Fecha_Raw'),
+                motivo='Fecha valida pero fuera de Dim_Tiempo',
+                tipo_regla='DQ',
+            )
             continue
 
         codigo_ensayo = _texto_nulo(fila.get('Ensayo_Raw'))
         if codigo_ensayo is None:
-            resumen['rechazados'] += 1
-            if id_origen is not None:
-                ids_rechazados.append(id_origen)
-            resumen['cuarentena'].append({
-                'columna': 'Ensayo_Raw',
-                'valor': fila.get('Ensayo_Raw'),
-                'motivo': 'Codigo de ensayo vacio o invalido',
-                'tipo_regla': 'DQ',
-                'id_registro_origen': id_origen,
-            })
+            _registrar_rechazo(
+                resumen,
+                ids_rechazados,
+                id_origen,
+                columna='Ensayo_Raw',
+                valor=fila.get('Ensayo_Raw'),
+                motivo='Codigo de ensayo vacio o invalido',
+                tipo_regla='DQ',
+            )
             continue
 
         medida_crecimiento = _a_decimal_nulo(fila.get('Medida_Raw'))
         if medida_crecimiento is None or medida_crecimiento < 0:
-            resumen['rechazados'] += 1
-            if id_origen is not None:
-                ids_rechazados.append(id_origen)
-            resumen['cuarentena'].append({
-                'columna': 'Medida_Raw',
-                'valor': fila.get('Medida_Raw'),
-                'motivo': 'Medida de crecimiento invalida o negativa',
-                'tipo_regla': 'DQ',
-                'id_registro_origen': id_origen,
-            })
+            _registrar_rechazo(
+                resumen,
+                ids_rechazados,
+                id_origen,
+                columna='Medida_Raw',
+                valor=fila.get('Medida_Raw'),
+                motivo='Medida de crecimiento invalida o negativa',
+                tipo_regla='DQ',
+            )
             continue
 
         fecha_poda_aux = None
         dias_desde_poda = None
         valor_fecha_poda = _texto_nulo(fila.get('Fecha_Poda_Aux_Raw'))
         if valor_fecha_poda is not None:
-            fecha_poda_aux, valida_poda = procesar_fecha(valor_fecha_poda, validar_campana=False)
+            fecha_poda_aux, valida_poda = _resolver_fecha_poda_cache(
+                valor_fecha_poda,
+                cache_fechas_poda,
+            )
             if not valida_poda:
-                resumen['rechazados'] += 1
-                if id_origen is not None:
-                    ids_rechazados.append(id_origen)
-                resumen['cuarentena'].append({
-                    'columna': 'Fecha_Poda_Aux_Raw',
-                    'valor': fila.get('Fecha_Poda_Aux_Raw'),
-                    'motivo': 'Fecha de poda auxiliar invalida',
-                    'tipo_regla': 'DQ',
-                    'id_registro_origen': id_origen,
-                })
+                _registrar_rechazo(
+                    resumen,
+                    ids_rechazados,
+                    id_origen,
+                    columna='Fecha_Poda_Aux_Raw',
+                    valor=fila.get('Fecha_Poda_Aux_Raw'),
+                    motivo='Fecha de poda auxiliar invalida',
+                    tipo_regla='DQ',
+                )
                 continue
 
             dias_desde_poda = (fecha_evento.date() - fecha_poda_aux.date()).days
             if dias_desde_poda < 0:
-                resumen['rechazados'] += 1
-                if id_origen is not None:
-                    ids_rechazados.append(id_origen)
-                resumen['cuarentena'].append({
-                    'columna': 'Fecha_Poda_Aux_Raw',
-                    'valor': fila.get('Fecha_Poda_Aux_Raw'),
-                    'motivo': 'Fecha de poda auxiliar posterior a la fecha de evaluacion',
-                    'tipo_regla': 'DQ',
-                    'id_registro_origen': id_origen,
-                })
+                _registrar_rechazo(
+                    resumen,
+                    ids_rechazados,
+                    id_origen,
+                    columna='Fecha_Poda_Aux_Raw',
+                    valor=fila.get('Fecha_Poda_Aux_Raw'),
+                    motivo='Fecha de poda auxiliar posterior a la fecha de evaluacion',
+                    tipo_regla='DQ',
+                )
                 continue
 
         dni, _ = procesar_dni(fila.get('DNI_Raw'))
@@ -355,16 +404,16 @@ def cargar_fact_tasa_crecimiento_brotes(engine: Engine) -> dict:
             'fecha_evento': fecha_evento.date(),
         })
         if id_origen is not None:
-            ids_insertados.append(id_origen)
+            ids_insertados.add(id_origen)
 
     if payload_inserts:
         ejecutar_en_lotes_con_engine(engine, SQL_INSERT_FACT, payload_inserts)
     resumen['insertados'] = len(payload_inserts)
 
     if ids_insertados:
-        marcar_estado_carga_por_ids(engine, TABLA_ORIGEN, columna_id, ids_insertados, estado='PROCESADO')
+        marcar_estado_carga_por_ids(engine, TABLA_ORIGEN, columna_id, sorted(ids_insertados), estado='PROCESADO')
     if ids_rechazados:
-        marcar_estado_carga_por_ids(engine, TABLA_ORIGEN, columna_id, ids_rechazados, estado='RECHAZADO')
+        marcar_estado_carga_por_ids(engine, TABLA_ORIGEN, columna_id, sorted(ids_rechazados), estado='RECHAZADO')
 
     if resumen['cuarentena']:
         enviar_a_cuarentena(engine, TABLA_ORIGEN, resumen['cuarentena'])

@@ -101,9 +101,30 @@ Invoke-RestMethod http://localhost:8000/health/live
 # Readiness (requiere BD)
 Invoke-RestMethod http://localhost:8000/health/ready
 
-# Estado completo
-Invoke-RestMethod http://localhost:8000/health
+# Control-plane y lock
+Invoke-RestMethod http://localhost:8000/health/ready/control
+Invoke-RestMethod http://localhost:8000/health/ready/runner
+Invoke-RestMethod http://localhost:8000/health/lock
 ```
+
+### Endpoints ETL operativos
+
+El backend ya opera con control-plane persistente. Los endpoints clave son:
+
+- `POST /api/v1/etl/corridas`
+- `GET /api/v1/etl/corridas`
+- `GET /api/v1/etl/corridas/activas`
+- `GET /api/v1/etl/corridas/{id_corrida}`
+- `GET /api/v1/etl/corridas/{id_corrida}/pasos`
+- `GET /api/v1/etl/corridas/{id_corrida}/eventos`
+- `GET /api/v1/etl/facts`
+- `DELETE /api/v1/etl/corridas/{id_corrida}`
+
+Contrato operativo actual:
+- `POST /corridas` mantiene el payload vigente.
+- `GET /corridas/{id_corrida}` devuelve parámetros ETL decodificados y la traza de pasos persistida.
+- `GET /corridas/{id_corrida}/pasos` devuelve `Control.Corrida_Paso` ya ordenado.
+- `GET /facts` expone el catálogo oficial de facts soportadas por `rerun`.
 
 ### OpenAPI y documentación
 
@@ -154,8 +175,8 @@ backend/
 │   └── middleware.py          ← RequestIdMiddleware
 │
 ├── api/                       ← Routers FastAPI
-│   ├── rutas_health.py        ← /health, /health/live, /health/ready
-│   ├── rutas_etl.py           ← /api/etl/corridas
+│   ├── rutas_health.py        ← /health + ready/control + ready/runner + lock
+│   ├── rutas_etl.py           ← /api/v1/etl/corridas, pasos, eventos, facts
 │   ├── rutas_cuarentena.py    ← /api/cuarentena
 │   ├── rutas_catalogos.py     ← /api/catalogos
 │   └── rutas_auditoria.py     ← /api/auditoria
@@ -165,9 +186,10 @@ backend/
 │   ├── servicio_cuarentena.py
 │   ├── servicio_catalogos.py
 │   ├── servicio_auditoria.py
-│   └── pipeline_runner.py
+│   └── servicio_auth.py
 │
 ├── repositorios/              ← Acceso a datos (único lugar con SQL)
+│   ├── repo_control.py
 │   ├── repo_auditoria.py
 │   ├── repo_cuarentena.py
 │   └── repo_catalogos.py
@@ -178,16 +200,28 @@ backend/
 │   ├── catalogos/
 │   └── auditoria/
 │
-├── broker/                    ← Broker SSE en memoria
-│   └── broker_sse.py
+├── runner/                    ← Runner separado del proceso web
+│   ├── runner.py              ← Loop consumidor de Control.Comando_Ejecucion
+│   └── ejecutor.py            ← Subprocess + eventos + pasos + heartbeat
 │
 └── tests/                     ← Pruebas unitarias y de contrato
     ├── conftest.py
     ├── test_health.py
     ├── test_etl.py
+    ├── test_runner_ejecutor.py
     ├── test_cuarentena.py
     └── test_auditoria.py
 ```
+
+## Baseline operativa local
+
+Estado validado en la baseline actual:
+
+- Backend con `pytest` verde (`92 passed`).
+- Endpoints de salud y lock operativos.
+- ETL controlado por runner separado; el proceso web ya no ejecuta `pipeline.py`.
+- Trazabilidad por corrida persistida en `Control.Corrida`, `Control.Corrida_Evento` y `Control.Corrida_Paso`.
+- Catálogo oficial de facts y `rerun` dirigido expuestos por API.
 
 ---
 

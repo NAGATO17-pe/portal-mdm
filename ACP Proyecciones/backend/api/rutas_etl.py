@@ -27,14 +27,22 @@ from sse_starlette.sse import EventSourceResponse
 from nucleo.auth import UsuarioActual, obtener_usuario_actual, require_rol
 from nucleo.excepciones import ErrorRecursoNoEncontrado
 from schemas.etl.peticion import PeticionIniciarCorrida
-from schemas.etl.respuesta import RespuestaCorridaIniciada, RespuestaHistorialCorrida
+from schemas.etl.respuesta import (
+    RespuestaCorridaIniciada,
+    RespuestaDetalleCorrida,
+    RespuestaFactDisponible,
+    RespuestaHistorialCorrida,
+    RespuestaPasoCorrida,
+)
 from servicios.servicio_auth import registrar_accion
 from servicios.servicio_etl import (
     cancelar_corrida,
     corrida_existe,
     iniciar_corrida,
+    listar_catalogo_facts,
     listar_corridas_activas,
     obtener_corrida,
+    obtener_pasos_corrida,
     stream_eventos_corrida,
 )
 from servicios.servicio_auditoria import obtener_historial
@@ -70,6 +78,11 @@ async def iniciar_corrida_etl(
     datos = await iniciar_corrida(
         iniciado_por=usuario.nombre_usuario,
         comentario=cuerpo.comentario,
+        modo_ejecucion=cuerpo.modo_ejecucion,
+        facts=cuerpo.facts,
+        incluir_dependencias=cuerpo.incluir_dependencias,
+        refrescar_gold=cuerpo.refrescar_gold,
+        forzar_relectura_bronce=cuerpo.forzar_relectura_bronce,
     )
     registrar_accion(
         nombre_usuario=usuario.nombre_usuario,
@@ -77,7 +90,11 @@ async def iniciar_corrida_etl(
         endpoint=str(request.url),
         request_id=getattr(request.state, "request_id", None),
         ip_origen=_ip(request),
-        detalle=f"id_corrida={datos['id_corrida']}",
+        detalle=(
+            f"id_corrida={datos['id_corrida']} "
+            f"modo={cuerpo.modo_ejecucion} "
+            f"facts={','.join(cuerpo.facts or []) or '-'}"
+        ),
     )
     return RespuestaCorridaIniciada(
         id_corrida=datos["id_corrida"],
@@ -115,18 +132,41 @@ def corridas_activas() -> list[dict]:
     return listar_corridas_activas()
 
 
+@enrutador_etl.get(
+    "/facts",
+    response_model=list[RespuestaFactDisponible],
+    summary="Catálogo de facts soportadas por rerun",
+    dependencies=[Depends(require_rol("viewer"))],
+)
+def catalogo_facts() -> list[RespuestaFactDisponible]:
+    return [RespuestaFactDisponible(**fact) for fact in listar_catalogo_facts()]
+
+
 # ── GET /corridas/{id} ─────────────────────────────────────────────────────────
 
 @enrutador_etl.get(
     "/corridas/{id_corrida}",
+    response_model=RespuestaDetalleCorrida,
     summary="Estado de una corrida",
     dependencies=[Depends(require_rol("viewer"))],
 )
-def estado_corrida(id_corrida: str) -> dict:
+def estado_corrida(id_corrida: str) -> RespuestaDetalleCorrida:
     datos = obtener_corrida(id_corrida)
     if datos is None:
         raise ErrorRecursoNoEncontrado(f"Corrida '{id_corrida}'")
-    return datos
+    return RespuestaDetalleCorrida(**datos)
+
+
+@enrutador_etl.get(
+    "/corridas/{id_corrida}/pasos",
+    response_model=list[RespuestaPasoCorrida],
+    summary="Traza de pasos de una corrida",
+    dependencies=[Depends(require_rol("viewer"))],
+)
+def pasos_corrida(id_corrida: str) -> list[RespuestaPasoCorrida]:
+    if not corrida_existe(id_corrida):
+        raise ErrorRecursoNoEncontrado(f"Corrida '{id_corrida}'")
+    return [RespuestaPasoCorrida(**paso) for paso in obtener_pasos_corrida(id_corrida)]
 
 
 # ── GET /corridas/{id}/eventos (SSE) ──────────────────────────────────────────

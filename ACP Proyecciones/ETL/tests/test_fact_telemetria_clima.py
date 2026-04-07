@@ -1,4 +1,5 @@
 from silver.facts.fact_telemetria_clima import (
+    _a_decimal,
     _construir_fecha_hora_clima,
     _extraer_hora_desde_valores_raw,
     _resolver_duplicados_clima,
@@ -25,6 +26,17 @@ def test_construir_fecha_hora_clima_sin_hora_retorna_solo_fecha():
     fecha_hora = _construir_fecha_hora_clima('2026-03-29', valores_raw='Semana_Raw=13')
 
     assert fecha_hora == '2026-03-29'
+
+
+def test_a_decimal_retorna_none_para_nan_y_null():
+    assert _a_decimal('nan') is None
+    assert _a_decimal('NULL') is None
+    assert _a_decimal(None) is None
+
+
+def test_a_decimal_redondea_a_escala_destino():
+    assert _a_decimal('15.126', decimales=2) == 15.13
+    assert _a_decimal('0.1239', decimales=3) == 0.124
 
 
 def test_resolver_duplicados_clima_colapsa_duplicado_exacto():

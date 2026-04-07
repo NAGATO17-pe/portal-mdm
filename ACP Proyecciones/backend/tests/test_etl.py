@@ -42,7 +42,39 @@ _CORRIDA_BD_MOCK = {
     "timeout_segundos": 3600,
     "mensaje_final":    None,
     "id_log_auditoria": 42,
+    "modo_ejecucion": "facts",
+    "facts": ["Fact_Telemetria_Clima"],
+    "incluir_dependencias": True,
+    "refrescar_gold": True,
+    "forzar_relectura_bronce": True,
+    "pasos": [
+        {
+            "id_paso": 1,
+            "id_corrida": "test-uuid-1234",
+            "nombre_paso": "Reprocesando Fact_Telemetria_Clima",
+            "orden": 3,
+            "estado": "OK",
+            "fecha_inicio": datetime(2026, 1, 15, 10, 0, 10),
+            "fecha_fin": datetime(2026, 1, 15, 10, 0, 40),
+            "mensaje_error": None,
+        }
+    ],
 }
+
+_PASOS_MOCK = _CORRIDA_BD_MOCK["pasos"]
+
+_FACTS_MOCK = [
+    {
+        "nombre_fact": "Fact_Telemetria_Clima",
+        "orden": 12,
+        "tabla_destino": "Silver.Fact_Telemetria_Clima",
+        "fuentes_bronce": ["Bronce.Reporte_Clima", "Bronce.Variables_Meteorologicas"],
+        "dependencias": [],
+        "marts": ["Gold.Mart_Clima"],
+        "releer_bronce_por_estado": True,
+        "estrategia_rerun": "rebuild_fact",
+    }
+]
 
 _HISTORIAL_MOCK = [
     {
@@ -65,6 +97,8 @@ _PATCH_OBTENER   = "api.rutas_etl.obtener_corrida"
 _PATCH_EXISTE    = "api.rutas_etl.corrida_existe"
 _PATCH_HISTORIAL = "api.rutas_etl.obtener_historial"
 _PATCH_ACTIVAS   = "api.rutas_etl.listar_corridas_activas"
+_PATCH_PASOS     = "api.rutas_etl.obtener_pasos_corrida"
+_PATCH_FACTS     = "api.rutas_etl.listar_catalogo_facts"
 _PATCH_CANCELAR  = "api.rutas_etl.cancelar_corrida"
 _PATCH_AUDITAR   = "api.rutas_etl.registrar_accion"
 
@@ -128,6 +162,39 @@ class TestIniciarCorrida:
             ).json()
         assert data["iniciado_por"] == "testuser"
 
+    def test_modo_facts_sin_facts_retorna_422(self, cliente):
+        resp = cliente.post(
+            _URL,
+            json={"modo_ejecucion": "facts"},
+            headers=_headers("operador_etl"),
+        )
+        assert resp.status_code == 422
+
+    def test_payload_parcial_se_reenvia_al_servicio(self, cliente):
+        cuerpo = {
+            "comentario": "reproceso clima",
+            "modo_ejecucion": "facts",
+            "facts": ["Fact_Telemetria_Clima"],
+            "incluir_dependencias": False,
+            "refrescar_gold": False,
+            "forzar_relectura_bronce": True,
+        }
+        with (
+            patch(_PATCH_INICIAR, new_callable=AsyncMock, return_value=_CORRIDA_MOCK) as mock_iniciar,
+            patch(_PATCH_AUDITAR, return_value=None),
+        ):
+            resp = cliente.post(_URL, json=cuerpo, headers=_headers("operador_etl"))
+        assert resp.status_code == 200
+        mock_iniciar.assert_awaited_once_with(
+            iniciado_por="testuser",
+            comentario="reproceso clima",
+            modo_ejecucion="facts",
+            facts=["Fact_Telemetria_Clima"],
+            incluir_dependencias=False,
+            refrescar_gold=False,
+            forzar_relectura_bronce=True,
+        )
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # GET /corridas — Historial
@@ -178,6 +245,8 @@ class TestEstadoCorrida:
         data = resp.json()
         assert data["estado"] == "EJECUTANDO"
         assert data["pid_runner"] == 1234
+        assert data["modo_ejecucion"] == "facts"
+        assert data["pasos"][0]["nombre_paso"] == "Reprocesando Fact_Telemetria_Clima"
 
     def test_no_existente_retorna_404(self, cliente):
         with patch(_PATCH_OBTENER, return_value=None):
@@ -187,6 +256,34 @@ class TestEstadoCorrida:
     def test_sin_token_retorna_401(self, cliente):
         resp = cliente.get(f"{_URL}/test-uuid-1234")
         assert resp.status_code == 401
+
+
+class TestPasosCorrida:
+    def test_retorna_traza_de_pasos(self, cliente):
+        with (
+            patch(_PATCH_EXISTE, return_value=True),
+            patch(_PATCH_PASOS, return_value=_PASOS_MOCK),
+        ):
+            resp = cliente.get(f"{_URL}/test-uuid-1234/pasos", headers=_headers("viewer"))
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data[0]["estado"] == "OK"
+        assert data[0]["orden"] == 3
+
+    def test_retorna_404_si_corrida_no_existe(self, cliente):
+        with patch(_PATCH_EXISTE, return_value=False):
+            resp = cliente.get(f"{_URL}/no-existe/pasos", headers=_headers("viewer"))
+        assert resp.status_code == 404
+
+
+class TestCatalogoFacts:
+    def test_retorna_catalogo_facts(self, cliente):
+        with patch(_PATCH_FACTS, return_value=_FACTS_MOCK):
+            resp = cliente.get("/api/v1/etl/facts", headers=_headers("viewer"))
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data[0]["nombre_fact"] == "Fact_Telemetria_Clima"
+        assert data[0]["estrategia_rerun"] == "rebuild_fact"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

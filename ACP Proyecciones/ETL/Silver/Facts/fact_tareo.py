@@ -73,6 +73,7 @@ def cargar_fact_tareo(engine: Engine) -> dict:
     df = _leer_bronce(engine)
     if df.empty:
         return resumen
+    resumen['leidos'] = len(df)
 
     ids_leidos = []
     ids_insertados = []
@@ -94,7 +95,10 @@ def cargar_fact_tareo(engine: Engine) -> dict:
                 continue
 
             # ── Fecha ─────────────────────────────────────────
-            fecha, fecha_valida = procesar_fecha(fila.get('Fecha_Raw'))
+            fecha, fecha_valida = procesar_fecha(
+                fila.get('Fecha_Raw'),
+                dominio='tareo',
+            )
             if not fecha_valida:
                 resumen['rechazados'] += 1
                 if id_origen is not None:
