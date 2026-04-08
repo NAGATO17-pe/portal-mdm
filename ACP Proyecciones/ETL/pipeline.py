@@ -78,6 +78,12 @@ CATALOGO_FACTS = {
 }
 
 
+class ErrorEjecucionPipeline(RuntimeError):
+    def __init__(self, errores: list[str]) -> None:
+        self.errores = list(errores)
+        super().__init__(' | '.join(self.errores))
+
+
 def _encabezado() -> datetime:
     inicio = datetime.now()
     print()
@@ -309,7 +315,13 @@ def _preparar_fact_reproceso(engine, nombre_fact: str, meta_fact: dict, forzar_r
     }
 
 
-def _ejecutar_fact(nombre: str, tabla_destino: str, funcion, engine, resumen: dict) -> None:
+def _registrar_errores_resumen(resumen: dict, errores: list[str]) -> None:
+    resumen['Errores pipeline'] = len(errores)
+    for indice, error in enumerate(errores, start=1):
+        resumen[f'Pipeline error {indice}'] = error
+
+
+def _ejecutar_fact(nombre: str, tabla_destino: str, funcion, engine, resumen: dict) -> str | None:
     id_log = registrar_inicio(tabla_destino, f'PIPELINE_FACT:{nombre}')
     r = {'insertados': 0, 'rechazados': 0, 'cuarentena': []}
 
@@ -330,8 +342,10 @@ def _ejecutar_fact(nombre: str, tabla_destino: str, funcion, engine, resumen: di
             'rechazadas': r.get('rechazados', 0),
             'mensaje': '',
         })
+        return None
     except Exception as error:
-        print(f'  ERROR en {nombre}: {error}')
+        mensaje_error = f'{nombre}: {error}'
+        print(f'  ERROR en {mensaje_error}')
         resumen[f'{nombre} ERROR'] = str(error)
         registrar_fin(id_log, {
             'estado': 'ERROR',
@@ -339,6 +353,7 @@ def _ejecutar_fact(nombre: str, tabla_destino: str, funcion, engine, resumen: di
             'rechazadas': r.get('rechazados', 0),
             'mensaje': str(error),
         })
+        return mensaje_error
 
 
 def ejecutar_reproceso_facts(
@@ -370,6 +385,7 @@ def ejecutar_reproceso_facts(
         'Modo ejecucion': 'REPROCESO_FACTS',
         'Facts solicitadas': ', '.join(plan['facts']),
     }
+    errores_pipeline: list[str] = []
 
     paso_actual = 1
     _paso(paso_actual, total, 'Verificando conexion SQL Server...')
@@ -402,24 +418,40 @@ def ejecutar_reproceso_facts(
         )
         resumen[f'{nombre_fact} bronce reabiertas'] = preparacion['filas_bronce_reabiertas']
         resumen[f'{nombre_fact} destino limpiado'] = preparacion['filas_destino_eliminadas']
-        _ejecutar_fact(
+        error_fact = _ejecutar_fact(
             nombre_fact,
             meta_fact['tabla_destino'],
             meta_fact['funcion'],
             engine,
             resumen,
         )
+        if error_fact:
+            errores_pipeline.append(error_fact)
 
     if plan['marts']:
         paso_actual += 1
-        _paso(paso_actual, total, 'Refrescando Marts Gold impactados...')
-        resumen_marts = refrescar_marts_seleccionados(engine, plan['marts'], resumen_etl=resumen)
-        for mart, valor in resumen_marts.items():
-            resumen[mart] = valor if isinstance(valor, int) else valor
+        if errores_pipeline:
+            _paso(paso_actual, total, 'Omitiendo Marts Gold por errores previos...')
+            resumen['Gold estado'] = 'OMITIDO_POR_ERROR_EN_FACTS'
+        else:
+            _paso(paso_actual, total, 'Refrescando Marts Gold impactados...')
+            try:
+                resumen_marts = refrescar_marts_seleccionados(engine, plan['marts'], resumen_etl=resumen)
+                for mart, valor in resumen_marts.items():
+                    resumen[mart] = valor if isinstance(valor, int) else valor
+            except Exception as error:
+                mensaje_error = f'Gold: {error}'
+                print(f'  ERROR en {mensaje_error}')
+                resumen['Gold ERROR'] = str(error)
+                errores_pipeline.append(mensaje_error)
 
     paso_actual += 1
     _paso(paso_actual, total, 'Finalizando...')
+    if errores_pipeline:
+        _registrar_errores_resumen(resumen, errores_pipeline)
     _resumen_final(inicio, resumen)
+    if errores_pipeline:
+        raise ErrorEjecucionPipeline(errores_pipeline)
 
 
 def ejecutar() -> None:
@@ -427,6 +459,7 @@ def ejecutar() -> None:
     engine = obtener_engine()
     total = 22
     resumen = {}
+    errores_pipeline: list[str] = []
 
     _paso(1, total, 'Verificando conexion SQL Server...')
     if not verificar_conexion():
@@ -541,46 +574,31 @@ def ejecutar() -> None:
 
     for numero, nombre, tabla_destino, funcion in facts:
         _paso(numero, total, f'Cargando {nombre}...')
-        id_log = registrar_inicio(tabla_destino, f'PIPELINE_FACT:{nombre}')
-        r = {'insertados': 0, 'rechazados': 0, 'cuarentena': []}
+        error_fact = _ejecutar_fact(nombre, tabla_destino, funcion, engine, resumen)
+        if error_fact:
+            errores_pipeline.append(error_fact)
 
+    if errores_pipeline:
+        _paso(21, total, 'Omitiendo Marts Gold por errores previos...')
+        resumen['Gold estado'] = 'OMITIDO_POR_ERROR_EN_FACTS'
+    else:
+        _paso(21, total, 'Refrescando Marts Gold...')
         try:
-            r = funcion(engine)
-            r = normalizar_resultado_fact(r)
-            _resumen_fact(r)
-            resumen[nombre] = r.get('insertados', 0)
-            resumen[f'{nombre} leidos'] = r.get('leidos', 0)
-            resumen[f'{nombre} rechazados'] = r.get('rechazados', 0)
-            resumen[f'{nombre} rechazo pct'] = f"{r.get('tasa_rechazo_pct', 0.0)}%"
-            for indice, item in enumerate(r.get('motivos_principales', []), start=1):
-                resumen[f'{nombre} motivo {indice}'] = f"{item['motivo']} ({item['cantidad']})"
-            registrar_fin(id_log, {
-                'estado': 'OK',
-                'filas': r.get('insertados', 0),
-                'filas_leidas': r.get('leidos', 0),
-                'rechazadas': r.get('rechazados', 0),
-                'mensaje': '',
-            })
+            resumen_marts = refrescar_todos_los_marts(engine, resumen_etl=resumen)
+            for mart, valor in resumen_marts.items():
+                resumen[mart] = valor if isinstance(valor, int) else valor
         except Exception as error:
-            print(f'  ERROR en {nombre}: {error}')
-            resumen[f'{nombre} ERROR'] = str(error)
-            registrar_fin(id_log, {
-                'estado': 'ERROR',
-                'filas': 0,
-                'rechazadas': r.get('rechazados', 0),
-                'mensaje': str(error),
-            })
-
-    _paso(21, total, 'Refrescando Marts Gold...')
-    try:
-        resumen_marts = refrescar_todos_los_marts(engine, resumen_etl=resumen)
-        for mart, valor in resumen_marts.items():
-            resumen[mart] = valor if isinstance(valor, int) else valor
-    except Exception as error:
-        print(f'  ERROR en Gold: {error}')
+            mensaje_error = f'Gold: {error}'
+            print(f'  ERROR en {mensaje_error}')
+            resumen['Gold ERROR'] = str(error)
+            errores_pipeline.append(mensaje_error)
 
     _paso(22, total, 'Finalizando...')
+    if errores_pipeline:
+        _registrar_errores_resumen(resumen, errores_pipeline)
     _resumen_final(inicio, resumen)
+    if errores_pipeline:
+        raise ErrorEjecucionPipeline(errores_pipeline)
 
 
 if __name__ == '__main__':

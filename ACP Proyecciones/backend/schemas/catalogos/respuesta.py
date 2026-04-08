@@ -4,9 +4,7 @@ schemas/catalogos/respuesta.py
 Schemas de SALIDA para catálogos MDM y Silver.
 Separados por modelo de dominio.
 """
-
 from pydantic import BaseModel
-
 
 class RespuestaVariedad(BaseModel):
     """Fila de MDM.Catalogo_Variedades."""
@@ -15,7 +13,6 @@ class RespuestaVariedad(BaseModel):
     es_activa:       bool
 
     model_config = {"from_attributes": True}
-
 
 class RespuestaGeografia(BaseModel):
     """Fila de Silver.Dim_Geografia."""
@@ -31,7 +28,6 @@ class RespuestaGeografia(BaseModel):
 
     model_config = {"from_attributes": True}
 
-
 class RespuestaPersonal(BaseModel):
     """Fila de Silver.Dim_Personal."""
     dni:               str | None
@@ -43,7 +39,6 @@ class RespuestaPersonal(BaseModel):
     dias_ausentismo:   int | None
 
     model_config = {"from_attributes": True}
-
 
 class RespuestaPaginadaCatalogo(BaseModel):
     """Wrapper genérico de paginación para catálogos."""

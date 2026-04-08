@@ -5,7 +5,7 @@ import time
 
 from utils.componentes import badge_html, estado_vacio_html, mostrar_kpis, mostrar_dialogo_confirmacion
 from utils.formato import header_pagina, renderizar_tabla_premium
-from utils.api_client import get_api, patch_api
+from utils.api_client import get_api, mostrar_error_api, patch_api
 
 @st.cache_data(ttl=5, show_spinner=False)
 def cargar_cuarentena() -> pd.DataFrame:
@@ -13,9 +13,9 @@ def cargar_cuarentena() -> pd.DataFrame:
         "Tabla Origen", "ID", "Columna Origen", "Valor Raw",
         "Archivo", "Fecha ingreso", "Estado", "Severidad", "Motivo",
     ]
-    res = get_api("/cuarentena?pagina=1&tamano=100")
-    if res and res.status_code == 200:
-        datos = res.json().get("datos", [])
+    resultado = get_api("/cuarentena?pagina=1&tamano=100")
+    if resultado.ok and isinstance(resultado.data, dict):
+        datos = resultado.data.get("datos", [])
         if not datos:
             return pd.DataFrame(columns=columnas_vacias)
         
@@ -97,22 +97,22 @@ def render() -> None:
             with d2:
                 st.markdown("<br>", unsafe_allow_html=True)
                 if st.button("✅ Aprobar homologación", key=f"btn_aprobar_{id_sel}", type="primary"):
-                    res = patch_api(f"/cuarentena/{fila['Tabla Origen']}/{id_sel}/resolver", {"valor_canonico": valor_homo})
-                    if res and res.status_code == 200:
+                    resultado = patch_api(f"/cuarentena/{fila['Tabla Origen']}/{id_sel}/resolver", {"valor_canonico": valor_homo})
+                    if resultado.ok:
                         st.toast(f"Homologación a '{valor_homo}' procesada por Backend.", icon="✅")
                         time.sleep(1)
                         st.rerun()
                     else:
-                        st.error("Error del backend")
+                        mostrar_error_api(resultado, "Error del backend al resolver cuarentena.")
 
         elif "Descartar" in opcion:
             with d2:
                 st.markdown("<br>", unsafe_allow_html=True)
                 if st.button("🗑️ Confirmar descarte", key=f"btn_desc_{id_sel}"):
-                    res = patch_api(f"/cuarentena/{fila['Tabla Origen']}/{id_sel}/rechazar", {"motivo": "Rechazado manualmente"})
-                    if res and res.status_code == 200:
+                    resultado = patch_api(f"/cuarentena/{fila['Tabla Origen']}/{id_sel}/rechazar", {"motivo": "Rechazado manualmente"})
+                    if resultado.ok:
                         st.toast("Registro descartado en el Data Warehouse.", icon="🗑️")
                         time.sleep(1)
                         st.rerun()
                     else:
-                        st.error("Error del backend")
+                        mostrar_error_api(resultado, "Error del backend al descartar cuarentena.")

@@ -12,7 +12,7 @@ Todos los endpoints requieren autenticación.
 from unittest.mock import patch
 
 import pytest
-from nucleo.auth import crear_token
+from tests.conftest import auth_headers
 
 _PAGINA_MOCK = {
     "total":  100,
@@ -52,16 +52,10 @@ _PATCH_AUDITAR  = "api.rutas_cuarentena.registrar_accion"
 
 _URL = "/api/v1/cuarentena"
 
-
-def _headers(rol: str = "analista_mdm") -> dict:
-    token = crear_token("testuser", rol, "Test User")
-    return {"Authorization": f"Bearer {token}"}
-
-
 class TestListarCuarentena:
     def test_retorna_200(self, cliente):
         with patch(_PATCH_LISTAR, return_value=_PAGINA_MOCK):
-            resp = cliente.get(_URL, headers=_headers("viewer"))
+            resp = cliente.get(_URL, headers=auth_headers("viewer"))
         assert resp.status_code == 200
 
     def test_sin_token_retorna_401(self, cliente):
@@ -70,24 +64,24 @@ class TestListarCuarentena:
 
     def test_estructura_paginada(self, cliente):
         with patch(_PATCH_LISTAR, return_value=_PAGINA_MOCK):
-            data = cliente.get(_URL, headers=_headers("viewer")).json()
+            data = cliente.get(_URL, headers=auth_headers("viewer")).json()
         for campo in ["total", "pagina", "tamano", "datos"]:
             assert campo in data
         assert isinstance(data["datos"], list)
 
     def test_paginacion_parametros_default(self, cliente):
         with patch(_PATCH_LISTAR, return_value=_PAGINA_MOCK) as mock_lc:
-            cliente.get(_URL, headers=_headers("viewer"))
+            cliente.get(_URL, headers=auth_headers("viewer"))
             mock_lc.assert_called_once_with(pagina=1, tamano=20, tabla_filtro=None)
 
     def test_filtro_por_tabla(self, cliente):
         with patch(_PATCH_LISTAR, return_value=_PAGINA_MOCK) as mock_lc:
-            cliente.get(f"{_URL}?tabla_filtro=Bronce.Cosecha", headers=_headers("viewer"))
+            cliente.get(f"{_URL}?tabla_filtro=Bronce.Cosecha", headers=auth_headers("viewer"))
             assert mock_lc.call_args.kwargs["tabla_filtro"] == "Bronce.Cosecha"
 
     def test_tamano_fuera_de_rango_retorna_422(self, cliente):
-        assert cliente.get(f"{_URL}?tamano=0",   headers=_headers("viewer")).status_code == 422
-        assert cliente.get(f"{_URL}?tamano=101", headers=_headers("viewer")).status_code == 422
+        assert cliente.get(f"{_URL}?tamano=0",   headers=auth_headers("viewer")).status_code == 422
+        assert cliente.get(f"{_URL}?tamano=101", headers=auth_headers("viewer")).status_code == 422
 
 
 class TestResolverCuarentena:
@@ -99,7 +93,7 @@ class TestResolverCuarentena:
             resp = cliente.patch(
                 f"{_URL}/Bronce.Cosecha/42/resolver",
                 json={"valor_canonico": "Camarosa"},
-                headers=_headers("analista_mdm"),
+                headers=auth_headers("analista_mdm"),
             )
         assert resp.status_code == 200
 
@@ -107,7 +101,7 @@ class TestResolverCuarentena:
         resp = cliente.patch(
             f"{_URL}/Bronce.Cosecha/42/resolver",
             json={"valor_canonico": "Camarosa"},
-            headers=_headers("viewer"),
+            headers=auth_headers("viewer"),
         )
         assert resp.status_code == 403
 
@@ -126,7 +120,7 @@ class TestResolverCuarentena:
             data = cliente.patch(
                 f"{_URL}/Bronce.Cosecha/42/resolver",
                 json={"valor_canonico": "Camarosa"},
-                headers=_headers("analista_mdm"),
+                headers=auth_headers("analista_mdm"),
             ).json()
         assert data["estado_nuevo"] == "RESUELTO"
         assert data["id_registro"] == "42"
@@ -135,7 +129,7 @@ class TestResolverCuarentena:
         resp = cliente.patch(
             f"{_URL}/Bronce.Cosecha/42/resolver",
             json={},
-            headers=_headers("analista_mdm"),
+            headers=auth_headers("analista_mdm"),
         )
         assert resp.status_code == 422
 
@@ -149,7 +143,7 @@ class TestRechazarCuarentena:
             resp = cliente.patch(
                 f"{_URL}/Bronce.Cosecha/42/rechazar",
                 json={"motivo": "Valor inválido."},
-                headers=_headers("analista_mdm"),
+                headers=auth_headers("analista_mdm"),
             )
         assert resp.status_code == 200
 
@@ -157,7 +151,7 @@ class TestRechazarCuarentena:
         resp = cliente.patch(
             f"{_URL}/Bronce.Cosecha/42/rechazar",
             json={"motivo": "x"},
-            headers=_headers("viewer"),
+            headers=auth_headers("viewer"),
         )
         assert resp.status_code == 403
 
@@ -165,6 +159,6 @@ class TestRechazarCuarentena:
         resp = cliente.patch(
             f"{_URL}/Bronce.Cosecha/42/rechazar",
             json={},
-            headers=_headers("analista_mdm"),
+            headers=auth_headers("analista_mdm"),
         )
         assert resp.status_code == 422

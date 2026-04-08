@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, patch
 from datetime import datetime
 
 import pytest
-from nucleo.auth import crear_token
+from tests.conftest import auth_headers
 
 _CORRIDA_MOCK = {
     "id_corrida":   "test-uuid-1234",
@@ -105,11 +105,6 @@ _PATCH_AUDITAR   = "api.rutas_etl.registrar_accion"
 _URL = "/api/v1/etl/corridas"
 
 
-def _headers(rol: str = "operador_etl") -> dict:
-    token = crear_token("testuser", rol, "Test User")
-    return {"Authorization": f"Bearer {token}"}
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # POST /corridas — Encolar corrida
 # ─────────────────────────────────────────────────────────────────────────────
@@ -120,7 +115,7 @@ class TestIniciarCorrida:
             patch(_PATCH_INICIAR, new_callable=AsyncMock, return_value=_CORRIDA_MOCK),
             patch(_PATCH_AUDITAR, return_value=None),
         ):
-            resp = cliente.post(_URL, json={}, headers=_headers("operador_etl"))
+            resp = cliente.post(_URL, json={}, headers=auth_headers("operador_etl"))
         assert resp.status_code == 200
 
     def test_sin_token_retorna_401(self, cliente):
@@ -128,7 +123,7 @@ class TestIniciarCorrida:
         assert resp.status_code == 401
 
     def test_viewer_no_puede_lanzar_retorna_403(self, cliente):
-        resp = cliente.post(_URL, json={}, headers=_headers("viewer"))
+        resp = cliente.post(_URL, json={}, headers=auth_headers("viewer"))
         assert resp.status_code == 403
 
     def test_respuesta_tiene_estado_pendiente(self, cliente):
@@ -136,7 +131,7 @@ class TestIniciarCorrida:
             patch(_PATCH_INICIAR, new_callable=AsyncMock, return_value=_CORRIDA_MOCK),
             patch(_PATCH_AUDITAR, return_value=None),
         ):
-            data = cliente.post(_URL, json={}, headers=_headers()).json()
+            data = cliente.post(_URL, json={}, headers=auth_headers("operador_etl")).json()
         assert data["estado"] == "PENDIENTE"
         assert data["id_log"] is None   # Runner no ha arrancado aún
 
@@ -145,7 +140,7 @@ class TestIniciarCorrida:
             patch(_PATCH_INICIAR, new_callable=AsyncMock, return_value=_CORRIDA_MOCK),
             patch(_PATCH_AUDITAR, return_value=None),
         ):
-            data = cliente.post(_URL, json={}, headers=_headers()).json()
+            data = cliente.post(_URL, json={}, headers=auth_headers("operador_etl")).json()
         assert "url_stream" in data
         assert data["id_corrida"] in data["url_stream"]
 
@@ -158,7 +153,7 @@ class TestIniciarCorrida:
             data = cliente.post(
                 _URL,
                 json={"iniciado_por": "INYECCION_MALICIOSA"},
-                headers=_headers("operador_etl"),
+                headers=auth_headers("operador_etl"),
             ).json()
         assert data["iniciado_por"] == "testuser"
 
@@ -166,7 +161,7 @@ class TestIniciarCorrida:
         resp = cliente.post(
             _URL,
             json={"modo_ejecucion": "facts"},
-            headers=_headers("operador_etl"),
+            headers=auth_headers("operador_etl"),
         )
         assert resp.status_code == 422
 
@@ -183,7 +178,7 @@ class TestIniciarCorrida:
             patch(_PATCH_INICIAR, new_callable=AsyncMock, return_value=_CORRIDA_MOCK) as mock_iniciar,
             patch(_PATCH_AUDITAR, return_value=None),
         ):
-            resp = cliente.post(_URL, json=cuerpo, headers=_headers("operador_etl"))
+            resp = cliente.post(_URL, json=cuerpo, headers=auth_headers("operador_etl"))
         assert resp.status_code == 200
         mock_iniciar.assert_awaited_once_with(
             iniciado_por="testuser",
@@ -203,7 +198,7 @@ class TestIniciarCorrida:
 class TestHistorialCorridas:
     def test_retorna_lista(self, cliente):
         with patch(_PATCH_HISTORIAL, return_value=_HISTORIAL_MOCK):
-            resp = cliente.get(_URL, headers=_headers("viewer"))
+            resp = cliente.get(_URL, headers=auth_headers("viewer"))
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
 
@@ -213,7 +208,7 @@ class TestHistorialCorridas:
 
     def test_limite_default_es_50(self, cliente):
         with patch(_PATCH_HISTORIAL, return_value=[]) as m:
-            cliente.get(_URL, headers=_headers("viewer"))
+            cliente.get(_URL, headers=auth_headers("viewer"))
             m.assert_called_once_with(limite=50)
 
 
@@ -224,7 +219,7 @@ class TestHistorialCorridas:
 class TestCornidasActivas:
     def test_retorna_lista_activas(self, cliente):
         with patch(_PATCH_ACTIVAS, return_value=[_CORRIDA_BD_MOCK]):
-            resp = cliente.get(f"{_URL}/activas", headers=_headers("viewer"))
+            resp = cliente.get(f"{_URL}/activas", headers=auth_headers("viewer"))
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
 
@@ -240,7 +235,7 @@ class TestCornidasActivas:
 class TestEstadoCorrida:
     def test_retorna_estado(self, cliente):
         with patch(_PATCH_OBTENER, return_value=_CORRIDA_BD_MOCK):
-            resp = cliente.get(f"{_URL}/test-uuid-1234", headers=_headers("viewer"))
+            resp = cliente.get(f"{_URL}/test-uuid-1234", headers=auth_headers("viewer"))
         assert resp.status_code == 200
         data = resp.json()
         assert data["estado"] == "EJECUTANDO"
@@ -250,7 +245,7 @@ class TestEstadoCorrida:
 
     def test_no_existente_retorna_404(self, cliente):
         with patch(_PATCH_OBTENER, return_value=None):
-            resp = cliente.get(f"{_URL}/no-existe", headers=_headers("viewer"))
+            resp = cliente.get(f"{_URL}/no-existe", headers=auth_headers("viewer"))
         assert resp.status_code == 404
 
     def test_sin_token_retorna_401(self, cliente):
@@ -264,7 +259,7 @@ class TestPasosCorrida:
             patch(_PATCH_EXISTE, return_value=True),
             patch(_PATCH_PASOS, return_value=_PASOS_MOCK),
         ):
-            resp = cliente.get(f"{_URL}/test-uuid-1234/pasos", headers=_headers("viewer"))
+            resp = cliente.get(f"{_URL}/test-uuid-1234/pasos", headers=auth_headers("viewer"))
         assert resp.status_code == 200
         data = resp.json()
         assert data[0]["estado"] == "OK"
@@ -272,14 +267,14 @@ class TestPasosCorrida:
 
     def test_retorna_404_si_corrida_no_existe(self, cliente):
         with patch(_PATCH_EXISTE, return_value=False):
-            resp = cliente.get(f"{_URL}/no-existe/pasos", headers=_headers("viewer"))
+            resp = cliente.get(f"{_URL}/no-existe/pasos", headers=auth_headers("viewer"))
         assert resp.status_code == 404
 
 
 class TestCatalogoFacts:
     def test_retorna_catalogo_facts(self, cliente):
         with patch(_PATCH_FACTS, return_value=_FACTS_MOCK):
-            resp = cliente.get("/api/v1/etl/facts", headers=_headers("viewer"))
+            resp = cliente.get("/api/v1/etl/facts", headers=auth_headers("viewer"))
         assert resp.status_code == 200
         data = resp.json()
         assert data[0]["nombre_fact"] == "Fact_Telemetria_Clima"
@@ -295,7 +290,7 @@ class TestStreamEventos:
         with patch(_PATCH_EXISTE, return_value=False):
             resp = cliente.get(
                 f"{_URL}/uuid-inexistente/eventos",
-                headers=_headers("viewer"),
+                headers=auth_headers("viewer"),
             )
         assert resp.status_code == 404
 
@@ -317,7 +312,7 @@ class TestCancelarCorrida:
         ):
             resp = cliente.delete(
                 f"{_URL}/test-uuid-1234",
-                headers=_headers("operador_etl"),
+                headers=auth_headers("operador_etl"),
             )
         assert resp.status_code == 200
         assert resp.json()["cancelado"] is True
@@ -331,7 +326,7 @@ class TestCancelarCorrida:
         ):
             resp = cliente.delete(
                 f"{_URL}/test-uuid-1234",
-                headers=_headers("operador_etl"),
+                headers=auth_headers("operador_etl"),
             )
         assert resp.status_code == 200
         assert resp.json()["cancelado"] is False
@@ -340,14 +335,14 @@ class TestCancelarCorrida:
         with patch(_PATCH_OBTENER, return_value=None):
             resp = cliente.delete(
                 f"{_URL}/no-existe",
-                headers=_headers("operador_etl"),
+                headers=auth_headers("operador_etl"),
             )
         assert resp.status_code == 404
 
     def test_viewer_no_puede_cancelar(self, cliente):
         resp = cliente.delete(
             f"{_URL}/test-uuid-1234",
-            headers=_headers("viewer"),
+                headers=auth_headers("viewer"),
         )
         assert resp.status_code == 403
 

@@ -22,6 +22,13 @@ from utils.dni import procesar_dni
 from utils.fechas import obtener_id_tiempo as construir_id_tiempo, procesar_fecha
 from utils.sql_lotes import ejecutar_en_lotes_con_engine, marcar_estado_carga_por_ids
 from utils.texto import es_test_block, normalizar_modulo
+from silver.facts._helpers_fact_comunes import (
+    a_entero_nulo as _a_entero_nulo,
+    a_entero_no_negativo as _a_entero_no_negativo,
+    texto_nulo as _texto_nulo,
+    motivo_cuarentena_geografia as _motivo_cuarentena_geografia,
+    validar_layout_migrado as _validar_layout_migrado_helper,
+)
 
 
 TABLA_ORIGEN = 'Bronce.Induccion_Floral'
@@ -48,112 +55,49 @@ SQL_INSERT_FACT = text("""
 """)
 
 
-def _a_entero_nulo(valor) -> int | None:
-    try:
-        if valor is None:
-            return None
-        texto = str(valor).strip()
-        if texto in ('', 'None', 'nan'):
-            return None
-        return int(float(texto))
-    except (ValueError, TypeError):
-        return None
-
-
-def _a_entero_no_negativo(valor) -> int | None:
-    numero = _a_entero_nulo(valor)
-    if numero is None or numero < 0:
-        return None
-    return numero
-
-
-def _texto_nulo(valor) -> str | None:
-    if valor is None:
-        return None
-    texto = str(valor).strip()
-    return texto if texto and texto.lower() != 'none' else None
-
-
 def _pct(parte: int, total: int) -> float | None:
     if total <= 0:
         return None
     return round((parte / total) * 100.0, 2)
 
 
-def _obtener_columnas_tabla(engine: Engine, tabla_completa: str) -> set[str]:
-    esquema, tabla = tabla_completa.split('.')
-    with engine.connect() as conexion:
-        resultado = conexion.execute(text("""
-            SELECT COLUMN_NAME
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = :esquema
-              AND TABLE_NAME = :tabla
-        """), {'esquema': esquema, 'tabla': tabla})
-        return {str(fila[0]) for fila in resultado.fetchall()}
-
-
-def _motivo_cuarentena_geografia(resultado_geo: dict) -> str:
-    estado = resultado_geo.get('estado')
-    if estado in ('TEST_BLOCK_NO_MAPEADO', 'TEST_BLOCK_AMBIGUO'):
-        return 'Test block (VI) sin mapeo unico en Dim_Geografia.'
-    if estado in ('PENDIENTE_CASO_ESPECIAL', 'CASO_ESPECIAL_MODULO'):
-        return 'Geografia especial requiere catalogacion o regla en MDM_Geografia.'
-    if estado in ('PENDIENTE_CAMA_GENERICA', 'CAMA_NO_RELACION'):
-        return 'Cama no relacionada a la geografia operativa.'
-    if estado in ('PENDIENTE_DIM_DUPLICADA', 'GEOGRAFIA_AMBIGUA'):
-        return 'La clave geografica tiene mas de un registro vigente en Silver.Dim_Geografia.'
-    if estado == 'CAMA_NO_VALIDA':
-        return 'Cama fuera de rango operativo permitido.'
-    if estado == 'CAMA_NO_CATALOGO':
-        return 'Cama valida pero no registrada en el catalogo operativo.'
-    return 'Geografia no encontrada en Silver.Dim_Geografia.'
-
-
 def _validar_layout_migrado(engine: Engine) -> str:
-    columnas_bronce = _obtener_columnas_tabla(engine, TABLA_ORIGEN)
-    columnas_silver = _obtener_columnas_tabla(engine, TABLA_DESTINO)
-
-    columnas_bronce_requeridas = {
-        'ID_Induccion_Floral',
-        'Fecha_Raw',
-        'DNI_Raw',
-        'Consumidor_Raw',
-        'Modulo_Raw',
-        'Turno_Raw',
-        'Valvula_Raw',
-        'Cama_Raw',
-        'Descripcion_Raw',
-        'PlantasPorCama_Raw',
-        'PlantasConInduccion_Raw',
-        'BrotesConInduccion_Raw',
-        'BrotesTotales_Raw',
-        'BrotesConFlor_Raw',
-        'Estado_Carga',
-    }
-    columnas_silver_requeridas = {
-        'ID_Geografia',
-        'ID_Tiempo',
-        'ID_Variedad',
-        'ID_Personal',
-        'Codigo_Consumidor',
-        'Cantidad_Plantas_Por_Cama',
-        'Cantidad_Plantas_Con_Induccion',
-        'Cantidad_Brotes_Con_Induccion',
-        'Cantidad_Brotes_Totales',
-        'Cantidad_Brotes_Con_Flor',
-    }
-
-    faltantes_bronce = sorted(columnas_bronce_requeridas - columnas_bronce)
-    faltantes_silver = sorted(columnas_silver_requeridas - columnas_silver)
-
-    if faltantes_bronce or faltantes_silver:
-        raise RuntimeError(
-            'La migracion definitiva de Induccion_Floral no esta aplicada. '
-            f'Bronce faltantes: {faltantes_bronce or "ninguno"} | '
-            f'Silver faltantes: {faltantes_silver or "ninguno"}'
-        )
-
-    return 'ID_Induccion_Floral'
+    return _validar_layout_migrado_helper(
+        engine,
+        tabla_origen=TABLA_ORIGEN,
+        tabla_destino=TABLA_DESTINO,
+        columna_id='ID_Induccion_Floral',
+        columnas_bronce_requeridas={
+            'ID_Induccion_Floral',
+            'Fecha_Raw',
+            'DNI_Raw',
+            'Consumidor_Raw',
+            'Modulo_Raw',
+            'Turno_Raw',
+            'Valvula_Raw',
+            'Cama_Raw',
+            'Descripcion_Raw',
+            'PlantasPorCama_Raw',
+            'PlantasConInduccion_Raw',
+            'BrotesConInduccion_Raw',
+            'BrotesTotales_Raw',
+            'BrotesConFlor_Raw',
+            'Estado_Carga',
+        },
+        columnas_silver_requeridas={
+            'ID_Geografia',
+            'ID_Tiempo',
+            'ID_Variedad',
+            'ID_Personal',
+            'Codigo_Consumidor',
+            'Cantidad_Plantas_Por_Cama',
+            'Cantidad_Plantas_Con_Induccion',
+            'Cantidad_Brotes_Con_Induccion',
+            'Cantidad_Brotes_Totales',
+            'Cantidad_Brotes_Con_Flor',
+        },
+        nombre_layout='Induccion_Floral',
+    )
 
 
 def _leer_bronce(engine: Engine, columna_id: str) -> pd.DataFrame:

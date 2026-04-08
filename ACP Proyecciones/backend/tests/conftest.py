@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from nucleo.auth import crear_token
 
 # ── Garantiza que el directorio backend/ esté en sys.path ─────────────────────
 _DIR_BACKEND = Path(__file__).resolve().parents[1]
@@ -83,3 +84,8 @@ def cliente_sin_bd(mock_conexion_fallo):
         from main import aplicacion
         with TestClient(aplicacion, raise_server_exceptions=False) as c:
             yield c
+
+
+def auth_headers(rol: str = "viewer", usuario: str = "testuser", nombre_display: str = "Test User") -> dict:
+    token = crear_token(usuario, rol, nombre_display)
+    return {"Authorization": f"Bearer {token}"}

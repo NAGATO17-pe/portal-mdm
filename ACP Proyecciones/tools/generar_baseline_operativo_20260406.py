@@ -14,7 +14,9 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Connection, Engine
 
 
-BASE_DIR = Path(__file__).resolve().parent
+TOOLS_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = TOOLS_DIR.parent
+AVANCE_DIR = PROJECT_DIR / "ETL" / "Avance"
 FECHA_CORTE = "2026-04-06"
 SERVIDOR_POR_DEFECTO = "LCP-PAG-PRACTIC"
 BASE_POR_DEFECTO = "ACP_DataWarehose_Proyecciones"
@@ -900,8 +902,8 @@ def renderizar_markdown(baseline: dict[str, Any]) -> str:
 
 
 def guardar_salida(baseline: dict[str, Any]) -> tuple[Path, Path]:
-    json_path = BASE_DIR / "baseline_operativo_etl_20260406.json"
-    md_path = BASE_DIR / "BASELINE_OPERATIVO_ETL_20260406.md"
+    json_path = AVANCE_DIR / "baseline_operativo_etl_20260406.json"
+    md_path = AVANCE_DIR / "BASELINE_OPERATIVO_ETL_20260406.md"
     json_path.write_text(json.dumps(baseline, ensure_ascii=False, indent=2), encoding="utf-8")
     md_path.write_text(renderizar_markdown(baseline), encoding="utf-8")
     return json_path, md_path

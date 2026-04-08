@@ -4,10 +4,8 @@ schemas/etl/respuesta.py
 Schemas de SALIDA para el módulo ETL.
 Nunca se reutilizan como schemas de petición.
 """
-
 from datetime import datetime
 from pydantic import BaseModel, Field
-
 
 class RespuestaCorridaIniciada(BaseModel):
     """Respuesta al cliente cuando se acepta una corrida ETL."""
@@ -19,7 +17,6 @@ class RespuestaCorridaIniciada(BaseModel):
     estado:         str        = Field(default="PENDIENTE", description="Estado inicial. El runner lo cambiará a EJECUTANDO.")
 
     model_config = {"from_attributes": True}
-
 
 class RespuestaHistorialCorrida(BaseModel):
     """Una entrada del historial de corridas de Auditoria.Log_Carga."""
@@ -37,7 +34,6 @@ class RespuestaHistorialCorrida(BaseModel):
 
     model_config = {"from_attributes": True}
 
-
 class RespuestaPasoCorrida(BaseModel):
     id_paso: int
     id_corrida: str
@@ -49,7 +45,6 @@ class RespuestaPasoCorrida(BaseModel):
     mensaje_error: str | None
 
     model_config = {"from_attributes": True}
-
 
 class RespuestaDetalleCorrida(BaseModel):
     id_corrida: str
@@ -74,7 +69,6 @@ class RespuestaDetalleCorrida(BaseModel):
     pasos: list[RespuestaPasoCorrida] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
-
 
 class RespuestaFactDisponible(BaseModel):
     nombre_fact: str

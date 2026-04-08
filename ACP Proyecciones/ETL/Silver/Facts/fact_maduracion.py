@@ -34,6 +34,9 @@ from mdm.lookup import (
 from utils.dni import procesar_dni
 from utils.fechas import obtener_id_tiempo, procesar_fecha
 from utils.texto import es_test_block, normalizar_modulo
+from silver.facts._helpers_fact_comunes import (
+    parsear_valores_raw as _parsear_valores_raw,
+)
 
 
 TABLA_ORIGEN = 'Bronce.Maduracion'
@@ -90,26 +93,6 @@ def _leer_bronce(engine: Engine) -> pd.DataFrame:
             FROM {TABLA_ORIGEN}
         """))
         return pd.DataFrame(resultado.fetchall(), columns=resultado.keys())
-
-
-def _parsear_valores_raw(texto: str | None) -> dict[str, str]:
-    if texto is None:
-        return {}
-
-    crudo = str(texto).strip()
-    if not crudo:
-        return {}
-
-    resultado: dict[str, str] = {}
-    for parte in re.split(r'\s*\|\s*', crudo):
-        if '=' not in parte:
-            continue
-        clave, valor = parte.split('=', 1)
-        clave = str(clave).strip()
-        valor = str(valor).strip()
-        if clave:
-            resultado[clave] = valor
-    return resultado
 
 
 def _obtener_valor(payload: dict[str, str], *claves: str):

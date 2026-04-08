@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
+from nucleo.http_utils import obtener_request_id
 
 
 # ── Excepciones de dominio ────────────────────────────────────────────────────
@@ -48,7 +49,7 @@ class ErrorCorridaNoEncontrada(HTTPException):
 
 def _request_id(request: Request) -> str:
     """Extrae el request_id del estado del request si el middleware está activo."""
-    return getattr(request.state, "request_id", "-")
+    return obtener_request_id(request, "-")
 
 
 def _ahora_iso() -> str:

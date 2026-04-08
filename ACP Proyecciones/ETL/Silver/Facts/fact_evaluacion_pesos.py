@@ -25,6 +25,9 @@ from mdm.lookup      import (
     obtener_id_personal,
 )
 from mdm.homologador import homologar_columna
+from silver.facts._helpers_fact_comunes import (
+    motivo_cuarentena_geografia as _motivo_cuarentena_geografia,
+)
 
 
 TABLA_ORIGEN  = 'Bronce.Evaluacion_Pesos'
@@ -107,23 +110,6 @@ def _calcular_peso_ponderado(fila) -> float | None:
         return round(total_peso / total_bayas, 4)
 
     return None
-
-
-def _motivo_cuarentena_geografia(resultado_geo: dict) -> str:
-    estado = resultado_geo.get('estado')
-    if estado in ('TEST_BLOCK_NO_MAPEADO', 'TEST_BLOCK_AMBIGUO'):
-        return 'Test block (VI) sin mapeo unico en Dim_Geografia.'
-    if estado in ('PENDIENTE_CASO_ESPECIAL', 'CASO_ESPECIAL_MODULO'):
-        return 'Geografia especial requiere catalogacion o regla en MDM_Geografia.'
-    if estado in ('PENDIENTE_CAMA_GENERICA', 'CAMA_NO_RELACION'):
-        return 'Cama no relacionada a la geografia operativa.'
-    if estado in ('PENDIENTE_DIM_DUPLICADA', 'GEOGRAFIA_AMBIGUA'):
-        return 'La clave geografica tiene mas de un registro vigente en Silver.Dim_Geografia.'
-    if estado == 'CAMA_NO_VALIDA':
-        return 'Cama fuera de rango operativo permitido.'
-    if estado == 'CAMA_NO_CATALOGO':
-        return 'Cama valida pero no registrada en el catalogo operativo.'
-    return 'Geografia no encontrada en Silver.Dim_Geografia.'
 
 
 def cargar_fact_evaluacion_pesos(engine: Engine) -> dict:

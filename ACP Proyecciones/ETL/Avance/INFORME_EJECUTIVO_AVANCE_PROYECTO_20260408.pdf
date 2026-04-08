@@ -1,0 +1,536 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [5 0 R 7 0 R 9 0 R 11 0 R 13 0 R] /Count 5 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+4 0 obj
+<< /Length 2637 >>
+stream
+BT
+/F1 11 Tf
+15 TL
+54 727 Td
+(INFORME EJECUTIVO DE AVANCE DEL PROYECTO ACP PROYECCIONES) Tj
+T*
+() Tj
+T*
+(Fecha de corte: 08 de abril de 2026) Tj
+T*
+() Tj
+T*
+(RESUMEN EJECUTIVO) Tj
+T*
+() Tj
+T*
+(ACP Proyecciones ha dado un paso importante: dejo de depender principalmente de archivos) Tj
+T*
+(sueltos, revisiones manuales y criterio individual, y empezo a convertirse en una) Tj
+T*
+(plataforma de datos mucho mas ordenada, trazable y util para la operacion.) Tj
+T*
+() Tj
+T*
+(El avance mas valioso no es solo que hoy carguemos mas informacion. Lo mas importante es) Tj
+T*
+(que ahora el sistema explica mucho mejor que paso con cada dato: que ingreso bien, que) Tj
+T*
+(quedo pendiente, que necesita una decision de negocio y que aun depende de mejorar la) Tj
+T*
+(fuente original. Eso le da al proyecto una base mucho mas seria para seguir creciendo.) Tj
+T*
+() Tj
+T*
+(Hoy ya no estamos frente a un proyecto disperso. Estamos frente a una plataforma de) Tj
+T*
+(trabajo que ya tiene estructura, control, reglas mas claras y una forma bastante mas) Tj
+T*
+(confiable de sostener el dia a dia.) Tj
+T*
+() Tj
+T*
+(COMO ESTABA EL ESCENARIO AL INICIO) Tj
+T*
+() Tj
+T*
+(Al comienzo, el problema no era solo tecnico. El problema era operativo. Habia demasiada) Tj
+T*
+(dependencia de archivos manuales, criterios que cambiaban entre una fuente y otra, nombres) Tj
+T*
+(poco consistentes y poca claridad para explicar por que una carga salia bien o salia mal.) Tj
+T*
+() Tj
+T*
+(En una situacion asi, el equipo puede avanzar, pero avanza con mucho desgaste. Cada cierre) Tj
+T*
+(depende demasiado de memoria individual. Cada diferencia obliga a revisar manualmente.) Tj
+T*
+(Cada excepcion se vuelve una discusion larga. Y cuando eso pasa de manera repetida, no) Tj
+T*
+(solo se pierde tiempo: tambien se debilita la confianza en los datos.) Tj
+T*
+() Tj
+T*
+(Lo que se ha venido haciendo en estos meses ha sido, en el fondo, ordenar esa realidad.) Tj
+T*
+() Tj
+T*
+(LOS PASOS FUNDAMENTALES QUE SE HAN DADO) Tj
+T*
+() Tj
+T*
+(1. SE ORDENO LA CASA) Tj
+T*
+() Tj
+T*
+(El primer gran paso fue organizar la base de datos por zonas de trabajo. En lugar de) Tj
+T*
+(mezclarlo todo en un solo lugar, se separo el dato crudo, el dato ya trabajado, el dato) Tj
+T*
+(listo para analisis, los catalogos maestros, la configuracion y la auditoria.) Tj
+T*
+() Tj
+T*
+(Eso puede sonar tecnico, pero en la practica significa algo muy simple: cada cosa empezo a) Tj
+T*
+(vivir en el lugar que le corresponde. Cuando un proyecto logra eso, deja de reaccionar a) Tj
+T*
+(los problemas y empieza a entenderlos mejor.) Tj
+T*
+() Tj
+T*
+(2. SE PUSIERON REGLAS DONDE ANTES HABIA INTERPRETACION) Tj
+T*
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 4 0 R >>
+endobj
+6 0 obj
+<< /Length 2244 >>
+stream
+BT
+/F1 11 Tf
+15 TL
+54 727 Td
+() Tj
+T*
+(Otro avance clave fue la formalizacion de reglas de negocio que antes generaban mucho) Tj
+T*
+(ruido. Casos que antes se mezclaban con errores generales ahora ya pueden reconocerse como) Tj
+T*
+(situaciones particulares.) Tj
+T*
+() Tj
+T*
+(Un ejemplo muy claro es `Test Block`. Antes podia terminar contaminando la lectura general) Tj
+T*
+(de una carga. Hoy ya se trata como un caso conocido y controlado. En otras palabras: dejo) Tj
+T*
+(de parecer un error general y paso a leerse como lo que realmente es.) Tj
+T*
+() Tj
+T*
+(Eso mismo ocurrio con otros componentes de geografia, con la lectura de modulo y con) Tj
+T*
+(ciertas excepciones operativas que antes obligaban a revisar a mano una y otra vez.) Tj
+T*
+() Tj
+T*
+(3. SE SEPARO MEJOR LO QUE ES ERROR TECNICO DE LO QUE ES DECISION DEL NEGOCIO) Tj
+T*
+() Tj
+T*
+(Este cambio ha sido fundamental. Antes muchas veces todo quedaba mezclado: si algo no) Tj
+T*
+(cargaba, parecia que todo era culpa del sistema. Hoy ya se puede distinguir mejor.) Tj
+T*
+() Tj
+T*
+(Por ejemplo:) Tj
+T*
+() Tj
+T*
+(- si una variedad no esta reconocida, eso ya no se ve igual que un error de parser;) Tj
+T*
+(- si aparece un caso como `VIVERO`, ya no se interpreta automaticamente como un defecto) Tj
+T*
+(  tecnico general;) Tj
+T*
+(- si un dato llega fuera de las reglas de calidad, ya no desaparece ni queda invisible:) Tj
+T*
+(  queda identificado y pendiente.) Tj
+T*
+() Tj
+T*
+(Esto vuelve mucho mas madura la conversacion con el negocio, porque ya no se discute sobre) Tj
+T*
+(intuiciones, sino sobre causas concretas.) Tj
+T*
+() Tj
+T*
+(4. EL ETL DEJO DE SER UNA CAJA CERRADA) Tj
+T*
+() Tj
+T*
+(Uno de los avances mas importantes es que el proceso de carga ya no se comporta como una) Tj
+T*
+(caja negra.) Tj
+T*
+() Tj
+T*
+(Hoy la corrida deja mas evidencia, mas trazabilidad y mas control. Eso significa que se) Tj
+T*
+(puede saber mejor:) Tj
+T*
+() Tj
+T*
+(- quien lanzo una ejecucion,) Tj
+T*
+(- cuando empezo,) Tj
+T*
+(- que etapas recorrio,) Tj
+T*
+(- si termino bien o mal,) Tj
+T*
+(- donde se produjo un problema,) Tj
+T*
+(- y que quedo pendiente despues de la corrida.) Tj
+T*
+() Tj
+T*
+(Dicho de manera sencilla: ya no solo corremos procesos; ahora tambien podemos explicarlos.) Tj
+T*
+() Tj
+T*
+ET
+endstream
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 6 0 R >>
+endobj
+8 0 obj
+<< /Length 2317 >>
+stream
+BT
+/F1 11 Tf
+15 TL
+54 727 Td
+(5. LA BASE DE DATOS CRECIO HACIA UNA PLATAFORMA, NO SOLO HACIA UN DEPOSITO) Tj
+T*
+() Tj
+T*
+(La comparacion entre el diseño original y los cambios SQL posteriores muestra algo muy) Tj
+T*
+(importante: la base de datos ya no es solo un lugar donde se guardan tablas de analisis.) Tj
+T*
+() Tj
+T*
+(En el diseño inicial se construyo la estructura principal del DWH. Pero despues se) Tj
+T*
+(agregaron piezas nuevas que hacen que la base hoy tambien funcione como centro de control) Tj
+T*
+(del proceso:) Tj
+T*
+() Tj
+T*
+(- control de corridas,) Tj
+T*
+(- bitacora de eventos,) Tj
+T*
+(- seguimiento por pasos,) Tj
+T*
+(- control de bloqueo para que no se crucen ejecuciones,) Tj
+T*
+(- seguridad de usuarios,) Tj
+T*
+(- auditoria de cambios hechos desde el portal.) Tj
+T*
+() Tj
+T*
+(En terminos simples, al principio se construyo la casa. Despues se agregaron la sala de) Tj
+T*
+(control, la recepcion de accesos y la bitacora de todo lo que ocurre adentro.) Tj
+T*
+() Tj
+T*
+(Ese cambio es una muestra de madurez real.) Tj
+T*
+() Tj
+T*
+(QUE YA SE PUEDE AFIRMAR CON SEGURIDAD) Tj
+T*
+() Tj
+T*
+(Hoy ya se puede decir que:) Tj
+T*
+() Tj
+T*
+(- la plataforma esta mucho mas ordenada que al inicio;) Tj
+T*
+(- el proceso de carga principal ya no esta en una falla sistemica;) Tj
+T*
+(- los casos especiales mas ruidosos ya no dominan la lectura general del sistema;) Tj
+T*
+(- la geografia quedo mucho mas controlada;) Tj
+T*
+(- el clima paso a leerse con un criterio mas sano y propio;) Tj
+T*
+(- el sistema ya registra mejor sus corridas y sus eventos;) Tj
+T*
+(- la cuarentena ya no es un lugar ciego, sino un espacio de trabajo mas gobernado.) Tj
+T*
+() Tj
+T*
+(Tambien hay evidencia concreta de escala. En una corrida validada se procesaron cerca de) Tj
+T*
+(295 mil filas. Dentro de ese volumen, solo el frente de Tasa aporto mas de 263 mil) Tj
+T*
+(registros y Conteo supero los 60 mil. Ademas, la geografia vigente quedo sin duplicados,) Tj
+T*
+(lo cual es una muy buena señal de orden estructural.) Tj
+T*
+() Tj
+T*
+(Estas cifras no se deben leer solo como volumen. Deben leerse como una señal de que el) Tj
+T*
+(sistema ya puede trabajar sobre una base bastante mas estable.) Tj
+T*
+() Tj
+T*
+(EJEMPLOS SENCILLOS PARA ENTENDER LA MEJORA) Tj
+T*
+() Tj
+T*
+(EJEMPLO 1. ANTES: UNA EXCEPCION ENSUCIABA TODO) Tj
+T*
+() Tj
+T*
+ET
+endstream
+endobj
+9 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 8 0 R >>
+endobj
+10 0 obj
+<< /Length 2337 >>
+stream
+BT
+/F1 11 Tf
+15 TL
+54 727 Td
+(Antes, cuando aparecia algo especial como `Test Block`, ese caso podia mezclarse con otros) Tj
+T*
+(errores y terminar dando la sensacion de que toda la carga geografica estaba mal.) Tj
+T*
+() Tj
+T*
+(Hoy, ese mismo caso ya se reconoce como una situacion particular. Eso permite que el) Tj
+T*
+(equipo no pierda tiempo discutiendo algo que ya esta entendido y controlado.) Tj
+T*
+() Tj
+T*
+(EJEMPLO 2. ANTES: LO PENDIENTE SE PERDIA EN EL RUIDO) Tj
+T*
+() Tj
+T*
+(Cuando una variedad no estaba homologada o una geografia no cuadraba, el problema podia) Tj
+T*
+(quedar repartido entre archivos, notas y memoria del equipo.) Tj
+T*
+() Tj
+T*
+(Hoy ese caso queda identificado, separado y visible. No significa que ya este resuelto,) Tj
+T*
+(pero si significa que ya no se pierde.) Tj
+T*
+() Tj
+T*
+(EJEMPLO 3. ANTES: CORRER EL PROCESO ERA UNA ACCION; HOY ES UNA OPERACION TRAZABLE) Tj
+T*
+() Tj
+T*
+(Antes importaba sobre todo ejecutar. Hoy importa tambien saber que paso durante la) Tj
+T*
+(ejecucion. Esa diferencia puede parecer pequena, pero para una operacion diaria cambia) Tj
+T*
+(mucho la capacidad de respuesta y de control.) Tj
+T*
+() Tj
+T*
+(QUE SIGUE PENDIENTE) Tj
+T*
+() Tj
+T*
+(Seria incorrecto decir que todo ya esta cerrado. El proyecto avanzo mucho, pero todavia) Tj
+T*
+(tiene temas importantes por resolver.) Tj
+T*
+() Tj
+T*
+(Los principales son:) Tj
+T*
+() Tj
+T*
+(- definir de manera formal como se tratara `VIVERO`;) Tj
+T*
+(- fortalecer la informacion de personal, que sigue siendo una parte debil;) Tj
+T*
+(- resolver el frente de `Tareo`, que depende de una fuente todavia insuficiente;) Tj
+T*
+(- terminar de consolidar algunos backlog de catalogos y homologaciones;) Tj
+T*
+(- seguir robusteciendo el frente web para que la operacion diaria sea todavia mas sencilla) Tj
+T*
+(  y visible.) Tj
+T*
+() Tj
+T*
+(La buena noticia es que estos pendientes ya no son un caos desordenado. Hoy ya estan mucho) Tj
+T*
+(mejor delimitados.) Tj
+T*
+() Tj
+T*
+(QUE SIGNIFICA ESTO PARA LA DIRECTIVA) Tj
+T*
+() Tj
+T*
+(Visto desde negocio, el proyecto ya entrego varias mejoras concretas:) Tj
+T*
+() Tj
+T*
+(- reduce dependencia de criterio individual;) Tj
+T*
+(- mejora la confianza sobre que dato paso, cual no paso y por que;) Tj
+T*
+(- ordena mejor las excepciones;) Tj
+T*
+(- da una base mas seria para seguimiento y proyecciones;) Tj
+T*
+ET
+endstream
+endobj
+11 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 10 0 R >>
+endobj
+12 0 obj
+<< /Length 1927 >>
+stream
+BT
+/F1 11 Tf
+15 TL
+54 727 Td
+(- prepara mejor el camino para una operacion diaria menos manual.) Tj
+T*
+() Tj
+T*
+(Dicho en una frase: el proyecto ya no solo procesa informacion; ahora tambien la gobierna) Tj
+T*
+(mucho mejor.) Tj
+T*
+() Tj
+T*
+(LO MAS VALIOSO DEL AVANCE) Tj
+T*
+() Tj
+T*
+(Lo mas valioso no es una tabla puntual ni una corrida puntual. Lo mas valioso es que el) Tj
+T*
+(proyecto ya paso de una etapa de correccion constante a una etapa de mayor gobierno.) Tj
+T*
+() Tj
+T*
+(Eso se nota en que hoy:) Tj
+T*
+() Tj
+T*
+(- hay mas orden,) Tj
+T*
+(- hay mas trazabilidad,) Tj
+T*
+(- hay mas claridad sobre lo pendiente,) Tj
+T*
+(- y hay una mejor separacion entre lo tecnico y lo funcional.) Tj
+T*
+() Tj
+T*
+(Ese es el tipo de avance que permite seguir construyendo con mas seguridad.) Tj
+T*
+() Tj
+T*
+(RECOMENDACION EJECUTIVA) Tj
+T*
+() Tj
+T*
+(La recomendacion no es rehacer ni cambiar de rumbo. La recomendacion es sostener el camino) Tj
+T*
+(actual con tres prioridades muy claras:) Tj
+T*
+() Tj
+T*
+(1. Mantener la disciplina del baseline y de la evidencia para no volver a trabajar sobre) Tj
+T*
+(percepciones.) Tj
+T*
+(2. Cerrar los pendientes funcionales y de catalogo que hoy explican buena parte del) Tj
+T*
+(residual.) Tj
+T*
+(3. Consolidar la capa de operacion y visualizacion para que el equipo trabaje cada vez) Tj
+T*
+(menos a mano y con mas trazabilidad.) Tj
+T*
+() Tj
+T*
+(CIERRE) Tj
+T*
+() Tj
+T*
+(ACP Proyecciones ya construyo una parte muy importante de lo mas dificil: pasar de una) Tj
+T*
+(operacion muy dependiente de correcciones manuales a una plataforma que empieza a) Tj
+T*
+(sostenerse con reglas, evidencias y control.) Tj
+T*
+() Tj
+T*
+(Todavia hay trabajo por delante, pero la lectura general del avance es favorable. El) Tj
+T*
+(proyecto ya tiene forma, ya tiene direccion y ya tiene una base mucho mas seria para) Tj
+T*
+(convertirse en una fuente confiable de trabajo para proyecciones y toma de decisiones.) Tj
+T*
+ET
+endstream
+endobj
+13 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 12 0 R >>
+endobj
+xref
+0 14
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000141 00000 n 
+0000000209 00000 n 
+0000002898 00000 n 
+0000003024 00000 n 
+0000005320 00000 n 
+0000005446 00000 n 
+0000007815 00000 n 
+0000007941 00000 n 
+0000010331 00000 n 
+0000010459 00000 n 
+0000012439 00000 n 
+trailer
+<< /Size 14 /Root 1 0 R >>
+startxref
+12567
+%%EOF

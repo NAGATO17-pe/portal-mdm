@@ -26,6 +26,7 @@ from sse_starlette.sse import EventSourceResponse
 
 from nucleo.auth import UsuarioActual, obtener_usuario_actual, require_rol
 from nucleo.excepciones import ErrorRecursoNoEncontrado
+from nucleo.http_utils import obtener_ip_cliente, obtener_request_id
 from schemas.etl.peticion import PeticionIniciarCorrida
 from schemas.etl.respuesta import (
     RespuestaCorridaIniciada,
@@ -48,13 +49,6 @@ from servicios.servicio_etl import (
 from servicios.servicio_auditoria import obtener_historial
 
 enrutador_etl = APIRouter(prefix="/v1/etl", tags=["ETL"])
-
-
-def _ip(request: Request) -> str | None:
-    fwd = request.headers.get("X-Forwarded-For")
-    if fwd:
-        return fwd.split(",")[0].strip()
-    return request.client.host if request.client else None
 
 
 # ── POST /corridas ─────────────────────────────────────────────────────────────
@@ -88,8 +82,8 @@ async def iniciar_corrida_etl(
         nombre_usuario=usuario.nombre_usuario,
         accion="LANZAR_ETL",
         endpoint=str(request.url),
-        request_id=getattr(request.state, "request_id", None),
-        ip_origen=_ip(request),
+        request_id=obtener_request_id(request),
+        ip_origen=obtener_ip_cliente(request),
         detalle=(
             f"id_corrida={datos['id_corrida']} "
             f"modo={cuerpo.modo_ejecucion} "
@@ -216,8 +210,8 @@ async def cancelar(
         nombre_usuario=usuario.nombre_usuario,
         accion="CANCELAR_ETL",
         endpoint=str(request.url),
-        request_id=getattr(request.state, "request_id", None),
-        ip_origen=_ip(request),
+        request_id=obtener_request_id(request),
+        ip_origen=obtener_ip_cliente(request),
         detalle=f"id_corrida={id_corrida} cancelado={cancelado}",
     )
 

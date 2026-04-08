@@ -8,9 +8,7 @@ IMPORTANTE: ningún schema de respuesta incluye hash_clave ni clave en texto pla
 
 from datetime import datetime
 from typing import Literal
-
 from pydantic import BaseModel, Field
-
 
 class PerfilUsuario(BaseModel):
     """Perfil público del usuario autenticado."""
@@ -19,13 +17,11 @@ class PerfilUsuario(BaseModel):
     rol:            str
     email:          str | None
 
-
 class TokenRespuesta(BaseModel):
     """Respuesta al login exitoso."""
     access_token: str  = Field(description="JWT Bearer token.")
     token_type:   str  = Field(default="bearer")
     usuario:      PerfilUsuario
-
 
 class RespuestaUsuarioAdmin(BaseModel):
     """Representación de un usuario para el panel admin (sin hash_clave)."""
@@ -37,9 +33,7 @@ class RespuestaUsuarioAdmin(BaseModel):
     es_activo:      bool
     fecha_creacion: datetime | None
     ultimo_acceso:  datetime | None
-
     model_config = {"from_attributes": True}
-
 
 class RespuestaMensaje(BaseModel):
     """Respuesta simple de confirmación."""

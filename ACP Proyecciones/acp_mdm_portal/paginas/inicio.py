@@ -6,13 +6,13 @@ import streamlit as st
 
 from utils.componentes import health_status_panel, seccion_tabla_con_guardar
 from utils.formato import crear_tarjeta_kpi, header_pagina
-from utils.api_client import get_api, post_api
+from utils.api_client import get_api, mostrar_error_api, post_api
 
 @st.cache_data(ttl=60, show_spinner=False)
 def _cargar_resumen_ultima_carga() -> pd.DataFrame:
-    res = get_api("/etl/corridas")
-    if res and res.status_code == 200:
-        corridas = res.json()
+    resultado = get_api("/etl/corridas")
+    if resultado.ok and isinstance(resultado.data, list):
+        corridas = resultado.data
         if corridas:
             return pd.DataFrame(corridas)
     # Valores de mockups para UI si no hay log:
@@ -20,9 +20,9 @@ def _cargar_resumen_ultima_carga() -> pd.DataFrame:
 
 @st.cache_data(ttl=60, show_spinner=False)
 def _cargar_log_reciente() -> pd.DataFrame:
-    res = get_api("/etl/corridas")
-    if res and res.status_code == 200:
-        return pd.DataFrame(res.json())
+    resultado = get_api("/etl/corridas")
+    if resultado.ok and isinstance(resultado.data, list):
+        return pd.DataFrame(resultado.data)
     return pd.DataFrame()
 
 def render():
@@ -73,12 +73,12 @@ def render():
             etl_running = st.session_state.get("etl_running", False)
             if st.button("🚀 2. Ejecutar Pipeline ETL", use_container_width=True, type="primary"):
                 with st.status("🛠️ Ejecutando Pipeline ETL...", expanded=True) as status:
-                    res = post_api("/etl/corridas", {"comentario": "Portal Streamlit"})
-                    if not res or res.status_code != 200:
-                        st.error("Falla de API al lanzar la corrida. Verifica los logs del backend.")
+                    resultado = post_api("/etl/corridas", {"comentario": "Portal Streamlit"})
+                    if not resultado.ok or not isinstance(resultado.data, dict):
+                        mostrar_error_api(resultado, "Falla de API al lanzar la corrida.")
                         status.update(label="❌ Falla de Pipeline", state="error")
                     else:
-                        datos = res.json()
+                        datos = resultado.data
                         st.write(f"Conectado a Backend (ID: {datos['id_corrida'][:8]})")
                         status.update(label="✅ Pipeline corriendo de manera segura", state="complete")
                         st.toast("La ejecución ha sido despachada.", icon="🎉")

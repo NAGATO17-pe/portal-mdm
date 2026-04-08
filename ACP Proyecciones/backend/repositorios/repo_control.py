@@ -544,13 +544,22 @@ def tomar_comando_pendiente() -> dict | None:
     """
     Toma ATÓMICAMENTE el comando más antiguo en estado PENDIENTE.
     Lo marca como PROCESANDO para evitar que otro runner lo tome.
+    Consume comandos INICIAR y REINTENTAR en orden FIFO por fecha/id.
     Retorna None si no hay comandos pendientes.
     """
     try:
         with obtener_engine().begin() as con:
             fila = con.execute(
                 text("""
-                    UPDATE TOP (1) Control.Comando_Ejecucion
+                    ;WITH siguiente AS (
+                        SELECT TOP (1)
+                            ID_Comando
+                        FROM Control.Comando_Ejecucion WITH (UPDLOCK, READPAST, ROWLOCK)
+                        WHERE Estado_Cmd = 'PENDIENTE'
+                          AND Tipo_Comando IN ('INICIAR', 'REINTENTAR')
+                        ORDER BY Fecha_Comando ASC, ID_Comando ASC
+                    )
+                    UPDATE ce
                     SET Estado_Cmd = 'PROCESANDO', Fecha_Proceso = GETDATE()
                     OUTPUT
                         INSERTED.ID_Comando,
@@ -560,9 +569,9 @@ def tomar_comando_pendiente() -> dict | None:
                         INSERTED.Comentario,
                         INSERTED.Max_Reintentos,
                         INSERTED.Timeout_Seg
-                    WHERE Estado_Cmd = 'PENDIENTE'
-                      AND Tipo_Comando = 'INICIAR'
-                    ORDER BY (SELECT NULL)
+                    FROM Control.Comando_Ejecucion ce
+                    INNER JOIN siguiente
+                        ON siguiente.ID_Comando = ce.ID_Comando
                 """)
             ).fetchone()
             return dict(fila._mapping) if fila else None

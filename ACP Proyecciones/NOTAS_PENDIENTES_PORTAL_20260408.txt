@@ -1,0 +1,67 @@
+NOTAS PENDIENTES PORTAL ACP
+Fecha: 2026-04-08
+
+Estado actual
+- Punto 1 aplicado: cliente HTTP del portal endurecido.
+- Archivo principal intervenido: acp_mdm_portal\utils\api_client.py
+- Cambio realizado:
+  - requests.Session compartida
+  - timeout centralizado
+  - resultado estructurado (ResultadoApi)
+  - separacion entre capa HTTP y capa UI
+  - request_id disponible para trazabilidad
+
+Pendientes siguientes
+
+2. Propagar trazabilidad del backend al portal
+- Objetivo:
+  - Mostrar errores de API con contexto operativo real, no como "vacio" o "fallo generico".
+- Alcance:
+  - Aprovechar request_id ya disponible en ResultadoApi.
+  - Diferenciar timeout, 401, 403, 404, 422, 500 y 503 en la UI.
+  - En paginas de lectura, distinguir "sin datos" de "backend no disponible".
+- Archivos probables:
+  - acp_mdm_portal\paginas\cuarentena.py
+  - acp_mdm_portal\paginas\inicio.py
+  - acp_mdm_portal\utils\catalogos.py
+  - acp_mdm_portal\utils\componentes.py
+
+3. Limpiar deuda residual del refactor de catalogos
+- Objetivo:
+  - Eliminar codigo muerto, imports viejos y restos de implementacion anterior.
+- Alcance:
+  - Limpiar paginas de catalogos que aun conservan imports legacy no usados.
+  - Dejar repo_catalogos sin bloques residuales ni ruido de refactor.
+- Archivos probables:
+  - acp_mdm_portal\paginas\catalogos\variedades.py
+  - acp_mdm_portal\paginas\catalogos\geografia.py
+  - acp_mdm_portal\paginas\catalogos\personal.py
+  - backend\repositorios\repo_catalogos.py
+
+4. Centralizar permisos del portal desde backend
+- Objetivo:
+  - Evitar divergencia entre permisos locales del portal y permisos reales del backend.
+- Alcance:
+  - Reducir o eliminar la matriz local _PERMISOS.
+  - Consumir capacidades o claims de rol desde backend/JWT.
+- Archivo probable:
+  - acp_mdm_portal\utils\auth.py
+
+5. Agregar pruebas del portal
+- Objetivo:
+  - Dejar cubierto el cliente HTTP y el comportamiento basico de catalogos.
+- Alcance minimo recomendado:
+  - tests de ResultadoApi
+  - tests de timeout y error de red
+  - tests de login_backend
+  - tests de cargar_catalogo
+  - smoke tests de render para Inicio y Cuarentena con respuesta mockeada
+- Archivos probables:
+  - acp_mdm_portal\utils\api_client.py
+  - acp_mdm_portal\utils\catalogos.py
+  - acp_mdm_portal\utils\auth.py
+
+Observaciones
+- No intentar mezclar esta fase con un rediseño completo del portal.
+- Mantener contrato conservador: primero estabilidad operativa, luego limpieza.
+- El siguiente mejor paso tecnico, cuando se retome, es el punto 2.

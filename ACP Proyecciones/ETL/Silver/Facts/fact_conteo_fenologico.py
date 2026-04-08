@@ -26,6 +26,9 @@ from mdm.lookup import (
 )
 from mdm.homologador import homologar_columna
 from dq.cuarentena import enviar_a_cuarentena
+from silver.facts._helpers_fact_comunes import (
+    parsear_valores_raw as _parsear_valores_raw,
+)
 
 
 TABLA_ORIGEN = 'Bronce.Conteo_Fruta'
@@ -113,27 +116,6 @@ def _leer_bronce(engine: Engine) -> pd.DataFrame:
             WHERE Estado_Carga = 'CARGADO'
         """))
         return pd.DataFrame(resultado.fetchall(), columns=resultado.keys())
-
-
-def _parsear_valores_raw(texto: str | None) -> dict[str, str]:
-    if texto is None:
-        return {}
-
-    crudo = str(texto).strip()
-    if not crudo:
-        return {}
-
-    resultado: dict[str, str] = {}
-    partes = re.split(r'\s*\|\s*', crudo)
-    for parte in partes:
-        if '=' not in parte:
-            continue
-        clave, valor = parte.split('=', 1)
-        clave = str(clave).strip()
-        valor = str(valor).strip()
-        if clave:
-            resultado[clave] = valor
-    return resultado
 
 
 def _normalizar_cantidad(valor) -> int:

@@ -31,6 +31,7 @@ from nucleo.auth import (
     verificar_clave,
 )
 from nucleo.excepciones import ErrorRecursoNoEncontrado, ErrorValidacion
+from nucleo.http_utils import obtener_ip_cliente, obtener_request_id
 from schemas.auth.peticion import PeticionCambiarClave, PeticionCrearUsuario
 from schemas.auth.respuesta import (
     PerfilUsuario,
@@ -45,20 +46,6 @@ enrutador_auth = APIRouter(prefix="/auth", tags=["Autenticación"])
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
-
-def _ip(request: Request) -> str | None:
-    """Extrae la IP del cliente de la request."""
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    if request.client:
-        return request.client.host
-    return None
-
-
-def _request_id(request: Request) -> str | None:
-    return getattr(request.state, "request_id", None)
-
 
 # ── Login ──────────────────────────────────────────────────────────────────────
 
@@ -82,8 +69,8 @@ async def login(
     datos = autenticar_usuario(
         nombre_usuario=form.username,
         clave=form.password,
-        request_id=_request_id(request),
-        ip_origen=_ip(request),
+        request_id=obtener_request_id(request),
+        ip_origen=obtener_ip_cliente(request),
     )
     return TokenRespuesta(
         access_token=datos["access_token"],

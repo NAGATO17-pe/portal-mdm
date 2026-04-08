@@ -124,10 +124,10 @@ def obtener_id_personal(dni: str | None,
     return mapa.get(clave, -1)
 
 
-def obtener_id_geografia(fundo: str | None,
-                          sector: str | None,
-                          modulo,
-                          engine: Engine) -> int | None:
+def _obtener_id_geografia_dim_basica(fundo: str | None,
+                                     sector: str | None,
+                                     modulo,
+                                     engine: Engine) -> int | None:
     """
     Busca ID_Geografia por fundo + sector + modulo.
     Solo retorna registros vigentes (Es_Vigente = 1).

@@ -10,7 +10,6 @@ FKs obligatorias: ID_Tiempo, ID_Personal, ID_Actividad_Operativa, ID_Geografia
 import pandas as pd
 from sqlalchemy.engine import Engine
 from sqlalchemy import text
-
 from utils.fechas    import procesar_fecha, obtener_id_tiempo
 from utils.texto     import normalizar_modulo, es_test_block
 from utils.dni       import procesar_dni
@@ -20,6 +19,9 @@ from mdm.lookup      import (
     resolver_geografia,
     obtener_id_personal,
     obtener_id_actividad,
+)
+from silver.facts._helpers_fact_comunes import (
+    motivo_cuarentena_geografia as _motivo_cuarentena_geografia,
 )
 
 TABLA_ORIGEN  = 'Bronce.Consolidado_Tareos'
@@ -43,17 +45,6 @@ def _leer_bronce(engine: Engine) -> pd.DataFrame:
             WHERE Estado_Carga = 'CARGADO'
         """))
         return pd.DataFrame(resultado.fetchall(), columns=resultado.keys())
-
-
-def _motivo_cuarentena_geografia(resultado_geo: dict) -> str:
-    estado = resultado_geo.get('estado')
-    if estado in ('TEST_BLOCK_NO_MAPEADO', 'TEST_BLOCK_AMBIGUO'):
-        return 'Test block (VI) sin mapeo unico en Dim_Geografia.'
-    if estado in ('PENDIENTE_CASO_ESPECIAL', 'CASO_ESPECIAL_MODULO'):
-        return 'Geografia especial requiere catalogacion o regla en MDM_Geografia.'
-    if estado in ('PENDIENTE_DIM_DUPLICADA', 'GEOGRAFIA_AMBIGUA'):
-        return 'La clave geografica tiene mas de un registro vigente en Silver.Dim_Geografia.'
-    return 'Geografia no encontrada en Silver.Dim_Geografia.'
 
 
 def _es_fila_no_operativa(fila) -> bool:
@@ -174,7 +165,7 @@ def cargar_fact_tareo(engine: Engine) -> dict:
 
             planilla = str(fila.get('IDPlanilla_Raw', '')) or None
 
-            # ── INSERT ────────────────────────────────────────
+            # ── INSERT ───────────────
             conexion.execute(text("""
                 INSERT INTO Silver.Fact_Tareo (
                     ID_Geografia, ID_Tiempo, ID_Personal,

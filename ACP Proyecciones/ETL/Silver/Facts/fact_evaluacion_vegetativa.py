@@ -21,6 +21,12 @@ from utils.sql_lotes import ejecutar_en_lotes_con_engine, marcar_estado_carga_po
 from dq.cuarentena   import enviar_a_cuarentena
 from mdm.lookup      import obtener_id_tiempo, resolver_geografia, obtener_id_personal, obtener_id_variedad
 from mdm.homologador import homologar_columna
+from silver.facts._helpers_fact_comunes import (
+    a_entero_nulo as _a_entero_nulo,
+    a_entero_no_negativo as _a_entero_positivo,
+    motivo_cuarentena_geografia as _motivo_cuarentena_geografia,
+    validar_layout_migrado as _validar_layout_migrado_helper,
+)
 
 
 TABLA_ORIGEN  = 'Bronce.Evaluacion_Vegetativa'
@@ -41,89 +47,33 @@ SQL_INSERT_FACT = text("""
 """)
 
 
-def _motivo_cuarentena_geografia(resultado_geo: dict) -> str:
-    estado = resultado_geo.get('estado')
-    if estado in ('TEST_BLOCK_NO_MAPEADO', 'TEST_BLOCK_AMBIGUO'):
-        return 'Test block (VI) sin mapeo unico en Dim_Geografia.'
-    if estado in ('PENDIENTE_CASO_ESPECIAL', 'CASO_ESPECIAL_MODULO'):
-        return 'Geografia especial requiere catalogacion o regla en MDM_Geografia.'
-    if estado in ('PENDIENTE_CAMA_GENERICA', 'CAMA_NO_RELACION'):
-        return 'Cama no relacionada a la geografia operativa.'
-    if estado in ('PENDIENTE_DIM_DUPLICADA', 'GEOGRAFIA_AMBIGUA'):
-        return 'La clave geografica tiene mas de un registro vigente en Silver.Dim_Geografia.'
-    if estado == 'CAMA_NO_VALIDA':
-        return 'Cama fuera de rango operativo permitido.'
-    if estado == 'CAMA_NO_CATALOGO':
-        return 'Cama valida pero no registrada en el catalogo operativo.'
-    return 'Geografia no encontrada en Silver.Dim_Geografia.'
-
-
-def _a_entero_nulo(valor) -> int | None:
-    try:
-        if valor is None:
-            return None
-        texto = str(valor).strip()
-        if texto in ('', 'None', 'nan'):
-            return None
-        return int(float(texto))
-    except (ValueError, TypeError):
-        return None
-
-
-def _a_entero_positivo(valor) -> int | None:
-    numero = _a_entero_nulo(valor)
-    if numero is None or numero < 0:
-        return None
-    return numero
-
-
-def _obtener_columnas_tabla(engine: Engine, tabla_completa: str) -> set[str]:
-    esquema, tabla = tabla_completa.split('.')
-    with engine.connect() as conexion:
-        resultado = conexion.execute(text("""
-            SELECT COLUMN_NAME
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = :esquema
-              AND TABLE_NAME = :tabla
-        """), {'esquema': esquema, 'tabla': tabla})
-        return {str(fila[0]) for fila in resultado.fetchall()}
-
-
 def _validar_layout_migrado(engine: Engine) -> str:
-    columnas_bronce = _obtener_columnas_tabla(engine, TABLA_ORIGEN)
-    columnas_silver = _obtener_columnas_tabla(engine, TABLA_DESTINO)
-
-    columnas_bronce_requeridas = {
-        'ID_Evaluacion_Vegetativa',
-        'Fecha_Raw',
-        'DNI_Raw',
-        'Modulo_Raw',
-        'Turno_Raw',
-        'Valvula_Raw',
-        'Cama_Raw',
-        'Descripcion_Raw',
-        'Evaluacion_Raw',
-        'N_Plantas_Evaluadas_Raw',
-        'N_Plantas_en_Floracion_Raw',
-    }
-    columnas_silver_requeridas = {
-        'ID_Personal',
-        'Tipo_Evaluacion',
-        'Cantidad_Plantas_Evaluadas',
-        'Cantidad_Plantas_en_Floracion',
-    }
-
-    faltantes_bronce = sorted(columnas_bronce_requeridas - columnas_bronce)
-    faltantes_silver = sorted(columnas_silver_requeridas - columnas_silver)
-
-    if faltantes_bronce or faltantes_silver:
-        raise RuntimeError(
-            'La migracion definitiva de Evaluacion_Vegetativa no esta aplicada. '
-            f'Bronce faltantes: {faltantes_bronce or "ninguno"} | '
-            f'Silver faltantes: {faltantes_silver or "ninguno"}'
-        )
-
-    return 'ID_Evaluacion_Vegetativa'
+    return _validar_layout_migrado_helper(
+        engine,
+        tabla_origen=TABLA_ORIGEN,
+        tabla_destino=TABLA_DESTINO,
+        columna_id='ID_Evaluacion_Vegetativa',
+        columnas_bronce_requeridas={
+            'ID_Evaluacion_Vegetativa',
+            'Fecha_Raw',
+            'DNI_Raw',
+            'Modulo_Raw',
+            'Turno_Raw',
+            'Valvula_Raw',
+            'Cama_Raw',
+            'Descripcion_Raw',
+            'Evaluacion_Raw',
+            'N_Plantas_Evaluadas_Raw',
+            'N_Plantas_en_Floracion_Raw',
+        },
+        columnas_silver_requeridas={
+            'ID_Personal',
+            'Tipo_Evaluacion',
+            'Cantidad_Plantas_Evaluadas',
+            'Cantidad_Plantas_en_Floracion',
+        },
+        nombre_layout='Evaluacion_Vegetativa',
+    )
 
 
 def _leer_bronce(engine: Engine, columna_id: str) -> pd.DataFrame:
@@ -318,4 +268,3 @@ def cargar_fact_evaluacion_vegetativa(engine: Engine) -> dict:
         enviar_a_cuarentena(engine, TABLA_ORIGEN, resumen['cuarentena'])
 
     return resumen
-

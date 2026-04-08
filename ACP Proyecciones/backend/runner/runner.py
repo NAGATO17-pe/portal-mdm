@@ -106,17 +106,20 @@ def _procesar_comando(cmd: dict) -> None:
             log.info("[RUNNER] Encolando reintento",
                      extra={"id_corrida": id_corrida, "intento": intento_actual + 1})
             nuevo_id = f"{id_corrida}-r{intento_actual + 1}"
+            comentario_reintento = (corrida or {}).get("comentario") or comentario
             try:
                 rc.insertar_corrida(
                     id_corrida=nuevo_id,
                     iniciado_por=iniciado_por,
-                    comentario=f"Reintento {intento_actual + 1}/{max_ret}",
+                    comentario=comentario_reintento,
                     max_reintentos=max_ret,
+                    timeout_segundos=timeout,
                 )
                 rc.encolar_comando(
                     id_corrida=nuevo_id,
                     iniciado_por=iniciado_por,
                     tipo_comando="REINTENTAR",
+                    comentario=comentario_reintento,
                     max_reintentos=max_ret - 1,
                     timeout_seg=timeout,
                 )

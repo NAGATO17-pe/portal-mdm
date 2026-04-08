@@ -22,6 +22,12 @@ from utils.dni import procesar_dni
 from utils.fechas import obtener_id_tiempo as construir_id_tiempo, procesar_fecha
 from utils.sql_lotes import ejecutar_en_lotes_con_engine, marcar_estado_carga_por_ids
 from utils.texto import es_test_block, normalizar_modulo
+from silver.facts._helpers_fact_comunes import (
+    a_entero_nulo as _a_entero_nulo,
+    texto_nulo as _texto_nulo,
+    motivo_cuarentena_geografia as _motivo_cuarentena_geografia,
+    validar_layout_migrado as _validar_layout_migrado_helper,
+)
 
 
 TABLA_ORIGEN = 'Bronce.Tasa_Crecimiento_Brotes'
@@ -46,18 +52,6 @@ SQL_INSERT_FACT = text("""
 """)
 
 
-def _a_entero_nulo(valor) -> int | None:
-    try:
-        if valor is None:
-            return None
-        texto = str(valor).strip()
-        if texto in ('', 'None', 'nan'):
-            return None
-        return int(float(texto))
-    except (ValueError, TypeError):
-        return None
-
-
 def _a_decimal_nulo(valor) -> float | None:
     try:
         if valor is None:
@@ -68,13 +62,6 @@ def _a_decimal_nulo(valor) -> float | None:
         return float(texto)
     except (ValueError, TypeError):
         return None
-
-
-def _texto_nulo(valor) -> str | None:
-    if valor is None:
-        return None
-    texto = str(valor).strip()
-    return texto if texto and texto.lower() not in ('none', 'nan') else None
 
 
 def _clave_cache_fecha(valor) -> str:
@@ -124,81 +111,44 @@ def _registrar_rechazo(
     })
 
 
-def _obtener_columnas_tabla(engine: Engine, tabla_completa: str) -> set[str]:
-    esquema, tabla = tabla_completa.split('.')
-    with engine.connect() as conexion:
-        resultado = conexion.execute(text("""
-            SELECT COLUMN_NAME
-            FROM INFORMATION_SCHEMA.COLUMNS
-            WHERE TABLE_SCHEMA = :esquema
-              AND TABLE_NAME = :tabla
-        """), {'esquema': esquema, 'tabla': tabla})
-        return {str(fila[0]) for fila in resultado.fetchall()}
-
-
-def _motivo_cuarentena_geografia(resultado_geo: dict) -> str:
-    estado = resultado_geo.get('estado')
-    if estado in ('TEST_BLOCK_NO_MAPEADO', 'TEST_BLOCK_AMBIGUO'):
-        return 'Test block sin mapeo unico en Dim_Geografia.'
-    if estado in ('PENDIENTE_CASO_ESPECIAL', 'CASO_ESPECIAL_MODULO'):
-        return 'Geografia especial requiere catalogacion o regla en MDM_Geografia.'
-    if estado in ('PENDIENTE_CAMA_GENERICA', 'CAMA_NO_RELACION'):
-        return 'Cama no relacionada a la geografia operativa.'
-    if estado in ('PENDIENTE_DIM_DUPLICADA', 'GEOGRAFIA_AMBIGUA'):
-        return 'La clave geografica tiene mas de un registro vigente en Silver.Dim_Geografia.'
-    if estado == 'CAMA_NO_VALIDA':
-        return 'Cama fuera de rango operativo permitido.'
-    if estado == 'CAMA_NO_CATALOGO':
-        return 'Cama valida pero no registrada en el catalogo operativo.'
-    return 'Geografia no encontrada en Silver.Dim_Geografia.'
-
-
 def _validar_layout_migrado(engine: Engine) -> str:
-    columnas_bronce = _obtener_columnas_tabla(engine, TABLA_ORIGEN)
-    columnas_silver = _obtener_columnas_tabla(engine, TABLA_DESTINO)
-
-    columnas_bronce_requeridas = {
-        'ID_Tasa_Crecimiento',
-        'Fecha_Raw',
-        'DNI_Raw',
-        'Modulo_Raw',
-        'Turno_Raw',
-        'Valvula_Raw',
-        'Cama_Raw',
-        'Condicion_Raw',
-        'Estado_Vegetativo_Raw',
-        'Variedad_Raw',
-        'Tipo_Tallo_Raw',
-        'Ensayo_Raw',
-        'Medida_Raw',
-        'Fecha_Poda_Aux_Raw',
-        'Campana_Raw',
-        'Tipo_Evaluacion_Raw',
-        'Estado_Carga',
-    }
-    columnas_silver_requeridas = {
-        'ID_Geografia',
-        'ID_Tiempo',
-        'ID_Variedad',
-        'ID_Personal',
-        'Codigo_Ensayo',
-        'Codigo_Origen',
-        'Fecha_Poda_Aux',
-        'Dias_Desde_Poda',
-        'Medida_Crecimiento',
-    }
-
-    faltantes_bronce = sorted(columnas_bronce_requeridas - columnas_bronce)
-    faltantes_silver = sorted(columnas_silver_requeridas - columnas_silver)
-
-    if faltantes_bronce or faltantes_silver:
-        raise RuntimeError(
-            'La migracion definitiva de Tasa_Crecimiento_Brotes no esta aplicada. '
-            f'Bronce faltantes: {faltantes_bronce or "ninguno"} | '
-            f'Silver faltantes: {faltantes_silver or "ninguno"}'
-        )
-
-    return 'ID_Tasa_Crecimiento'
+    return _validar_layout_migrado_helper(
+        engine,
+        tabla_origen=TABLA_ORIGEN,
+        tabla_destino=TABLA_DESTINO,
+        columna_id='ID_Tasa_Crecimiento',
+        columnas_bronce_requeridas={
+            'ID_Tasa_Crecimiento',
+            'Fecha_Raw',
+            'DNI_Raw',
+            'Modulo_Raw',
+            'Turno_Raw',
+            'Valvula_Raw',
+            'Cama_Raw',
+            'Condicion_Raw',
+            'Estado_Vegetativo_Raw',
+            'Variedad_Raw',
+            'Tipo_Tallo_Raw',
+            'Ensayo_Raw',
+            'Medida_Raw',
+            'Fecha_Poda_Aux_Raw',
+            'Campana_Raw',
+            'Tipo_Evaluacion_Raw',
+            'Estado_Carga',
+        },
+        columnas_silver_requeridas={
+            'ID_Geografia',
+            'ID_Tiempo',
+            'ID_Variedad',
+            'ID_Personal',
+            'Codigo_Ensayo',
+            'Codigo_Origen',
+            'Fecha_Poda_Aux',
+            'Dias_Desde_Poda',
+            'Medida_Crecimiento',
+        },
+        nombre_layout='Tasa_Crecimiento_Brotes',
+    )
 
 
 def _leer_bronce(engine: Engine, columna_id: str) -> pd.DataFrame:

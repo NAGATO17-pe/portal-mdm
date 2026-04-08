@@ -14,6 +14,12 @@ import repositorios.repo_catalogos as repo
 
 log = obtener_logger(__name__)
 
+_REPOSITORIOS_CATALOGO = {
+    "variedades": repo.listar_variedades,
+    "geografia": repo.listar_geografia,
+    "personal": repo.listar_personal,
+}
+
 _TTL_CATALOGOS = 3600   # 1 hora — datos estáticos
 
 
@@ -28,12 +34,20 @@ def _con_cache(clave: str, ttl: int, fn, *args, **kwargs):
     return resultado
 
 
+def _listar_catalogo(nombre_catalogo: str, pagina: int = 1, tamano: int = 20) -> dict:
+    return _con_cache(
+        f"cat:{nombre_catalogo}:p{pagina}:s{tamano}",
+        _TTL_CATALOGOS,
+        _REPOSITORIOS_CATALOGO[nombre_catalogo],
+        pagina=pagina,
+        tamano=tamano,
+    )
+
+
 def listar_variedades(pagina: int = 1, tamano: int = 20) -> dict:
     """Lee MDM.Catalogo_Variedades activas con paginación server-side."""
-    return _con_cache(
-        f"cat:variedades:p{pagina}:s{tamano}",
-        _TTL_CATALOGOS,
-        repo.listar_variedades,
+    return _listar_catalogo(
+        "variedades",
         pagina=pagina,
         tamano=tamano,
     )
@@ -41,10 +55,8 @@ def listar_variedades(pagina: int = 1, tamano: int = 20) -> dict:
 
 def listar_geografia(pagina: int = 1, tamano: int = 20) -> dict:
     """Lee Silver.Dim_Geografia vigente con paginación server-side."""
-    return _con_cache(
-        f"cat:geografia:p{pagina}:s{tamano}",
-        _TTL_CATALOGOS,
-        repo.listar_geografia,
+    return _listar_catalogo(
+        "geografia",
         pagina=pagina,
         tamano=tamano,
     )
@@ -52,10 +64,8 @@ def listar_geografia(pagina: int = 1, tamano: int = 20) -> dict:
 
 def listar_personal(pagina: int = 1, tamano: int = 20) -> dict:
     """Lee Silver.Dim_Personal con paginación server-side."""
-    return _con_cache(
-        f"cat:personal:p{pagina}:s{tamano}",
-        _TTL_CATALOGOS,
-        repo.listar_personal,
+    return _listar_catalogo(
+        "personal",
         pagina=pagina,
         tamano=tamano,
     )

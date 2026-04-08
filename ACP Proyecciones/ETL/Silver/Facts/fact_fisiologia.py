@@ -16,6 +16,10 @@ from utils.sql_lotes import ejecutar_en_lotes_con_engine, marcar_estado_carga_po
 from dq.cuarentena   import enviar_a_cuarentena
 from mdm.lookup      import obtener_id_geografia, obtener_id_variedad
 from mdm.homologador import homologar_columna
+from silver.facts._helpers_fact_comunes import (
+    a_entero_nulo as _a_int,
+    parsear_valores_raw as _parsear_valores_raw,
+)
 
 
 TABLA_ORIGEN  = 'Bronce.Fisiologia'
@@ -40,33 +44,6 @@ MAPA_TERCIO = {
     'MEDIO': 'MEDIO', 'M': 'MEDIO', 'MID': 'MEDIO',
     'ALTO': 'ALTO', 'A': 'ALTO', 'HIGH': 'ALTO',
 }
-
-
-def _a_int(valor) -> int | None:
-    try:
-        return int(float(str(valor)))
-    except (ValueError, TypeError):
-        return None
-
-
-def _parsear_valores_raw(texto: str | None) -> dict[str, str]:
-    if texto is None:
-        return {}
-
-    crudo = str(texto).strip()
-    if not crudo:
-        return {}
-
-    resultado: dict[str, str] = {}
-    for parte in crudo.split('|'):
-        if '=' not in parte:
-            continue
-        clave, valor = parte.split('=', 1)
-        clave = str(clave).strip()
-        valor = str(valor).strip()
-        if clave:
-            resultado[clave] = valor
-    return resultado
 
 
 def _obtener_columna_sql(columnas_disponibles: set[str], nombre_columna: str) -> str:

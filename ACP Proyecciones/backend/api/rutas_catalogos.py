@@ -22,6 +22,15 @@ from servicios.servicio_catalogos import listar_geografia, listar_personal, list
 enrutador_catalogos = APIRouter(prefix="/v1/catalogos", tags=["Catálogos"])
 
 
+def _construir_respuesta_paginada(resultado: dict, schema_fila) -> RespuestaPaginadaCatalogo:
+    return RespuestaPaginadaCatalogo(
+        total=resultado["total"],
+        pagina=resultado["pagina"],
+        tamano=resultado["tamano"],
+        datos=[schema_fila(**fila) for fila in resultado["datos"]],
+    )
+
+
 @enrutador_catalogos.get(
     "/variedades",
     summary="Lista el catálogo de variedades activas",
@@ -32,12 +41,7 @@ def obtener_variedades(
     tamano: int = Query(default=20, ge=1, le=100),
 ) -> RespuestaPaginadaCatalogo:
     resultado = listar_variedades(pagina=pagina, tamano=tamano)
-    return RespuestaPaginadaCatalogo(
-        total=resultado["total"],
-        pagina=resultado["pagina"],
-        tamano=resultado["tamano"],
-        datos=[RespuestaVariedad(**fila) for fila in resultado["datos"]],
-    )
+    return _construir_respuesta_paginada(resultado, RespuestaVariedad)
 
 
 @enrutador_catalogos.get(
@@ -50,12 +54,7 @@ def obtener_geografia(
     tamano: int = Query(default=20, ge=1, le=100),
 ) -> RespuestaPaginadaCatalogo:
     resultado = listar_geografia(pagina=pagina, tamano=tamano)
-    return RespuestaPaginadaCatalogo(
-        total=resultado["total"],
-        pagina=resultado["pagina"],
-        tamano=resultado["tamano"],
-        datos=[RespuestaGeografia(**fila) for fila in resultado["datos"]],
-    )
+    return _construir_respuesta_paginada(resultado, RespuestaGeografia)
 
 
 @enrutador_catalogos.get(
@@ -68,9 +67,4 @@ def obtener_personal(
     tamano: int = Query(default=20, ge=1, le=100),
 ) -> RespuestaPaginadaCatalogo:
     resultado = listar_personal(pagina=pagina, tamano=tamano)
-    return RespuestaPaginadaCatalogo(
-        total=resultado["total"],
-        pagina=resultado["pagina"],
-        tamano=resultado["tamano"],
-        datos=[RespuestaPersonal(**fila) for fila in resultado["datos"]],
-    )
+    return _construir_respuesta_paginada(resultado, RespuestaPersonal)
