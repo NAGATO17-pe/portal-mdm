@@ -7,11 +7,37 @@ Cambiarlos en Streamlit afecta el comportamiento del ETL
 sin tocar código.
 """
 
+import json
+import re
+
 from sqlalchemy import text
 from config.conexion import obtener_engine
 
 
 _cache_parametros: dict[str, str] = {}
+
+
+def _resolver_columna_parametro(conexion) -> str:
+    resultado = conexion.execute(text("""
+        SELECT COLUMN_NAME
+        FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = 'Config'
+          AND TABLE_NAME = 'Parametros_Pipeline'
+    """))
+    columnas = {
+        str(fila[0]).strip()
+        for fila in resultado.fetchall()
+        if fila and fila[0]
+    }
+
+    if 'Parametro' in columnas:
+        return 'Parametro'
+    if 'Nombre_Parametro' in columnas:
+        return 'Nombre_Parametro'
+
+    raise RuntimeError(
+        'Config.Parametros_Pipeline no expone columna Parametro ni Nombre_Parametro.'
+    )
 
 
 def cargar_parametros() -> dict[str, str]:
@@ -27,8 +53,9 @@ def cargar_parametros() -> dict[str, str]:
     engine = obtener_engine()
 
     with engine.connect() as conexion:
-        resultado = conexion.execute(text("""
-            SELECT Parametro, Valor
+        columna_parametro = _resolver_columna_parametro(conexion)
+        resultado = conexion.execute(text(f"""
+            SELECT {columna_parametro} AS Parametro, Valor
             FROM Config.Parametros_Pipeline
         """))
         _cache_parametros = {
@@ -66,6 +93,41 @@ def obtener_float(parametro: str, default: float = 0.0) -> float:
         return float(obtener(parametro, str(default)))
     except (ValueError, TypeError):
         return default
+
+
+def obtener_bool(parametro: str, default: bool = False) -> bool:
+    """
+    Retorna el valor de un parametro como booleano flexible.
+    """
+    valor = str(obtener(parametro, str(default))).strip().casefold()
+    if valor in {'1', 'true', 't', 'si', 'sí', 'yes', 'y', 'on'}:
+        return True
+    if valor in {'0', 'false', 'f', 'no', 'n', 'off'}:
+        return False
+    return bool(default)
+
+
+def obtener_lista(parametro: str, default: list[str] | tuple[str, ...] | None = None) -> list[str]:
+    """
+    Retorna el valor de un parametro como lista de textos.
+
+    Acepta JSON array o separadores comunes.
+    """
+    valor = obtener(parametro, '')
+    if valor is None or str(valor).strip() == '':
+        return [str(item).strip() for item in (default or []) if str(item).strip()]
+
+    texto = str(valor).strip()
+    if texto.startswith('[') and texto.endswith(']'):
+        try:
+            lista = json.loads(texto)
+            if isinstance(lista, list):
+                return [str(item).strip() for item in lista if str(item).strip()]
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+
+    partes = re.split(r'[\n,;|]+', texto)
+    return [parte.strip() for parte in partes if parte and parte.strip()]
 
 
 def limpiar_cache() -> None:

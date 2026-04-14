@@ -165,6 +165,52 @@ def obtener_facts_disponibles() -> list[str]:
     return list(CONFIG_FACTS.keys())
 
 
+def obtener_tablas_bronce_por_dependencias(
+    dependencias: list[str] | tuple[str, ...] | set[str],
+) -> list[str]:
+    dependencias_set = set(dependencias or [])
+    tablas: list[str] = []
+
+    for meta in CONFIG_FACTS.values():
+        if not dependencias_set.intersection(meta.get("dependencias", ())):
+            continue
+        for tabla in meta.get("fuentes_bronce", ()):
+            if tabla not in tablas:
+                tablas.append(tabla)
+
+    return tablas
+
+
+def obtener_facts_con_marts() -> list[str]:
+    return [
+        nombre
+        for nombre, meta in CONFIG_FACTS.items()
+        if meta.get("marts")
+    ]
+
+
+def construir_catalogo_facts(funciones_por_fact: dict[str, object]) -> OrderedDict[str, dict]:
+    nombres_config = list(CONFIG_FACTS.keys())
+    nombres_funciones = list(funciones_por_fact.keys())
+
+    faltantes = [nombre for nombre in nombres_config if nombre not in funciones_por_fact]
+    sobrantes = [nombre for nombre in nombres_funciones if nombre not in CONFIG_FACTS]
+    if faltantes or sobrantes:
+        raise ValueError(
+            'Catalogo de funciones inconsistente. '
+            f'Faltantes: {faltantes} | Sobrantes: {sobrantes}'
+        )
+
+    catalogo: OrderedDict[str, dict] = OrderedDict()
+    for nombre, meta in CONFIG_FACTS.items():
+        catalogo[nombre] = {
+            **meta,
+            'nombre_fact': nombre,
+            'funcion': funciones_por_fact[nombre],
+        }
+    return catalogo
+
+
 def obtener_catalogo_facts() -> list[dict]:
     catalogo = []
     for nombre, meta in CONFIG_FACTS.items():

@@ -77,6 +77,12 @@ def _parchear_entorno_pipeline(monkeypatch) -> None:
             "Estado_Calidad_Cama": "OK_OPERATIVO",
         },
     )
+    monkeypatch.setattr(pipeline, "obtener_param_int", lambda _nombre, default=0: default)
+    monkeypatch.setattr(
+        pipeline,
+        "obtener_param_lista",
+        lambda _nombre, default=None: list(default or []),
+    )
 
 
 def test_ejecutar_omite_gold_y_falla_si_alguna_fact_revienta(monkeypatch):
@@ -145,3 +151,69 @@ def test_reproceso_omite_gold_y_falla_si_fact_dirigida_revienta(monkeypatch):
 
     assert llamadas_gold == []
     assert "Fact_Telemetria_Clima: fallo reproceso" in str(error.value)
+
+
+def test_cargar_configuracion_operativa_acepta_overrides(monkeypatch):
+    monkeypatch.setattr(
+        pipeline,
+        "obtener_param_int",
+        lambda nombre, default=0: {
+            "CAMA_MIN_PERMITIDA": 2,
+            "CAMA_MAX_PERMITIDA": 88,
+            "MAX_CAMAS_POR_GEOGRAFIA": 44,
+            "SP_CAMA_MODO_APLICAR": 0,
+        }.get(nombre, default),
+    )
+    monkeypatch.setattr(
+        pipeline,
+        "obtener_param_lista",
+        lambda nombre, default=None: {
+            "TABLAS_BRONCE_SP_CAMA": ["Bronce.Peladas"],
+            "FACTS_BLOQUEANTES_GOLD": ["Fact_Cosecha_SAP", "fact_tareo"],
+            "ESTADOS_BLOQUEANTES_CALIDAD_CAMA": ["OK_OPERATIVO"],
+        }.get(nombre, list(default or [])),
+    )
+
+    config = pipeline._cargar_configuracion_operativa()
+
+    assert config["cama_min_permitida"] == 2
+    assert config["cama_max_permitida"] == 88
+    assert config["max_camas_por_geografia"] == 44
+    assert config["sp_cama_modo_aplicar"] == 0
+    assert config["tablas_bronce_sp_cama"] == ("Bronce.Peladas",)
+    assert config["facts_bloqueantes_gold"] == ("Fact_Cosecha_SAP", "Fact_Tareo")
+    assert config["estados_bloqueantes_calidad_cama"] == ("OK_OPERATIVO",)
+
+
+def test_ejecutar_permita_gold_si_falla_fact_no_bloqueante(monkeypatch):
+    _parchear_entorno_pipeline(monkeypatch)
+
+    for nombre in _CARGADORES_FACTS_COMPLETAS:
+        monkeypatch.setattr(pipeline, nombre, _resultado_fact_ok)
+
+    monkeypatch.setattr(
+        pipeline,
+        "obtener_param_lista",
+        lambda nombre, default=None: (
+            ["Fact_Cosecha_SAP"] if nombre == "FACTS_BLOQUEANTES_GOLD" else list(default or [])
+        ),
+    )
+
+    def _fact_fallida(_engine):
+        raise RuntimeError("fallo no bloqueante")
+
+    monkeypatch.setattr(pipeline, "cargar_fact_fisiologia", _fact_fallida)
+
+    llamadas_gold: list[object] = []
+
+    def _gold_si_debe_correr(*_args, **_kwargs):
+        llamadas_gold.append("gold")
+        return {"Gold.Mart_Cosecha": 1}
+
+    monkeypatch.setattr(pipeline, "refrescar_todos_los_marts", _gold_si_debe_correr)
+
+    with pytest.raises(pipeline.ErrorEjecucionPipeline) as error:
+        pipeline.ejecutar()
+
+    assert llamadas_gold == ["gold"]
+    assert "Fact_Fisiologia: fallo no bloqueante" in str(error.value)

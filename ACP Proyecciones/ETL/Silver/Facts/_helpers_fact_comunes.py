@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import MutableSet
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
@@ -47,6 +48,39 @@ def motivo_cuarentena_geografia(resultado_geo: dict) -> str:
     if estado == "CAMA_NO_CATALOGO":
         return "Cama valida pero no registrada en el catalogo operativo."
     return "Geografia no encontrada en Silver.Dim_Geografia."
+
+
+def registrar_rechazo(
+    resumen: dict,
+    ids_rechazados,
+    id_origen: int | None,
+    *,
+    columna: str,
+    valor,
+    motivo: str,
+    tipo_regla: str = 'DQ',
+    severidad: str = 'ALTO',
+) -> None:
+    resumen['rechazados'] = int(resumen.get('rechazados', 0) or 0) + 1
+    if id_origen is not None:
+        if isinstance(ids_rechazados, MutableSet) or hasattr(ids_rechazados, 'add'):
+            ids_rechazados.add(id_origen)
+        else:
+            ids_rechazados.append(id_origen)
+    resumen.setdefault('cuarentena', []).append({
+        'columna': columna,
+        'valor': valor,
+        'motivo': motivo,
+        'tipo_regla': tipo_regla,
+        'severidad': severidad,
+        'id_registro_origen': id_origen,
+    })
+
+
+def finalizar_resumen_fact(resumen: dict) -> dict:
+    from utils.metricas import normalizar_resultado_fact
+
+    return normalizar_resultado_fact(resumen)
 
 
 def obtener_columnas_tabla(engine: Engine, tabla_completa: str) -> set[str]:

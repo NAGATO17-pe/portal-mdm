@@ -104,7 +104,8 @@ CREATE TABLE Bronce.Maduracion (
     Evaluador_Raw           NVARCHAR(150)   NULL,
     Valores_Raw             NVARCHAR(MAX)   NULL,
     Nombre_Archivo          NVARCHAR(255)   NOT NULL,
-    Fecha_Sistema           DATETIME2       NOT NULL DEFAULT GETDATE()
+    Fecha_Sistema           DATETIME2       NOT NULL DEFAULT GETDATE(),
+    Estado_Carga            NVARCHAR(20)    NOT NULL DEFAULT 'CARGADO'
 );
 GO
 

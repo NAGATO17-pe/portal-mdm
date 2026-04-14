@@ -1,4 +1,4 @@
-﻿"""
+"""
 Autenticacion y control de acceso del portal MDM ACP.
 
 La autenticacion se delega al backend FastAPI via JWT.

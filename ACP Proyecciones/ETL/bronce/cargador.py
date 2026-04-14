@@ -5,7 +5,9 @@ Lee archivos Excel de campo e inserta en Bronce como NVARCHAR raw.
 Aplica validacion de layout critico cuando la operacion lo exige.
 """
 
+import json
 import shutil
+import tempfile
 import re
 import unicodedata
 import numpy as np
@@ -112,6 +114,31 @@ _FIRMAS_LAYOUT_CRITICO: dict[str, dict[str, Any]] = {
 }
 
 _FIRMAS_RUTA_SUGERIDA: dict[str, dict[str, Any]] = {
+    'peladas': {
+        'tabla_destino': 'Bronce.Peladas',
+        'columnas_clave': {
+            'Fecha_Raw',
+            'DNI_Raw',
+            'Modulo_Raw',
+            'Turno_Raw',
+            'Valvula_Raw',
+            'Tipo_Evaluacion_Raw',
+            'Punto_Raw',
+            'Variedad_Raw',
+            'BotonesFlorales_Raw',
+            'Flores_Raw',
+            'BayasPequenas_Raw',
+            'BayasGrandes_Raw',
+            'Fase1_Raw',
+            'Fase2_Raw',
+            'BayasCremas_Raw',
+            'BayasMaduras_Raw',
+            'BayasCosechables_Raw',
+            'PlantasProductivas_Raw',
+            'PlantasNoProductivas_Raw',
+            'Muestras_Raw',
+        },
+    },
     'induccion_floral': {
         'tabla_destino': 'Bronce.Induccion_Floral',
         'columnas_clave': {
@@ -246,6 +273,7 @@ _ALIAS_COLUMNAS: dict[str, str] = {
     # Evaluacion
     'Evaluacion':                 'Evaluacion',
     'evaluacion':                 'Evaluacion',
+    'Tipo_de_Evaluacion':         'Tipo_Evaluacion',
     # DNI / Personal
     'DNI':                        'DNI',
     'dni':                        'DNI',
@@ -306,6 +334,21 @@ _ALIAS_COLUMNAS: dict[str, str] = {
     'Peso_cosechables':           'PesoCosechables',
     'PesoBaya':                   'PesoBaya',
     'CantMuestra':                'CantMuestra',
+    # Peladas / Conteos
+    'Botones_Florales':           'BotonesFlorales',
+    'Flores':                     'Flores',
+    'Bayas_Pequenas':             'BayasPequenas',
+    'Bayas_Grandes_Verdes':       'BayasGrandes',
+    'Bayas_Cremas':               'BayasCremas',
+    'Bayas_Maduras':              'BayasMaduras',
+    'Bayas_Cosechables':          'BayasCosechables',
+    'Plantas_Productivas':        'PlantasProductivas',
+    'Plantas_No_Productivas':     'PlantasNoProductivas',
+    'Muestra':                    'Muestras',
+    'Yemas_Activadas':            'YemasActivadas',
+    'TOTAL_ORGANOS':              'Total_Organos',
+    'Total_plantas':              'TotalPlantas',
+    'Plantas_Proy':               'PlantasProy',
     # Fisiologia
     'TERCIO':                     'Tercio',
     'HINCHADAS':                  'Hinchadas',
@@ -442,7 +485,65 @@ def insertar_en_bronce(df: pd.DataFrame,
     return len(df)
 
 
-def archivar_archivo(ruta_archivo: Path, nombre_carpeta: str) -> None:
+def _crear_copia_temporal_excel(ruta_archivo: Path) -> Path:
+    sufijo = f'_{ruta_archivo.name}'
+    with tempfile.NamedTemporaryFile(delete=False, suffix=sufijo) as temporal:
+        ruta_temporal = Path(temporal.name)
+    shutil.copy2(str(ruta_archivo), str(ruta_temporal))
+    return ruta_temporal
+
+
+def _ruta_marca_archivo(ruta_archivo: Path) -> Path:
+    return ruta_archivo.with_name(f'{ruta_archivo.name}.procesado.json')
+
+
+def _marcar_archivo_local(ruta_archivo: Path,
+                          estado: str,
+                          *,
+                          destino: Path | None = None,
+                          codigo_rechazo: str | None = None) -> Path:
+    stat_archivo = ruta_archivo.stat()
+    payload = {
+        'archivo': ruta_archivo.name,
+        'estado': str(estado).upper(),
+        'fecha_marca': datetime.now().isoformat(timespec='seconds'),
+        'tamano_bytes': int(stat_archivo.st_size),
+        'mtime_ns': int(stat_archivo.st_mtime_ns),
+    }
+    if destino is not None:
+        payload['destino'] = str(destino)
+    if codigo_rechazo:
+        payload['codigo_rechazo'] = str(codigo_rechazo)
+
+    ruta_marca = _ruta_marca_archivo(ruta_archivo)
+    ruta_marca.write_text(
+        json.dumps(payload, ensure_ascii=True, indent=2),
+        encoding='utf-8',
+    )
+    return ruta_marca
+
+
+def _archivar_o_marcar(ruta_archivo: Path,
+                       destino: Path,
+                       *,
+                       estado_marca: str,
+                       codigo_rechazo: str | None = None) -> tuple[Path, bool]:
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        shutil.move(str(ruta_archivo), str(destino))
+        return destino, False
+    except PermissionError:
+        shutil.copy2(str(ruta_archivo), str(destino))
+        _marcar_archivo_local(
+            ruta_archivo,
+            estado_marca,
+            destino=destino,
+            codigo_rechazo=codigo_rechazo,
+        )
+        return destino, True
+
+
+def archivar_archivo(ruta_archivo: Path, nombre_carpeta: str) -> tuple[Path, bool]:
     """
     Mueve el archivo procesado a data/procesados/nombre_carpeta/
     con timestamp en el nombre para no sobrescribir.
@@ -450,12 +551,16 @@ def archivar_archivo(ruta_archivo: Path, nombre_carpeta: str) -> None:
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     nombre_nuevo = f'{ruta_archivo.stem}_{timestamp}{ruta_archivo.suffix}'
     destino = CARPETA_PROCESADOS / nombre_carpeta / nombre_nuevo
-    shutil.move(str(ruta_archivo), str(destino))
+    return _archivar_o_marcar(
+        ruta_archivo,
+        destino,
+        estado_marca='PROCESADO',
+    )
 
 
 def archivar_archivo_rechazado(ruta_archivo: Path,
                                nombre_carpeta: str,
-                               codigo_rechazo: str) -> Path:
+                               codigo_rechazo: str) -> tuple[Path, bool]:
     """
     Mueve el archivo rechazado a data/rechazados/nombre_carpeta/
     preservando trazabilidad del motivo en el nombre.
@@ -464,9 +569,12 @@ def archivar_archivo_rechazado(ruta_archivo: Path,
     sufijo = str(codigo_rechazo or 'RECHAZADO').strip().replace(' ', '_')
     nombre_nuevo = f'{ruta_archivo.stem}_{sufijo}_{timestamp}{ruta_archivo.suffix}'
     destino = CARPETA_RECHAZADOS / nombre_carpeta / nombre_nuevo
-    destino.parent.mkdir(parents=True, exist_ok=True)
-    shutil.move(str(ruta_archivo), str(destino))
-    return destino
+    return _archivar_o_marcar(
+        ruta_archivo,
+        destino,
+        estado_marca='RECHAZADO',
+        codigo_rechazo=codigo_rechazo,
+    )
 
 
 def _obtener_columnas_bronce(tabla_destino: str, engine) -> set[str]:
@@ -554,6 +662,108 @@ def _leer_excel_clima_bd(ruta_archivo: Path) -> pd.DataFrame:
         df['Sector_Raw'] = sector
 
     return df
+
+
+def _leer_excel_peladas_bd(ruta_archivo: Path) -> pd.DataFrame:
+    """
+    Lee el layout formal de Peladas.
+    Prioriza la hoja BD_LT, que representa el subconjunto operativo de Peladas.
+    Si no existe, intenta hoja BD y filtra solo registros con Tipo_Evaluacion = PELADAS.
+    """
+    libro = pd.ExcelFile(str(ruta_archivo), engine='openpyxl')
+    hojas = set(libro.sheet_names)
+
+    if 'BD_LT' in hojas:
+        return _leer_excel_especial(ruta_archivo, sheet_name='BD_LT', header_idx=0)
+
+    if 'BD' in hojas:
+        df = _leer_excel_especial(ruta_archivo, sheet_name='BD', header_idx=0)
+        if df.empty:
+            return df
+
+        if 'Tipo_Evaluacion_Raw' in df.columns:
+            mascara_peladas = (
+                df['Tipo_Evaluacion_Raw']
+                .astype(str)
+                .str.strip()
+                .str.upper()
+                .eq('PELADAS')
+            )
+            df = df[mascara_peladas].copy()
+
+        return df
+
+    raise ValueError(
+        'Layout de Peladas sin hoja compatible. '
+        'Se esperaba BD_LT o BD.'
+    )
+
+
+def _proyectar_dataframe_peladas_bronce(ruta_archivo: Path) -> pd.DataFrame:
+    """
+    Proyecta el layout real de Peladas a las columnas fisicas esperadas en Bronce.
+    Conserva metadatos adicionales en Valores_Raw para no perder trazabilidad.
+    """
+    df = _leer_excel_peladas_bd(ruta_archivo)
+    if df.empty:
+        return df
+
+    columnas_salida = {
+        'Fecha_Raw': _serie_o_nulos(df, 'Fecha_Raw'),
+        'Fundo_Raw': _serie_o_nulos(df, 'Fundo_Raw'),
+        'DNI_Raw': _serie_o_nulos(df, 'DNI_Raw'),
+        'Nombres_Raw': _serie_o_nulos(df, 'Nombres_Raw'),
+        'Evaluador_Raw': _serie_o_nulos(df, 'Nombres_Raw'),
+        'Modulo_Raw': _serie_o_nulos(df, 'Modulo_Raw'),
+        'Turno_Raw': _serie_o_nulos(df, 'Turno_Raw'),
+        'Valvula_Raw': _serie_o_nulos(df, 'Valvula_Raw'),
+        'Tipo_Evaluacion_Raw': _serie_o_nulos(df, 'Tipo_Evaluacion_Raw'),
+        'Punto_Raw': _serie_o_nulos(df, 'Punto_Raw'),
+        'Variedad_Raw': _serie_o_nulos(df, 'Variedad_Raw'),
+        'Muestras_Raw': _serie_o_nulos(df, 'Muestras_Raw'),
+        'BotonesFlorales_Raw': _serie_o_nulos(df, 'BotonesFlorales_Raw'),
+        'Flores_Raw': _serie_o_nulos(df, 'Flores_Raw'),
+        'BayasPequenas_Raw': _serie_o_nulos(df, 'BayasPequenas_Raw'),
+        'BayasGrandes_Raw': _serie_o_nulos(df, 'BayasGrandes_Raw'),
+        'Fase1_Raw': _serie_o_nulos(df, 'Fase1_Raw'),
+        'Fase2_Raw': _serie_o_nulos(df, 'Fase2_Raw'),
+        'BayasCremas_Raw': _serie_o_nulos(df, 'BayasCremas_Raw'),
+        'BayasMaduras_Raw': _serie_o_nulos(df, 'BayasMaduras_Raw'),
+        'BayasCosechables_Raw': _serie_o_nulos(df, 'BayasCosechables_Raw'),
+        'PlantasProductivas_Raw': _serie_o_nulos(df, 'PlantasProductivas_Raw'),
+        'PlantasNoProductivas_Raw': _serie_o_nulos(df, 'PlantasNoProductivas_Raw'),
+    }
+
+    df_salida = pd.DataFrame(columnas_salida, index=df.index)
+    columnas_usadas = {
+        'Fecha_Raw',
+        'Fundo_Raw',
+        'DNI_Raw',
+        'Nombres_Raw',
+        'Modulo_Raw',
+        'Turno_Raw',
+        'Valvula_Raw',
+        'Tipo_Evaluacion_Raw',
+        'Punto_Raw',
+        'Variedad_Raw',
+        'Muestras_Raw',
+        'BotonesFlorales_Raw',
+        'Flores_Raw',
+        'BayasPequenas_Raw',
+        'BayasGrandes_Raw',
+        'Fase1_Raw',
+        'Fase2_Raw',
+        'BayasCremas_Raw',
+        'BayasMaduras_Raw',
+        'BayasCosechables_Raw',
+        'PlantasProductivas_Raw',
+        'PlantasNoProductivas_Raw',
+    }
+    columnas_extra = [col for col in df.columns if col not in columnas_usadas]
+    if columnas_extra:
+        df_salida['Valores_Raw'] = _serializar_valores_extra(df, columnas_extra)
+
+    return df_salida
 
 
 def _serie_o_nulos(df: pd.DataFrame, columna: str) -> pd.Series:
@@ -963,6 +1173,9 @@ def _validar_enrutamiento_global(
     tabla_destino: str,
     columnas_detectadas: set[str],
 ) -> dict | None:
+    if nombre_carpeta not in _FIRMAS_RUTA_SUGERIDA:
+        return None
+
     ruta_sugerida, score_sugerida = _detectar_ruta_sugerida(columnas_detectadas, nombre_carpeta)
     if not ruta_sugerida:
         return None
@@ -1003,17 +1216,22 @@ def cargar_archivo(nombre_carpeta: str,
         'estado':    'ERROR',
         'mensaje':   '',
     }
+    ruta_trabajo: Path | None = None
 
     try:
+        ruta_trabajo = _crear_copia_temporal_excel(ruta_archivo)
+
         if nombre_carpeta in {'reporte_clima', 'variables_meteorologicas'}:
-            df = _proyectar_dataframe_clima_bronce(ruta_archivo, tabla_destino)
+            df = _proyectar_dataframe_clima_bronce(ruta_trabajo, tabla_destino)
+        elif nombre_carpeta == 'peladas':
+            df = _proyectar_dataframe_peladas_bronce(ruta_trabajo)
         elif nombre_carpeta == 'induccion_floral':
-            df = _proyectar_dataframe_induccion_floral_bronce(ruta_archivo)
+            df = _proyectar_dataframe_induccion_floral_bronce(ruta_trabajo)
         elif nombre_carpeta == 'tasa_crecimiento_brotes':
-            df = _proyectar_dataframe_tasa_crecimiento_brotes_bronce(ruta_archivo)
+            df = _proyectar_dataframe_tasa_crecimiento_brotes_bronce(ruta_trabajo)
         else:
-            header_idx = _detectar_header_idx(ruta_archivo, tabla_destino, engine)
-            df = pd.read_excel(str(ruta_archivo), header=header_idx, dtype=str, engine='openpyxl')
+            header_idx = _detectar_header_idx(ruta_trabajo, tabla_destino, engine)
+            df = pd.read_excel(str(ruta_trabajo), header=header_idx, dtype=str, engine='openpyxl')
             if df.empty:
                 resultado['mensaje'] = 'Archivo vacio - sin filas para cargar'
                 resultado['estado'] = 'VACIO'
@@ -1037,7 +1255,7 @@ def cargar_archivo(nombre_carpeta: str,
                 {str(col) for col in df.columns},
             )
         if validacion_layout:
-            ruta_rechazada = archivar_archivo_rechazado(
+            ruta_rechazada, archivo_bloqueado = archivar_archivo_rechazado(
                 ruta_archivo,
                 nombre_carpeta,
                 validacion_layout['codigo'],
@@ -1050,6 +1268,8 @@ def cargar_archivo(nombre_carpeta: str,
                 f'{validacion_layout["mensaje"]} | '
                 f'Archivo movido a rechazados: {ruta_rechazada}'
             )
+            if archivo_bloqueado:
+                resultado['mensaje'] += ' | original bloqueado: se copio y se marco para omitir reproceso'
             return resultado
 
         df = castear_todo_a_texto(df)
@@ -1064,11 +1284,16 @@ def cargar_archivo(nombre_carpeta: str,
             return resultado
 
         filas_insertadas = insertar_en_bronce(df, tabla_destino, engine)
-        archivar_archivo(ruta_archivo, nombre_carpeta)
+        ruta_procesada, archivo_bloqueado = archivar_archivo(ruta_archivo, nombre_carpeta)
 
         resultado['filas'] = filas_insertadas
         resultado['estado'] = 'OK'
         resultado['mensaje'] = f'{filas_insertadas} filas insertadas en {tabla_destino}'
+        if archivo_bloqueado:
+            resultado['mensaje'] += (
+                f' | archivo bloqueado: copia archivada en {ruta_procesada}'
+                ' y original marcado para omitir reproceso'
+            )
         if columnas_descartadas:
             detalle_columnas = _formatear_columnas_extra(columnas_descartadas)
             resultado['columnas_extras'] = sorted(str(col) for col in columnas_descartadas)
@@ -1080,6 +1305,12 @@ def cargar_archivo(nombre_carpeta: str,
     except Exception as error:
         resultado['mensaje'] = str(error)
         resultado['estado'] = 'ERROR'
+    finally:
+        if ruta_trabajo is not None:
+            try:
+                ruta_trabajo.unlink(missing_ok=True)
+            except Exception:
+                pass
 
     return resultado
 

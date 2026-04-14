@@ -6,9 +6,9 @@ Toda fila que no pasa validación llega aquí con su motivo.
 """
 
 from datetime import datetime
-from sqlalchemy.engine import Engine
 from sqlalchemy import text
 
+from utils.contexto_transaccional import RecursoDB, administrar_recurso_db
 from utils.sql_lotes import TAM_LOTE_DEFECTO
 
 
@@ -48,7 +48,7 @@ def _deduplicar_payload_pendiente(payload: list[dict]) -> list[dict]:
 
 
 def enviar_a_cuarentena(
-    engine: Engine,
+    recurso_db: RecursoDB,
     tabla_origen: str,
     filas: list[dict],
 ) -> int:
@@ -106,7 +106,7 @@ def enviar_a_cuarentena(
     """)
 
     insertadas = 0
-    with engine.begin() as conexion:
+    with administrar_recurso_db(recurso_db) as conexion:
         for inicio in range(0, len(payload), TAM_LOTE_DEFECTO):
             resultado = conexion.execute(
                 sentencia,

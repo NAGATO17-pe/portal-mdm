@@ -1,11 +1,13 @@
 from datetime import datetime
 
-from dq.validador import validar_peso_baya
+from dq.validador import validar_fecha, validar_peso_baya
 from utils.fechas import (
     FECHA_CAMPANA_FIN,
     FECHA_CAMPANA_INICIO,
+    describir_rango_campana,
     obtener_politica_fecha,
     procesar_fecha,
+    resolver_dominio_fecha,
 )
 
 
@@ -73,6 +75,26 @@ def test_obtener_politica_fecha_por_dominio():
     assert politica['fin'] is None
 
 
+def test_describir_rango_campana_usa_politica_del_dominio():
+    assert describir_rango_campana(dominio='evaluacion_pesos') == '2025-03-01 -> 2026-06-30'
+
+
+def test_describir_rango_campana_usa_parametros_configurados(monkeypatch):
+    monkeypatch.setattr(
+        'utils.fechas.obtener',
+        lambda parametro, default='': {
+            'CAMPANA_FECHA_INICIO': '2026-01-15',
+            'CAMPANA_FECHA_FIN': '2026-12-31',
+        }.get(parametro, default),
+    )
+
+    assert describir_rango_campana(dominio='evaluacion_pesos') == '2026-01-15 -> 2026-12-31'
+
+
+def test_resolver_dominio_fecha_reutiliza_mapeo_central():
+    assert resolver_dominio_fecha('conteo_fruta') == 'conteo_fenologico'
+
+
 def test_validar_peso_baya_respeta_minimo_biologico():
     peso, error = validar_peso_baya('0.4')
 
@@ -85,6 +107,28 @@ def test_validar_peso_baya_acepta_minimo_exacto():
 
     assert peso == 0.5
     assert error is None
+
+
+def test_validar_fecha_reporta_rango_desde_fuente_unica():
+    _, error = validar_fecha('2022-01-15', dominio='evaluacion_pesos')
+
+    assert error is not None
+    assert error['motivo'] == 'Fecha fuera del rango de campana (2025-03-01 -> 2026-06-30)'
+
+
+def test_validar_fecha_reporta_rango_desde_config(monkeypatch):
+    monkeypatch.setattr(
+        'utils.fechas.obtener',
+        lambda parametro, default='': {
+            'CAMPANA_FECHA_INICIO': '2026-01-15',
+            'CAMPANA_FECHA_FIN': '2026-12-31',
+        }.get(parametro, default),
+    )
+
+    _, error = validar_fecha('2025-01-15', dominio='evaluacion_pesos')
+
+    assert error is not None
+    assert error['motivo'] == 'Fecha fuera del rango de campana (2026-01-15 -> 2026-12-31)'
 
 
 def test_limites_de_campana_vigentes():

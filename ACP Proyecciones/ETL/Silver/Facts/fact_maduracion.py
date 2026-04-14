@@ -18,7 +18,8 @@ import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from dq.cuarentena import enviar_a_cuarentena
+from utils.contexto_transaccional import ContextoTransaccionalETL
+from utils.sql_lotes import ejecutar_en_lotes
 from mdm.homologador import (
     cargar_catalogo_variedades,
     cargar_diccionario,
@@ -27,20 +28,23 @@ from mdm.homologador import (
 from mdm.lookup import (
     obtener_id_cinta,
     obtener_id_estado_fenologico,
-    obtener_id_geografia,
     obtener_id_personal,
     obtener_id_variedad,
+    resolver_geografia,
 )
 from utils.dni import procesar_dni
 from utils.fechas import obtener_id_tiempo, procesar_fecha
 from utils.texto import es_test_block, normalizar_modulo
 from silver.facts._helpers_fact_comunes import (
+    finalizar_resumen_fact as _finalizar_resumen_fact,
+    motivo_cuarentena_geografia as _motivo_cuarentena_geografia,
     parsear_valores_raw as _parsear_valores_raw,
 )
 
 
 TABLA_ORIGEN = 'Bronce.Maduracion'
 TABLA_DESTINO = 'Silver.Fact_Maduracion'
+TAM_LOTE_PROGRESO = 5000
 
 MAPA_ESTADO_CICLO = {
     'BOTON FLORAL': 'Boton Floral',
@@ -76,8 +80,46 @@ MAPA_ESTADO_POR_ID = {
 }
 
 
+SQL_INSERT_FACT = text("""
+    INSERT INTO Silver.Fact_Maduracion (
+        ID_Personal,
+        ID_Geografia,
+        ID_Tiempo,
+        ID_Variedad,
+        ID_Estado_Fenologico,
+        ID_Cinta,
+        ID_Organo,
+        Dias_Pasados_Del_Marcado,
+        Fecha_Evento,
+        Fecha_Sistema,
+        Estado_DQ
+    ) VALUES (
+        :id_personal,
+        :id_geografia,
+        :id_tiempo,
+        :id_variedad,
+        :id_estado_fenologico,
+        :id_cinta,
+        :id_organo,
+        :dias_pasados,
+        :fecha_evento,
+        SYSDATETIME(),
+        'OK'
+    )
+""")
+
+
 def _leer_bronce(engine: Engine) -> pd.DataFrame:
     with engine.connect() as conexion:
+        columnas_resultado = conexion.execute(text("""
+            SELECT COLUMN_NAME
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = 'Bronce'
+              AND TABLE_NAME = 'Maduracion'
+        """)).fetchall()
+        columnas_disponibles = {str(fila[0]) for fila in columnas_resultado}
+        filtro_estado = "WHERE Estado_Carga = 'CARGADO'" if 'Estado_Carga' in columnas_disponibles else ""
+
         resultado = conexion.execute(text(f"""
             SELECT
                 ID_Maduracion,
@@ -91,8 +133,21 @@ def _leer_bronce(engine: Engine) -> pd.DataFrame:
                 Nombre_Archivo,
                 Fecha_Sistema
             FROM {TABLA_ORIGEN}
+            {filtro_estado}
         """))
         return pd.DataFrame(resultado.fetchall(), columns=resultado.keys())
+
+
+def _tabla_maduracion_tiene_estado_carga(engine: Engine) -> bool:
+    with engine.connect() as conexion:
+        resultado = conexion.execute(text("""
+            SELECT 1
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = 'Bronce'
+              AND TABLE_NAME = 'Maduracion'
+              AND COLUMN_NAME = 'Estado_Carga'
+        """)).fetchone()
+        return resultado is not None
 
 
 def _obtener_valor(payload: dict[str, str], *claves: str):
@@ -177,26 +232,40 @@ def cargar_fact_maduracion(engine: Engine) -> dict:
 
     df = _leer_bronce(engine)
     if df.empty:
-        return resumen
+        return _finalizar_resumen_fact(resumen)
     resumen['leidos'] = len(df)
 
     claves_existentes = _cargar_claves_existentes(engine)
     diccionario_variedades = cargar_diccionario(engine, TABLA_ORIGEN)
     catalogo_variedades = cargar_catalogo_variedades(engine)
     cache_variedades: dict[str, tuple[str | None, str]] = {}
+    tabla_soporta_estado_carga = _tabla_maduracion_tiene_estado_carga(engine)
+    ids_procesados: list[int] = []
+    ids_rechazados: list[int] = []
+    payload_inserts: list[dict] = []
+    cache_geografia: dict[tuple[str | None, str | None, str | None], dict] = {}
+    cache_cinta: dict[str | None, int | None] = {}
+    cache_tiempo: dict[object, int | None] = {}
+    cache_personal: dict[str | None, int] = {}
 
-    with engine.begin() as conexion:
-        for _, fila in df.iterrows():
-            id_origen = int(fila['ID_Maduracion'])
-            payload = _parsear_valores_raw(fila.get('Valores_Raw'))
+    with ContextoTransaccionalETL(engine) as contexto:
+        conexion = contexto._conexion_activa()
+        for indice, fila in enumerate(df.itertuples(index=False), start=1):
+            if indice % TAM_LOTE_PROGRESO == 0:
+                print(f'          progreso maduracion: {indice}/{len(df)}')
 
-            fecha_raw = _obtener_valor(payload, 'FECHA_Raw', 'Fecha_Raw') or fila.get('Fecha_Raw')
+            fila_dict = fila._asdict()
+            id_origen = int(fila_dict['ID_Maduracion'])
+            payload = _parsear_valores_raw(fila_dict.get('Valores_Raw'))
+
+            fecha_raw = _obtener_valor(payload, 'FECHA_Raw', 'Fecha_Raw') or fila_dict.get('Fecha_Raw')
             fecha, fecha_valida = procesar_fecha(
                 fecha_raw,
                 dominio='maduracion',
             )
             if not fecha_valida:
                 resumen['rechazados'] += 1
+                ids_rechazados.append(id_origen)
                 resumen['cuarentena'].append({
                     'columna': 'FECHA_Raw',
                     'valor': fecha_raw,
@@ -206,20 +275,21 @@ def cargar_fact_maduracion(engine: Engine) -> dict:
                 })
                 continue
 
-            modulo_raw = _obtener_valor(payload, 'MODULO_Raw', 'Modulo_Raw') or fila.get('Modulo_Raw')
-            turno_raw = _obtener_valor(payload, 'TURNO_Raw', 'Turno_Raw') or fila.get('Turno_Raw')
-            valvula_raw = _obtener_valor(payload, 'NROVALVULA_Raw', 'VALVULA_Raw', 'Valvula_Raw') or fila.get('Valvula_Raw')
-            variedad_raw = _obtener_valor(payload, 'VARIEDAD_Raw', 'Variedad_Raw') or fila.get('Variedad_Raw')
-            evaluador_raw = _obtener_valor(payload, 'USUARIO_Raw', 'EVALUADOR_Raw', 'Evaluador_Raw') or fila.get('Evaluador_Raw')
+            modulo_raw = _obtener_valor(payload, 'MODULO_Raw', 'Modulo_Raw') or fila_dict.get('Modulo_Raw')
+            turno_raw = _obtener_valor(payload, 'TURNO_Raw', 'Turno_Raw') or fila_dict.get('Turno_Raw')
+            valvula_raw = _obtener_valor(payload, 'NROVALVULA_Raw', 'VALVULA_Raw', 'Valvula_Raw') or fila_dict.get('Valvula_Raw')
+            variedad_raw = _obtener_valor(payload, 'VARIEDAD_Raw', 'Variedad_Raw') or fila_dict.get('Variedad_Raw')
+            evaluador_raw = _obtener_valor(payload, 'USUARIO_Raw', 'EVALUADOR_Raw', 'Evaluador_Raw') or fila_dict.get('Evaluador_Raw')
             color_raw = _extraer_texto(_obtener_valor(payload, 'COLOR_Raw', 'Color_Raw'))
             organo_raw = _obtener_valor(payload, 'ORGANO_Raw', 'Organo_Raw')
 
             numero_organo = _extraer_entero(organo_raw)
             if numero_organo is None or numero_organo < 1:
                 resumen['rechazados'] += 1
+                ids_rechazados.append(id_origen)
                 resumen['cuarentena'].append({
                     'columna': 'ORGANO_Raw',
-                    'valor': organo_raw if organo_raw is not None else fila.get('Valores_Raw'),
+                    'valor': organo_raw if organo_raw is not None else fila_dict.get('Valores_Raw'),
                     'motivo': 'ID_Organo invalido o ausente en maduracion',
                     'severidad': 'ALTO',
                     'id_registro_origen': id_origen,
@@ -230,6 +300,7 @@ def cargar_fact_maduracion(engine: Engine) -> dict:
             id_estado = obtener_id_estado_fenologico(estado_canonico, engine)
             if not id_estado:
                 resumen['rechazados'] += 1
+                ids_rechazados.append(id_origen)
                 resumen['cuarentena'].append({
                     'columna': 'DESCRIPCIONESTADOCICLO_Raw',
                     'valor': _obtener_valor(payload, 'DESCRIPCIONESTADOCICLO_Raw', 'IDESTADOCICLO_Raw'),
@@ -240,21 +311,30 @@ def cargar_fact_maduracion(engine: Engine) -> dict:
                 continue
 
             modulo = None if es_test_block(modulo_raw) else normalizar_modulo(modulo_raw)
-            id_geografia = obtener_id_geografia(
-                None,
-                None,
-                modulo,
-                engine,
-                turno=turno_raw,
-                valvula=valvula_raw,
-                cama=None,
+            clave_geo = (
+                None if modulo is None else str(modulo).strip(),
+                None if turno_raw is None else str(turno_raw).strip(),
+                None if valvula_raw is None else str(valvula_raw).strip(),
             )
+            if clave_geo not in cache_geografia:
+                cache_geografia[clave_geo] = resolver_geografia(
+                    None,
+                    None,
+                    modulo,
+                    engine,
+                    turno=turno_raw,
+                    valvula=valvula_raw,
+                    cama=None,
+                )
+            resultado_geo = cache_geografia[clave_geo]
+            id_geografia = resultado_geo.get('id_geografia')
             if not id_geografia:
                 resumen['rechazados'] += 1
+                ids_rechazados.append(id_origen)
                 resumen['cuarentena'].append({
                     'columna': 'MODULO_Raw',
                     'valor': f"Modulo={modulo_raw} | Turno={turno_raw} | Valvula={valvula_raw}",
-                    'motivo': 'Geografia no encontrada en Silver.Dim_Geografia.',
+                    'motivo': _motivo_cuarentena_geografia(resultado_geo),
                     'severidad': 'ALTO',
                     'tipo_regla': 'MDM',
                     'id_registro_origen': id_origen,
@@ -271,13 +351,14 @@ def cargar_fact_maduracion(engine: Engine) -> dict:
                     'VARIEDAD_Raw',
                     diccionario_variedades,
                     catalogo_variedades,
-                    engine,
+                    conexion,
                 )
                 cache_variedades[variedad_token] = (variedad_canonica, estado_variedad)
 
             id_variedad = obtener_id_variedad(variedad_canonica, engine)
             if not id_variedad:
                 resumen['rechazados'] += 1
+                ids_rechazados.append(id_origen)
                 resumen['cuarentena'].append({
                     'columna': 'VARIEDAD_Raw',
                     'valor': variedad_raw,
@@ -288,23 +369,33 @@ def cargar_fact_maduracion(engine: Engine) -> dict:
                 continue
 
             dni, _ = procesar_dni(evaluador_raw)
-            id_personal = obtener_id_personal(dni, engine)
+            clave_personal = None if dni is None else str(dni)
+            if clave_personal not in cache_personal:
+                cache_personal[clave_personal] = obtener_id_personal(dni, engine)
+            id_personal = cache_personal[clave_personal]
 
-            id_cinta = obtener_id_cinta(color_raw, engine)
+            clave_cinta = None if color_raw is None else str(color_raw).strip().upper()
+            if clave_cinta not in cache_cinta:
+                cache_cinta[clave_cinta] = obtener_id_cinta(color_raw, engine)
+            id_cinta = cache_cinta[clave_cinta]
             if not id_cinta:
                 resumen['rechazados'] += 1
+                ids_rechazados.append(id_origen)
                 resumen['cuarentena'].append({
                     'columna': 'COLOR_Raw',
-                    'valor': color_raw if color_raw is not None else fila.get('Valores_Raw'),
+                    'valor': color_raw if color_raw is not None else fila_dict.get('Valores_Raw'),
                     'motivo': 'Cinta no reconocida o ausente en maduracion',
                     'severidad': 'ALTO',
                     'id_registro_origen': id_origen,
                 })
                 continue
 
-            id_tiempo = obtener_id_tiempo(fecha)
+            if fecha not in cache_tiempo:
+                cache_tiempo[fecha] = obtener_id_tiempo(fecha)
+            id_tiempo = cache_tiempo[fecha]
             if id_tiempo is None:
                 resumen['rechazados'] += 1
+                ids_rechazados.append(id_origen)
                 resumen['cuarentena'].append({
                     'columna': 'FECHA_Raw',
                     'valor': fecha_raw,
@@ -322,35 +413,22 @@ def cargar_fact_maduracion(engine: Engine) -> dict:
                 int(numero_organo),
             )
             if clave_unica in claves_existentes:
+                resumen['rechazados'] += 1
+                ids_procesados.append(id_origen)
+                resumen['cuarentena'].append({
+                    'columna': 'ID_Organo',
+                    'valor': (
+                        f"Geo={id_geografia} | Tiempo={id_tiempo} | Var={id_variedad} | "
+                        f"Cinta={id_cinta} | Organo={numero_organo}"
+                    ),
+                    'motivo': 'Posible duplicado en Fact_Maduracion',
+                    'severidad': 'MEDIO',
+                    'tipo_regla': 'DUPLICADO',
+                    'id_registro_origen': id_origen,
+                })
                 continue
 
-            conexion.execute(text("""
-                INSERT INTO Silver.Fact_Maduracion (
-                    ID_Personal,
-                    ID_Geografia,
-                    ID_Tiempo,
-                    ID_Variedad,
-                    ID_Estado_Fenologico,
-                    ID_Cinta,
-                    ID_Organo,
-                    Dias_Pasados_Del_Marcado,
-                    Fecha_Evento,
-                    Fecha_Sistema,
-                    Estado_DQ
-                ) VALUES (
-                    :id_personal,
-                    :id_geografia,
-                    :id_tiempo,
-                    :id_variedad,
-                    :id_estado_fenologico,
-                    :id_cinta,
-                    :id_organo,
-                    :dias_pasados,
-                    :fecha_evento,
-                    SYSDATETIME(),
-                    'OK'
-                )
-            """), {
+            payload_inserts.append({
                 'id_personal': id_personal,
                 'id_geografia': id_geografia,
                 'id_tiempo': id_tiempo,
@@ -362,9 +440,18 @@ def cargar_fact_maduracion(engine: Engine) -> dict:
                 'fecha_evento': fecha,
             })
             claves_existentes.add(clave_unica)
-            resumen['insertados'] += 1
+            ids_procesados.append(id_origen)
 
-    if resumen['cuarentena']:
-        enviar_a_cuarentena(engine, TABLA_ORIGEN, resumen['cuarentena'])
+        if payload_inserts:
+            ejecutar_en_lotes(conexion, SQL_INSERT_FACT, payload_inserts)
+        resumen['insertados'] = len(payload_inserts)
 
-    return resumen
+        if tabla_soporta_estado_carga and ids_procesados:
+            contexto.marcar_estado_carga(TABLA_ORIGEN, 'ID_Maduracion', ids_procesados)
+        if tabla_soporta_estado_carga and ids_rechazados:
+            contexto.marcar_estado_carga(TABLA_ORIGEN, 'ID_Maduracion', ids_rechazados, estado='RECHAZADO')
+
+        if resumen['cuarentena']:
+            contexto.enviar_cuarentena(TABLA_ORIGEN, resumen['cuarentena'])
+
+    return _finalizar_resumen_fact(resumen)

@@ -9,6 +9,8 @@ from datetime import datetime, date
 import re
 from typing import Optional
 
+from config.parametros import obtener
+
 
 FORMATOS_ACEPTADOS = [
     '%Y-%m-%d %H:%M:%S',
@@ -32,88 +34,26 @@ FORMATOS_ACEPTADOS = [
 FECHA_CAMPANA_INICIO = '2025-03-01'
 FECHA_CAMPANA_FIN = '2026-06-30'
 
-POLITICAS_FECHA_POR_DOMINIO = {
-    'default': {
-        'validar_campana': True,
-        'inicio': FECHA_CAMPANA_INICIO,
-        'fin': FECHA_CAMPANA_FIN,
-    },
-    'clima': {
-        'validar_campana': False,
-        'inicio': None,
-        'fin': None,
-    },
-    'historico': {
-        'validar_campana': False,
-        'inicio': None,
-        'fin': None,
-    },
-    'conteo_fenologico': {
-        'validar_campana': True,
-        'inicio': FECHA_CAMPANA_INICIO,
-        'fin': FECHA_CAMPANA_FIN,
-    },
-    'cosecha_sap': {
-        'validar_campana': True,
-        'inicio': FECHA_CAMPANA_INICIO,
-        'fin': FECHA_CAMPANA_FIN,
-    },
-    'evaluacion_pesos': {
-        'validar_campana': True,
-        'inicio': FECHA_CAMPANA_INICIO,
-        'fin': FECHA_CAMPANA_FIN,
-    },
-    'evaluacion_vegetativa': {
-        'validar_campana': True,
-        'inicio': FECHA_CAMPANA_INICIO,
-        'fin': FECHA_CAMPANA_FIN,
-    },
-    'fisiologia': {
-        'validar_campana': True,
-        'inicio': FECHA_CAMPANA_INICIO,
-        'fin': FECHA_CAMPANA_FIN,
-    },
-    'maduracion': {
-        'validar_campana': True,
-        'inicio': FECHA_CAMPANA_INICIO,
-        'fin': FECHA_CAMPANA_FIN,
-    },
-    'peladas': {
-        'validar_campana': True,
-        'inicio': FECHA_CAMPANA_INICIO,
-        'fin': FECHA_CAMPANA_FIN,
-    },
-    'sanidad': {
-        'validar_campana': True,
-        'inicio': FECHA_CAMPANA_INICIO,
-        'fin': FECHA_CAMPANA_FIN,
-    },
-    'sanidad_activo': {
-        'validar_campana': True,
-        'inicio': FECHA_CAMPANA_INICIO,
-        'fin': FECHA_CAMPANA_FIN,
-    },
-    'tareo': {
-        'validar_campana': True,
-        'inicio': FECHA_CAMPANA_INICIO,
-        'fin': FECHA_CAMPANA_FIN,
-    },
-    'ciclo_poda': {
-        'validar_campana': True,
-        'inicio': FECHA_CAMPANA_INICIO,
-        'fin': FECHA_CAMPANA_FIN,
-    },
-    'induccion_floral': {
-        'validar_campana': False,
-        'inicio': None,
-        'fin': None,
-    },
-    'tasa_crecimiento_brotes': {
-        'validar_campana': False,
-        'inicio': None,
-        'fin': None,
-    },
+DOMINIOS_SIN_RESTRICCION_CAMPANA = {
+    'clima',
+    'historico',
+    'induccion_floral',
+    'tasa_crecimiento_brotes',
 }
+
+
+def _obtener_rango_campana_configurado() -> tuple[str, str]:
+    try:
+        inicio = obtener('CAMPANA_FECHA_INICIO', FECHA_CAMPANA_INICIO)
+        fin = obtener('CAMPANA_FECHA_FIN', FECHA_CAMPANA_FIN)
+    except Exception:
+        inicio = FECHA_CAMPANA_INICIO
+        fin = FECHA_CAMPANA_FIN
+
+    return (
+        str(inicio).strip() or FECHA_CAMPANA_INICIO,
+        str(fin).strip() or FECHA_CAMPANA_FIN,
+    )
 
 
 def obtener_politica_fecha(dominio: str | None = None) -> dict:
@@ -122,7 +62,59 @@ def obtener_politica_fecha(dominio: str | None = None) -> dict:
     Si el dominio no existe, usa la politica default.
     """
     clave = str(dominio).strip().lower() if dominio else 'default'
-    return POLITICAS_FECHA_POR_DOMINIO.get(clave, POLITICAS_FECHA_POR_DOMINIO['default']).copy()
+    inicio, fin = _obtener_rango_campana_configurado()
+    politica_default = {
+        'validar_campana': True,
+        'inicio': inicio,
+        'fin': fin,
+    }
+    if clave in DOMINIOS_SIN_RESTRICCION_CAMPANA:
+        return {
+            'validar_campana': False,
+            'inicio': None,
+            'fin': None,
+        }
+    return politica_default.copy()
+
+
+def resolver_dominio_fecha(tipo_tabla: str | None) -> str | None:
+    if tipo_tabla is None:
+        return None
+
+    mapa = {
+        'clima': 'clima',
+        'conteo_fruta': 'conteo_fenologico',
+        'conteo_fenologico': 'conteo_fenologico',
+        'cosecha_sap': 'cosecha_sap',
+        'evaluacion_pesos': 'evaluacion_pesos',
+        'evaluacion_vegetativa': 'evaluacion_vegetativa',
+        'fisiologia': 'fisiologia',
+        'induccion_floral': 'induccion_floral',
+        'maduracion': 'maduracion',
+        'peladas': 'peladas',
+        'sanidad': 'sanidad',
+        'sanidad_activo': 'sanidad_activo',
+        'tareo': 'tareo',
+        'tasa_crecimiento_brotes': 'tasa_crecimiento_brotes',
+        'ciclo_poda': 'ciclo_poda',
+    }
+    return mapa.get(str(tipo_tabla).strip().lower())
+
+
+def describir_rango_campana(
+    *,
+    dominio: str | None = None,
+    inicio: str | None = None,
+    fin: str | None = None,
+) -> str:
+    politica = obtener_politica_fecha(dominio)
+    inicio_resuelto = inicio if inicio is not None else politica.get('inicio')
+    fin_resuelto = fin if fin is not None else politica.get('fin')
+
+    if inicio_resuelto is None or fin_resuelto is None:
+        return 'sin restriccion de campana'
+
+    return f'{inicio_resuelto} -> {fin_resuelto}'
 
 
 def parsear_serie_fechas(serie: 'pd.Series') -> 'pd.Series':
@@ -308,8 +300,10 @@ def es_fecha_valida_campana(fecha: datetime | date | None,
     if fecha is None:
         return False
 
-    inicio = inicio or FECHA_CAMPANA_INICIO
-    fin = fin or FECHA_CAMPANA_FIN
+    if inicio is None or fin is None:
+        inicio_default, fin_default = _obtener_rango_campana_configurado()
+        inicio = inicio or inicio_default
+        fin = fin or fin_default
 
     fecha_inicio = datetime.strptime(inicio, '%Y-%m-%d').date()
     fecha_fin    = datetime.strptime(fin,    '%Y-%m-%d').date()

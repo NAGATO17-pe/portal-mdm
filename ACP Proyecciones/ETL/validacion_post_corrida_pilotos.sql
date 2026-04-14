@@ -43,3 +43,23 @@ SELECT TOP 20
 FROM MDM.Cuarentena
 WHERE Tabla_Origen = 'Bronce.Evaluacion_Vegetativa'
 ORDER BY Fecha_Ingreso DESC;
+
+PRINT '--- Bronce.Maduracion ---';
+SELECT Estado_Carga, COUNT(*) AS Filas
+FROM Bronce.Maduracion
+GROUP BY Estado_Carga;
+
+PRINT '--- Silver.Fact_Maduracion ---';
+SELECT COUNT(*) AS Filas_Fact_Maduracion
+FROM Silver.Fact_Maduracion;
+
+PRINT '--- Cuarentena Maduracion ---';
+SELECT TOP 20
+    Campo_Origen,
+    Valor_Recibido,
+    Motivo,
+    Estado,
+    Fecha_Ingreso
+FROM MDM.Cuarentena
+WHERE Tabla_Origen = 'Bronce.Maduracion'
+ORDER BY Fecha_Ingreso DESC;

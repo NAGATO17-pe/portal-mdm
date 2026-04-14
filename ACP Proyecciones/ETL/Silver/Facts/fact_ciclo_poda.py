@@ -12,12 +12,16 @@ import pandas as pd
 from sqlalchemy.engine import Engine
 from sqlalchemy import text
 
+from utils.contexto_transaccional import ContextoTransaccionalETL
 from utils.fechas    import procesar_fecha, obtener_id_tiempo
 from utils.texto     import normalizar_modulo, es_test_block, titulo
-from utils.sql_lotes import marcar_estado_carga_por_ids
-from dq.cuarentena   import enviar_a_cuarentena
-from mdm.lookup      import obtener_id_geografia, obtener_id_variedad
+from mdm.lookup      import resolver_geografia, obtener_id_variedad
 from mdm.homologador import homologar_columna
+from silver.facts._helpers_fact_comunes import (
+    finalizar_resumen_fact as _finalizar_resumen_fact,
+    motivo_cuarentena_geografia as _motivo_cuarentena_geografia,
+    registrar_rechazo as _registrar_rechazo,
+)
 
 
 TABLA_PODA      = 'Bronce.Evaluacion_Calidad_Poda'
@@ -76,6 +80,8 @@ def cargar_fact_ciclo_poda(engine: Engine) -> dict:
 
     # ── Evaluacion Calidad Poda ───────────────────────────────
     df_poda = _leer_bronce_poda(engine)
+    if df_poda.empty:
+        return _finalizar_resumen_fact(resumen)
     resumen['leidos'] = len(df_poda)
     df_poda, cuar_var = homologar_columna(
         df_poda, 'Variedad_Raw', 'Variedad_Canonica', TABLA_PODA, engine,
@@ -84,18 +90,28 @@ def cargar_fact_ciclo_poda(engine: Engine) -> dict:
     resumen['cuarentena'].extend(cuar_var)
 
     ids_poda = []
-    with engine.begin() as conexion:
+    ids_rechazados = []
+    with ContextoTransaccionalETL(engine) as contexto:
+        conexion = contexto._conexion_activa()
         for _, fila in df_poda.iterrows():
+            id_origen = int(fila['ID_Evaluacion_Poda'])
             fecha, valida = procesar_fecha(
                 fila.get('Fecha_Raw'),
                 dominio='ciclo_poda',
             )
             if not valida:
-                resumen['rechazados'] += 1
+                _registrar_rechazo(
+                    resumen,
+                    ids_rechazados,
+                    id_origen,
+                    columna='Fecha_Raw',
+                    valor=fila.get('Fecha_Raw'),
+                    motivo='Fecha invalida o fuera de campana',
+                )
                 continue
 
             modulo = None if es_test_block(fila.get('Modulo_Raw')) else normalizar_modulo(fila.get('Modulo_Raw'))
-            id_geo = obtener_id_geografia(
+            resultado_geo = resolver_geografia(
                 fila.get('Fundo_Raw'),
                 None,
                 modulo,
@@ -104,10 +120,34 @@ def cargar_fact_ciclo_poda(engine: Engine) -> dict:
                 valvula=fila.get('Valvula_Raw'),
                 cama=None,
             )
+            id_geo = resultado_geo.get('id_geografia')
             id_var = obtener_id_variedad(fila.get('Variedad_Canonica'), engine)
 
-            if not id_geo or not id_var:
-                resumen['rechazados'] += 1
+            if not id_geo:
+                _registrar_rechazo(
+                    resumen,
+                    ids_rechazados,
+                    id_origen,
+                    columna='Modulo_Raw',
+                    valor=(
+                        f"Fundo={fila.get('Fundo_Raw')} | Modulo={fila.get('Modulo_Raw')} | "
+                        f"Turno={fila.get('Turno_Raw')} | Valvula={fila.get('Valvula_Raw')}"
+                    ),
+                    motivo=_motivo_cuarentena_geografia(resultado_geo),
+                    tipo_regla='MDM',
+                )
+                continue
+
+            if not id_var:
+                _registrar_rechazo(
+                    resumen,
+                    ids_rechazados,
+                    id_origen,
+                    columna='Variedad_Raw',
+                    valor=fila.get('Variedad_Raw'),
+                    motivo='Variedad sin match en Dim_Variedad',
+                    tipo_regla='MDM',
+                )
                 continue
 
             _insertar(conexion, {
@@ -124,14 +164,15 @@ def cargar_fact_ciclo_poda(engine: Engine) -> dict:
                 'altura':      _a_decimal(fila.get('AlturaPoda_Raw')),
                 'fecha_evento':fecha,
             })
-            ids_poda.append(int(fila['ID_Evaluacion_Poda']))
+            ids_poda.append(id_origen)
             resumen['insertados'] += 1
 
-    marcar_estado_carga_por_ids(
-        engine, TABLA_PODA, 'ID_Evaluacion_Poda', ids_poda
-    )
+        if ids_poda:
+            contexto.marcar_estado_carga(TABLA_PODA, 'ID_Evaluacion_Poda', ids_poda)
+        if ids_rechazados:
+            contexto.marcar_estado_carga(TABLA_PODA, 'ID_Evaluacion_Poda', ids_rechazados, estado='RECHAZADO')
 
-    if resumen['cuarentena']:
-        enviar_a_cuarentena(engine, TABLA_PODA, resumen['cuarentena'])
+        if resumen['cuarentena']:
+            contexto.enviar_cuarentena(TABLA_PODA, resumen['cuarentena'])
 
-    return resumen
+    return _finalizar_resumen_fact(resumen)

@@ -2,10 +2,10 @@
 marts.py
 ========
 Refresca todos los Marts Gold desde Silver.
-Operación: TRUNCATE + INSERT — siempre desde cero.
+Operacion: TRUNCATE + INSERT, siempre desde cero.
 Power BI solo conecta a estos Marts.
 
-FIX: Gold no se publica si alguna fact crítica falló en el pipeline.
+FIX: Gold no se publica si alguna fact critica fallo en el pipeline.
      refrescar_todos_los_marts() recibe el resumen del ETL y aborta
      si hay errores en las facts bloqueantes.
 """
@@ -23,7 +23,7 @@ MARTS = [
     'Gold.Mart_Administrativo',
 ]
 
-# Facts cuya falla bloquea la publicación de Gold
+# Facts cuya falla bloquea la publicacion de Gold
 FACTS_BLOQUEANTES = {
     'Fact_Cosecha_SAP',
     'Fact_Conteo_Fenologico',
@@ -35,7 +35,7 @@ FACTS_BLOQUEANTES = {
 def _hay_fallas_criticas(resumen_etl: dict) -> list[str]:
     """
     Detecta facts bloqueantes que terminaron en ERROR.
-    Retorna lista de nombres con error (vacía = todo OK).
+    Retorna lista de nombres con error (vacia = todo OK).
     """
     fallas = []
     for nombre in FACTS_BLOQUEANTES:
@@ -69,15 +69,15 @@ def refrescar_mart_cosecha(conexion) -> int:
             p.Kg_Proyectados,
             c.Sustrato
         FROM Silver.Fact_Cosecha_SAP cs
-        JOIN Silver.Dim_Tiempo           t ON t.ID_Tiempo    = cs.ID_Tiempo
-        JOIN Silver.Dim_Geografia        g ON g.ID_Geografia = cs.ID_Geografia AND g.Es_Vigente = 1
-        JOIN Silver.Dim_Variedad         v ON v.ID_Variedad  = cs.ID_Variedad
-        JOIN Silver.Dim_Condicion_Cultivo c ON c.ID_Condicion = cs.ID_Condicion_Cultivo
+        JOIN Silver.Dim_Tiempo             t ON t.ID_Tiempo = cs.ID_Tiempo
+        JOIN Silver.Dim_Geografia          g ON g.ID_Geografia = cs.ID_Geografia AND g.Es_Vigente = 1
+        JOIN Silver.Dim_Variedad           v ON v.ID_Variedad = cs.ID_Variedad
+        JOIN Silver.Dim_Condicion_Cultivo  c ON c.ID_Condicion = cs.ID_Condicion_Cultivo
         LEFT JOIN Silver.Fact_Proyecciones p
-            ON  p.ID_Tiempo     = cs.ID_Tiempo
-            AND p.ID_Variedad   = cs.ID_Variedad
-            AND p.ID_Geografia  = cs.ID_Geografia
-            AND p.ID_Escenario  = 4
+            ON  p.ID_Tiempo = cs.ID_Tiempo
+            AND p.ID_Variedad = cs.ID_Variedad
+            AND p.ID_Geografia = cs.ID_Geografia
+            AND p.ID_Escenario = 4
     """))
     return _contar(conexion, 'Gold.Mart_Cosecha')
 
@@ -104,11 +104,11 @@ def refrescar_mart_proyecciones(conexion) -> int:
             p.Flag_Override,
             w.Estado
         FROM Silver.Fact_Proyecciones p
-        JOIN Silver.Dim_Tiempo               t ON t.ID_Tiempo       = p.ID_Tiempo
-        JOIN Silver.Dim_Geografia            g ON g.ID_Geografia    = p.ID_Geografia AND g.Es_Vigente = 1
-        JOIN Silver.Dim_Variedad             v ON v.ID_Variedad     = p.ID_Variedad
-        JOIN Silver.Dim_Escenario_Proyeccion e ON e.ID_Escenario    = p.ID_Escenario
-        JOIN Silver.Dim_Estado_Workflow      w ON w.ID_Workflow     = p.ID_Estado_Workflow
+        JOIN Silver.Dim_Tiempo                t ON t.ID_Tiempo = p.ID_Tiempo
+        JOIN Silver.Dim_Geografia             g ON g.ID_Geografia = p.ID_Geografia AND g.Es_Vigente = 1
+        JOIN Silver.Dim_Variedad              v ON v.ID_Variedad = p.ID_Variedad
+        JOIN Silver.Dim_Escenario_Proyeccion  e ON e.ID_Escenario = p.ID_Escenario
+        JOIN Silver.Dim_Estado_Workflow       w ON w.ID_Workflow = p.ID_Estado_Workflow
     """))
     return _contar(conexion, 'Gold.Mart_Proyecciones')
 
@@ -132,9 +132,9 @@ def refrescar_mart_fenologia(conexion) -> int:
             ef.Orden_Estado,
             SUM(cf.Cantidad_Organos)
         FROM Silver.Fact_Conteo_Fenologico cf
-        JOIN Silver.Dim_Tiempo            t  ON t.ID_Tiempo             = cf.ID_Tiempo
-        JOIN Silver.Dim_Geografia         g  ON g.ID_Geografia          = cf.ID_Geografia AND g.Es_Vigente = 1
-        JOIN Silver.Dim_Variedad          v  ON v.ID_Variedad           = cf.ID_Variedad
+        JOIN Silver.Dim_Tiempo            t  ON t.ID_Tiempo = cf.ID_Tiempo
+        JOIN Silver.Dim_Geografia         g  ON g.ID_Geografia = cf.ID_Geografia AND g.Es_Vigente = 1
+        JOIN Silver.Dim_Variedad          v  ON v.ID_Variedad = cf.ID_Variedad
         JOIN Silver.Dim_Estado_Fenologico ef ON ef.ID_Estado_Fenologico = cf.ID_Estado_Fenologico
         GROUP BY
             cf.ID_Tiempo, cf.ID_Geografia, cf.ID_Variedad,
@@ -186,11 +186,12 @@ def refrescar_mart_pesos_calibres(conexion) -> int:
             AVG(ep.Peso_Promedio_Baya_g),
             SUM(ep.Cantidad_Bayas_Muestra)
         FROM Silver.Fact_Evaluacion_Pesos ep
-        JOIN Silver.Dim_Tiempo    t ON t.ID_Tiempo    = ep.ID_Tiempo
+        JOIN Silver.Dim_Tiempo    t ON t.ID_Tiempo = ep.ID_Tiempo
         JOIN Silver.Dim_Geografia g ON g.ID_Geografia = ep.ID_Geografia AND g.Es_Vigente = 1
-        JOIN Silver.Dim_Variedad  v ON v.ID_Variedad  = ep.ID_Variedad
-        GROUP BY ep.ID_Tiempo, ep.ID_Geografia, ep.ID_Variedad,
-                 g.Fundo, v.Nombre_Variedad, t.Semana_ISO
+        JOIN Silver.Dim_Variedad  v ON v.ID_Variedad = ep.ID_Variedad
+        GROUP BY
+            ep.ID_Tiempo, ep.ID_Geografia, ep.ID_Variedad,
+            g.Fundo, v.Nombre_Variedad, t.Semana_ISO
     """))
     return _contar(conexion, 'Gold.Mart_Pesos_Calibres')
 
@@ -211,10 +212,11 @@ def refrescar_mart_administrativo(conexion) -> int:
             SUM(ta.Horas_Trabajadas),
             SUM(CAST(ta.Es_Observado_SAP AS INT))
         FROM Silver.Fact_Tareo ta
-        JOIN Silver.Dim_Tiempo    t  ON t.ID_Tiempo   = ta.ID_Tiempo
+        JOIN Silver.Dim_Tiempo      t  ON t.ID_Tiempo = ta.ID_Tiempo
         LEFT JOIN Silver.Dim_Personal sp ON sp.ID_Personal = ta.ID_Personal_Supervisor
-        GROUP BY ta.ID_Tiempo, ta.ID_Personal, ta.ID_Actividad_Operativa,
-                 sp.Nombre_Completo, t.Semana_ISO
+        GROUP BY
+            ta.ID_Tiempo, ta.ID_Personal, ta.ID_Actividad_Operativa,
+            sp.Nombre_Completo, t.Semana_ISO
     """))
     return _contar(conexion, 'Gold.Mart_Administrativo')
 
@@ -225,12 +227,12 @@ def _contar(conexion, mart: str) -> int:
 
 
 FUNCIONES_MARTS = {
-    'Gold.Mart_Cosecha':         refrescar_mart_cosecha,
-    'Gold.Mart_Proyecciones':    refrescar_mart_proyecciones,
-    'Gold.Mart_Fenologia':       refrescar_mart_fenologia,
-    'Gold.Mart_Clima':           refrescar_mart_clima,
-    'Gold.Mart_Pesos_Calibres':  refrescar_mart_pesos_calibres,
-    'Gold.Mart_Administrativo':  refrescar_mart_administrativo,
+    'Gold.Mart_Cosecha': refrescar_mart_cosecha,
+    'Gold.Mart_Proyecciones': refrescar_mart_proyecciones,
+    'Gold.Mart_Fenologia': refrescar_mart_fenologia,
+    'Gold.Mart_Clima': refrescar_mart_clima,
+    'Gold.Mart_Pesos_Calibres': refrescar_mart_pesos_calibres,
+    'Gold.Mart_Administrativo': refrescar_mart_administrativo,
 }
 
 
@@ -250,8 +252,8 @@ def refrescar_marts_seleccionados(
     if resumen_etl is not None:
         fallas = _hay_fallas_criticas(resumen_etl)
         if fallas:
-            msg = f'Gold bloqueado â€” facts con error: {fallas}'
-            print(f'  â›” {msg}')
+            msg = f'Gold bloqueado - facts con error: {fallas}'
+            print(f'  [BLOCK] {msg}')
             return {'BLOQUEADO': msg}
 
     resumen = {}
@@ -262,16 +264,18 @@ def refrescar_marts_seleccionados(
         for mart in marts_solicitados:
             filas = FUNCIONES_MARTS[mart](conexion)
             resumen[mart] = filas
-            print(f'  âœ… {mart}: {filas} filas')
+            print(f'  [OK] {mart}: {filas} filas')
 
     return resumen
 
 
-def refrescar_todos_los_marts(engine: Engine,
-                               resumen_etl: dict | None = None) -> dict:
+def refrescar_todos_los_marts(
+    engine: Engine,
+    resumen_etl: dict | None = None,
+) -> dict:
     """
     Refresca todos los Marts Gold en orden.
-    TRUNCATE + INSERT — siempre desde cero.
+    TRUNCATE + INSERT, siempre desde cero.
 
     FIX: si resumen_etl contiene errores en facts bloqueantes,
     aborta sin tocar Gold y retorna dict con la causa.
@@ -279,8 +283,8 @@ def refrescar_todos_los_marts(engine: Engine,
     if resumen_etl is not None:
         fallas = _hay_fallas_criticas(resumen_etl)
         if fallas:
-            msg = f'Gold bloqueado — facts con error: {fallas}'
-            print(f'  ⛔ {msg}')
+            msg = f'Gold bloqueado - facts con error: {fallas}'
+            print(f'  [BLOCK] {msg}')
             return {'BLOQUEADO': msg}
 
     resumen = {}
@@ -292,6 +296,6 @@ def refrescar_todos_los_marts(engine: Engine,
         for mart, funcion in FUNCIONES_MARTS.items():
             filas = funcion(conexion)
             resumen[mart] = filas
-            print(f'  ✅ {mart}: {filas} filas')
+            print(f'  [OK] {mart}: {filas} filas')
 
     return resumen

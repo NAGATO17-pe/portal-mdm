@@ -13,11 +13,10 @@ from sqlalchemy.engine import Engine
 from sqlalchemy import text
 
 from utils.fechas    import procesar_fecha, obtener_id_tiempo as construir_id_tiempo
+from utils.contexto_transaccional import ContextoTransaccionalETL
 from utils.texto     import normalizar_modulo, es_test_block
 from utils.dni       import procesar_dni
-from utils.sql_lotes import marcar_estado_carga_por_ids
 from dq.validador    import validar_peso_baya
-from dq.cuarentena   import enviar_a_cuarentena
 from mdm.lookup      import (
     obtener_id_tiempo,
     resolver_geografia,
@@ -26,7 +25,9 @@ from mdm.lookup      import (
 )
 from mdm.homologador import homologar_columna
 from silver.facts._helpers_fact_comunes import (
+    finalizar_resumen_fact as _finalizar_resumen_fact,
     motivo_cuarentena_geografia as _motivo_cuarentena_geografia,
+    registrar_rechazo as _registrar_rechazo,
 )
 
 
@@ -120,25 +121,27 @@ def cargar_fact_evaluacion_pesos(engine: Engine) -> dict:
 
     df = _leer_bronce(engine)
     if df.empty:
-        return resumen
+        return _finalizar_resumen_fact(resumen)
     resumen['leidos'] = len(df)
 
-    # Homologar variedades
-    df, cuarentenas_var = homologar_columna(
-        df, 'Variedad_Raw', 'Variedad_Canonica',
-        TABLA_ORIGEN, engine,
-        columna_id_origen='ID_Evaluacion_Pesos'
-    )
-    resumen['cuarentena'].extend(cuarentenas_var)
+    ids_procesados = []
+    ids_rechazados = []
 
-    ids_leidos = []
+    with ContextoTransaccionalETL(engine) as contexto:
+        conexion = contexto._conexion_activa()
 
-    with engine.begin() as conexion:
+        # Homologar variedades dentro de misma transaccion del fact.
+        df, cuarentenas_var = homologar_columna(
+            df, 'Variedad_Raw', 'Variedad_Canonica',
+            TABLA_ORIGEN, conexion,
+            columna_id_origen='ID_Evaluacion_Pesos'
+        )
+        resumen['cuarentena'].extend(cuarentenas_var)
+
         for _, fila in df.iterrows():
             id_origen = None
             try:
                 id_origen = int(fila['ID_Evaluacion_Pesos'])
-                ids_leidos.append(id_origen)
             except (ValueError, TypeError):
                 pass
 
@@ -148,26 +151,26 @@ def cargar_fact_evaluacion_pesos(engine: Engine) -> dict:
                 dominio='evaluacion_pesos',
             )
             if not fecha_valida:
-                resumen['rechazados'] += 1
-                resumen['cuarentena'].append({
-                    'columna':   'Fecha_Raw',
-                    'valor':     fila.get('Fecha_Raw'),
-                    'motivo':    'Fecha invÃƒÂ¡lida o fuera de campaÃƒÂ±a',
-                    'severidad': 'ALTO',
-                    'id_registro_origen': id_origen,
-                })
+                _registrar_rechazo(
+                    resumen,
+                    ids_rechazados,
+                    id_origen,
+                    columna='Fecha_Raw',
+                    valor=fila.get('Fecha_Raw'),
+                    motivo='Fecha invalida o fuera de campana',
+                )
                 continue
 
             id_tiempo = obtener_id_tiempo(construir_id_tiempo(fecha), engine)
             if not id_tiempo:
-                resumen['rechazados'] += 1
-                resumen['cuarentena'].append({
-                    'columna':   'Fecha_Raw',
-                    'valor':     fila.get('Fecha_Raw'),
-                    'motivo':    'Fecha valida pero fuera de Dim_Tiempo',
-                    'severidad': 'ALTO',
-                    'id_registro_origen': id_origen,
-                })
+                _registrar_rechazo(
+                    resumen,
+                    ids_rechazados,
+                    id_origen,
+                    columna='Fecha_Raw',
+                    valor=fila.get('Fecha_Raw'),
+                    motivo='Fecha valida pero fuera de Dim_Tiempo',
+                )
                 continue
 
             # Ã¢â€â‚¬Ã¢â€â‚¬ GeografÃƒÂ­a Ã¢â‚¬â€ Este reporte usa Valvula como mÃƒÂ³dulo Ã¢â€â‚¬Ã¢â€â‚¬
@@ -203,7 +206,15 @@ def cargar_fact_evaluacion_pesos(engine: Engine) -> dict:
                 fila.get('Variedad_Canonica'), engine
             )
             if not id_variedad:
-                resumen['rechazados'] += 1
+                _registrar_rechazo(
+                    resumen,
+                    ids_rechazados,
+                    id_origen,
+                    columna='Variedad_Raw',
+                    valor=fila.get('Variedad_Raw'),
+                    motivo='Variedad sin match en Dim_Variedad',
+                    tipo_regla='MDM',
+                )
                 continue
 
             # Ã¢â€â‚¬Ã¢â€â‚¬ Personal Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
@@ -213,22 +224,30 @@ def cargar_fact_evaluacion_pesos(engine: Engine) -> dict:
             # Ã¢â€â‚¬Ã¢â€â‚¬ Peso baya ponderado Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
             peso = _calcular_peso_ponderado(fila)
             if peso is None:
-                resumen['rechazados'] += 1
-                resumen['cuarentena'].append({
-                    'columna':   'PesoBaya',
-                    'valor':     None,
-                    'motivo':    'No se pudo calcular peso promedio de baya',
-                    'severidad': 'MEDIO',
-                    'id_registro_origen': id_origen,
-                })
+                _registrar_rechazo(
+                    resumen,
+                    ids_rechazados,
+                    id_origen,
+                    columna='PesoBaya',
+                    valor=None,
+                    motivo='No se pudo calcular peso promedio de baya',
+                    severidad='MEDIO',
+                )
                 continue
 
             # Validar rango
             peso_val, error_peso = validar_peso_baya(peso)
             if error_peso:
-                resumen['rechazados'] += 1
                 error_peso['id_registro_origen'] = id_origen
-                resumen['cuarentena'].append(error_peso)
+                _registrar_rechazo(
+                    resumen,
+                    ids_rechazados,
+                    id_origen,
+                    columna=error_peso.get('columna', 'Peso_Baya_g'),
+                    valor=error_peso.get('valor'),
+                    motivo=error_peso.get('motivo', 'Peso invalido'),
+                    severidad=error_peso.get('severidad', 'ALTO'),
+                )
                 continue
 
             # Ã¢â€â‚¬Ã¢â€â‚¬ Cantidad bayas total Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
@@ -270,15 +289,21 @@ def cargar_fact_evaluacion_pesos(engine: Engine) -> dict:
             })
 
             resumen['insertados'] += 1
+            if id_origen is not None:
+                ids_procesados.append(id_origen)
 
-    if ids_leidos:
-        marcar_estado_carga_por_ids(
-            engine, TABLA_ORIGEN, 'ID_Evaluacion_Pesos', ids_leidos
-        )
+        if ids_procesados:
+            contexto.marcar_estado_carga(
+                TABLA_ORIGEN, 'ID_Evaluacion_Pesos', ids_procesados
+            )
+        if ids_rechazados:
+            contexto.marcar_estado_carga(
+                TABLA_ORIGEN, 'ID_Evaluacion_Pesos', ids_rechazados, estado='RECHAZADO'
+            )
 
-    if resumen['cuarentena']:
-        enviar_a_cuarentena(engine, TABLA_ORIGEN, resumen['cuarentena'])
+        if resumen['cuarentena']:
+            contexto.enviar_cuarentena(TABLA_ORIGEN, resumen['cuarentena'])
 
-    return resumen
+    return _finalizar_resumen_fact(resumen)
 
 

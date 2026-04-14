@@ -263,6 +263,8 @@ INSERT INTO Config.Parametros_Pipeline (
     Modificado_Por
 ) VALUES
     ('CAMPANA_ACTIVA',       '2026',           'Campana en curso',                              SYSDATETIME(), 'SISTEMA'),
+    ('CAMPANA_FECHA_INICIO', '2025-03-01',     'Fecha de inicio vigente para validar campana operativa', SYSDATETIME(), 'SISTEMA'),
+    ('CAMPANA_FECHA_FIN',    '2026-06-30',     'Fecha de fin vigente para validar campana operativa', SYSDATETIME(), 'SISTEMA'),
     ('CULTIVO_ACTIVO',       'Arandano',        'Cultivo en scope actual',                       SYSDATETIME(), 'SISTEMA'),
     ('CHUNK_SIZE_INSERT',    '500',             'Filas por batch en INSERT masivo',              SYSDATETIME(), 'SISTEMA'),
     ('RUTA_ENTRADA',         'data/entrada',    'Carpeta raiz de archivos Excel de campo',       SYSDATETIME(), 'SISTEMA'),
@@ -272,9 +274,17 @@ INSERT INTO Config.Parametros_Pipeline (
     ('PESO_BAYA_MAX',        '8.0',             'Peso maximo valido de baya en gramos',          SYSDATETIME(), 'SISTEMA'),
     ('MUESTRAS_MIN',         '1',               'Cantidad minima de muestras por evaluacion',    SYSDATETIME(), 'SISTEMA'),
     ('TOTAL_PLANTAS_MIN',    '1',               'Plantas minimas por registro de sanidad',       SYSDATETIME(), 'SISTEMA'),
+    ('ID_CONDICION_CULTIVO_DEFAULT', '1',       'ID por defecto de Dim_Condicion_Cultivo para Fact_Cosecha_SAP', SYSDATETIME(), 'SISTEMA'),
     ('LEVENSHTEIN_UMBRAL',   '0.85',            'Score minimo para homologacion automatica',     SYSDATETIME(), 'SISTEMA'),
     ('DIA_PINTADO_FLORES',   '2',               'Dia semana esperado Pintado Flores (2=Lunes)',  SYSDATETIME(), 'SISTEMA'),
-    ('DIA_TASA_BROTES',      '6',               'Dia semana esperado Tasa Brotes (6=Viernes)',   SYSDATETIME(), 'SISTEMA');
+    ('DIA_TASA_BROTES',      '6',               'Dia semana esperado Tasa Brotes (6=Viernes)',   SYSDATETIME(), 'SISTEMA'),
+    ('CAMA_MIN_PERMITIDA',   '0',               'Cama minima operativa permitida para SP cama',  SYSDATETIME(), 'SISTEMA'),
+    ('CAMA_MAX_PERMITIDA',   '100',             'Cama maxima operativa permitida para SP cama',  SYSDATETIME(), 'SISTEMA'),
+    ('MAX_CAMAS_POR_GEOGRAFIA', '100',          'Maximo de camas permitidas por geografia',      SYSDATETIME(), 'SISTEMA'),
+    ('SP_CAMA_MODO_APLICAR', '1',               'Modo de aplicacion del SP de sincronizacion de cama', SYSDATETIME(), 'SISTEMA'),
+    ('TABLAS_BRONCE_SP_CAMA', 'Bronce.Evaluacion_Pesos,Bronce.Evaluacion_Vegetativa', 'Tablas Bronce que disparan sincronizacion de cama', SYSDATETIME(), 'SISTEMA'),
+    ('FACTS_BLOQUEANTES_GOLD', 'Fact_Cosecha_SAP,Fact_Conteo_Fenologico,Fact_Maduracion,Fact_Peladas,Fact_Telemetria_Clima,Fact_Evaluacion_Pesos,Fact_Tareo,Fact_Fisiologia,Fact_Evaluacion_Vegetativa,Fact_Induccion_Floral,Fact_Tasa_Crecimiento_Brotes,Fact_Sanidad_Activo,Fact_Ciclo_Poda', 'Facts cuyo error bloquea refresh de Gold', SYSDATETIME(), 'SISTEMA'),
+    ('ESTADOS_BLOQUEANTES_CALIDAD_CAMA', 'RIESGO_CONTAMINACION', 'Estados de calidad cama que detienen el pipeline', SYSDATETIME(), 'SISTEMA');
 
 PRINT '  OK — 13 parametros cargados.';
 GO

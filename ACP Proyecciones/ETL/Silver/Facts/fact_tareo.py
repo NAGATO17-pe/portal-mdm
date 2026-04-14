@@ -10,17 +10,17 @@ FKs obligatorias: ID_Tiempo, ID_Personal, ID_Actividad_Operativa, ID_Geografia
 import pandas as pd
 from sqlalchemy.engine import Engine
 from sqlalchemy import text
+from utils.contexto_transaccional import ContextoTransaccionalETL
 from utils.fechas    import procesar_fecha, obtener_id_tiempo
 from utils.texto     import normalizar_modulo, es_test_block
 from utils.dni       import procesar_dni
-from utils.sql_lotes import marcar_estado_carga_por_ids
-from dq.cuarentena   import enviar_a_cuarentena
 from mdm.lookup      import (
     resolver_geografia,
     obtener_id_personal,
     obtener_id_actividad,
 )
 from silver.facts._helpers_fact_comunes import (
+    finalizar_resumen_fact as _finalizar_resumen_fact,
     motivo_cuarentena_geografia as _motivo_cuarentena_geografia,
 )
 
@@ -63,7 +63,7 @@ def cargar_fact_tareo(engine: Engine) -> dict:
 
     df = _leer_bronce(engine)
     if df.empty:
-        return resumen
+        return _finalizar_resumen_fact(resumen)
     resumen['leidos'] = len(df)
 
     ids_leidos = []
@@ -71,7 +71,8 @@ def cargar_fact_tareo(engine: Engine) -> dict:
     ids_rechazados = []
     ids_descartados = []
 
-    with engine.begin() as conexion:
+    with ContextoTransaccionalETL(engine) as contexto:
+        conexion = contexto._conexion_activa()
         for _, fila in df.iterrows():
             id_origen = None
             try:
@@ -193,20 +194,14 @@ def cargar_fact_tareo(engine: Engine) -> dict:
                 ids_insertados.append(id_origen)
             resumen['insertados'] += 1
 
-    if ids_insertados:
-        marcar_estado_carga_por_ids(
-            engine, TABLA_ORIGEN, 'ID_Tareo', ids_insertados
-        )
-    if ids_rechazados:
-        marcar_estado_carga_por_ids(
-            engine, TABLA_ORIGEN, 'ID_Tareo', ids_rechazados, estado='RECHAZADO'
-        )
-    if ids_descartados:
-        marcar_estado_carga_por_ids(
-            engine, TABLA_ORIGEN, 'ID_Tareo', ids_descartados, estado='DESCARTADO'
-        )
+        if ids_insertados:
+            contexto.marcar_estado_carga(TABLA_ORIGEN, 'ID_Tareo', ids_insertados)
+        if ids_rechazados:
+            contexto.marcar_estado_carga(TABLA_ORIGEN, 'ID_Tareo', ids_rechazados, estado='RECHAZADO')
+        if ids_descartados:
+            contexto.marcar_estado_carga(TABLA_ORIGEN, 'ID_Tareo', ids_descartados, estado='DESCARTADO')
 
-    if resumen['cuarentena']:
-        enviar_a_cuarentena(engine, TABLA_ORIGEN, resumen['cuarentena'])
+        if resumen['cuarentena']:
+            contexto.enviar_cuarentena(TABLA_ORIGEN, resumen['cuarentena'])
 
-    return resumen
+    return _finalizar_resumen_fact(resumen)

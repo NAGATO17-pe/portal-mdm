@@ -16,7 +16,11 @@ from datetime import datetime
 from sqlalchemy import text
 
 from config.conexion import verificar_conexion, obtener_engine
-from config.parametros import limpiar_cache as limpiar_params
+from config.parametros import (
+    limpiar_cache as limpiar_params,
+    obtener_int as obtener_param_int,
+    obtener_lista as obtener_param_lista,
+)
 from bronce.cargador import ejecutar_carga_bronce
 from mdm.lookup import limpiar_cache as limpiar_lookup
 
@@ -40,42 +44,126 @@ from silver.facts.fact_ciclo_poda import cargar_fact_ciclo_poda
 from gold.marts import refrescar_marts_seleccionados, refrescar_todos_los_marts
 from auditoria.log import registrar_inicio, registrar_fin
 from utils.ejecucion import (
-    CONFIG_FACTS,
     DEPENDENCIA_DIM_GEOGRAFIA,
     DEPENDENCIA_DIM_PERSONAL,
     DEPENDENCIA_SP_CAMA_SYNC,
     DEPENDENCIA_SP_CAMA_VALIDACION,
     MODO_EJECUCION_COMPLETO,
     MODO_EJECUCION_FACTS,
+    construir_catalogo_facts,
+    normalizar_facts_solicitadas,
     obtener_facts_disponibles,
+    obtener_tablas_bronce_por_dependencias,
     resolver_plan_reproceso,
 )
 from utils.metricas import formatear_resumen_fact, normalizar_resultado_fact
 
 
-CAMA_MIN_PERMITIDA = 0
-CAMA_MAX_PERMITIDA = 100
-MAX_CAMAS_POR_GEOGRAFIA = 100
-TABLAS_BRONCE_SP_CAMA = {
-    'Bronce.Evaluacion_Pesos',
-    'Bronce.Evaluacion_Vegetativa',
-}
+def _delegar_funcion(nombre_funcion: str):
+    def _wrapper(*args, **kwargs):
+        return globals()[nombre_funcion](*args, **kwargs)
+    return _wrapper
 
-CATALOGO_FACTS = {
-    'Fact_Cosecha_SAP': {**CONFIG_FACTS['Fact_Cosecha_SAP'], 'funcion': cargar_fact_cosecha_sap},
-    'Fact_Conteo_Fenologico': {**CONFIG_FACTS['Fact_Conteo_Fenologico'], 'funcion': cargar_fact_conteo_fenologico},
-    'Fact_Maduracion': {**CONFIG_FACTS['Fact_Maduracion'], 'funcion': cargar_fact_maduracion},
-    'Fact_Peladas': {**CONFIG_FACTS['Fact_Peladas'], 'funcion': cargar_fact_peladas},
-    'Fact_Telemetria_Clima': {**CONFIG_FACTS['Fact_Telemetria_Clima'], 'funcion': cargar_fact_telemetria_clima},
-    'Fact_Evaluacion_Pesos': {**CONFIG_FACTS['Fact_Evaluacion_Pesos'], 'funcion': cargar_fact_evaluacion_pesos},
-    'Fact_Tareo': {**CONFIG_FACTS['Fact_Tareo'], 'funcion': cargar_fact_tareo},
-    'Fact_Fisiologia': {**CONFIG_FACTS['Fact_Fisiologia'], 'funcion': cargar_fact_fisiologia},
-    'Fact_Evaluacion_Vegetativa': {**CONFIG_FACTS['Fact_Evaluacion_Vegetativa'], 'funcion': cargar_fact_evaluacion_vegetativa},
-    'Fact_Induccion_Floral': {**CONFIG_FACTS['Fact_Induccion_Floral'], 'funcion': cargar_fact_induccion_floral},
-    'Fact_Tasa_Crecimiento_Brotes': {**CONFIG_FACTS['Fact_Tasa_Crecimiento_Brotes'], 'funcion': cargar_fact_tasa_crecimiento_brotes},
-    'Fact_Sanidad_Activo': {**CONFIG_FACTS['Fact_Sanidad_Activo'], 'funcion': cargar_fact_sanidad_activo},
-    'Fact_Ciclo_Poda': {**CONFIG_FACTS['Fact_Ciclo_Poda'], 'funcion': cargar_fact_ciclo_poda},
-}
+
+CATALOGO_FACTS = construir_catalogo_facts({
+    'Fact_Cosecha_SAP': _delegar_funcion('cargar_fact_cosecha_sap'),
+    'Fact_Conteo_Fenologico': _delegar_funcion('cargar_fact_conteo_fenologico'),
+    'Fact_Maduracion': _delegar_funcion('cargar_fact_maduracion'),
+    'Fact_Peladas': _delegar_funcion('cargar_fact_peladas'),
+    'Fact_Telemetria_Clima': _delegar_funcion('cargar_fact_telemetria_clima'),
+    'Fact_Evaluacion_Pesos': _delegar_funcion('cargar_fact_evaluacion_pesos'),
+    'Fact_Tareo': _delegar_funcion('cargar_fact_tareo'),
+    'Fact_Fisiologia': _delegar_funcion('cargar_fact_fisiologia'),
+    'Fact_Evaluacion_Vegetativa': _delegar_funcion('cargar_fact_evaluacion_vegetativa'),
+    'Fact_Induccion_Floral': _delegar_funcion('cargar_fact_induccion_floral'),
+    'Fact_Tasa_Crecimiento_Brotes': _delegar_funcion('cargar_fact_tasa_crecimiento_brotes'),
+    'Fact_Sanidad_Activo': _delegar_funcion('cargar_fact_sanidad_activo'),
+    'Fact_Ciclo_Poda': _delegar_funcion('cargar_fact_ciclo_poda'),
+})
+
+
+DEFAULT_CAMA_MIN_PERMITIDA = 0
+DEFAULT_CAMA_MAX_PERMITIDA = 100
+DEFAULT_MAX_CAMAS_POR_GEOGRAFIA = 100
+DEFAULT_SP_CAMA_MODO_APLICAR = 1
+DEFAULT_ESTADOS_BLOQUEANTES_CALIDAD_CAMA = ('RIESGO_CONTAMINACION',)
+DEFAULT_TABLAS_BRONCE_SP_CAMA = tuple(
+    obtener_tablas_bronce_por_dependencias((
+        DEPENDENCIA_SP_CAMA_SYNC,
+        DEPENDENCIA_SP_CAMA_VALIDACION,
+    ))
+)
+DEFAULT_FACTS_BLOQUEANTES_GOLD = tuple(CATALOGO_FACTS.keys())
+
+
+def _deduplicar_textos(valores: list[str] | tuple[str, ...]) -> tuple[str, ...]:
+    vistos: list[str] = []
+    for valor in valores:
+        texto = str(valor).strip()
+        if texto and texto not in vistos:
+            vistos.append(texto)
+    return tuple(vistos)
+
+
+def _cargar_configuracion_operativa() -> dict:
+    facts_bloqueantes_raw = obtener_param_lista(
+        'FACTS_BLOQUEANTES_GOLD',
+        DEFAULT_FACTS_BLOQUEANTES_GOLD,
+    )
+    if len(facts_bloqueantes_raw) == 1 and facts_bloqueantes_raw[0] == '*':
+        facts_bloqueantes = tuple(CATALOGO_FACTS.keys())
+    else:
+        facts_bloqueantes = tuple(normalizar_facts_solicitadas(facts_bloqueantes_raw))
+        if not facts_bloqueantes:
+            facts_bloqueantes = DEFAULT_FACTS_BLOQUEANTES_GOLD
+
+    estados_bloqueantes = tuple(
+        str(item).strip().upper()
+        for item in obtener_param_lista(
+            'ESTADOS_BLOQUEANTES_CALIDAD_CAMA',
+            DEFAULT_ESTADOS_BLOQUEANTES_CALIDAD_CAMA,
+        )
+        if str(item).strip()
+    ) or DEFAULT_ESTADOS_BLOQUEANTES_CALIDAD_CAMA
+
+    return {
+        'cama_min_permitida': obtener_param_int('CAMA_MIN_PERMITIDA', DEFAULT_CAMA_MIN_PERMITIDA),
+        'cama_max_permitida': obtener_param_int('CAMA_MAX_PERMITIDA', DEFAULT_CAMA_MAX_PERMITIDA),
+        'max_camas_por_geografia': obtener_param_int(
+            'MAX_CAMAS_POR_GEOGRAFIA',
+            DEFAULT_MAX_CAMAS_POR_GEOGRAFIA,
+        ),
+        'sp_cama_modo_aplicar': obtener_param_int(
+            'SP_CAMA_MODO_APLICAR',
+            DEFAULT_SP_CAMA_MODO_APLICAR,
+        ),
+        'tablas_bronce_sp_cama': _deduplicar_textos(
+            obtener_param_lista(
+                'TABLAS_BRONCE_SP_CAMA',
+                DEFAULT_TABLAS_BRONCE_SP_CAMA,
+            )
+        ),
+        'facts_bloqueantes_gold': facts_bloqueantes,
+        'estados_bloqueantes_calidad_cama': _deduplicar_textos(estados_bloqueantes),
+    }
+
+
+def _gold_debe_bloquearse(
+    facts_con_error: list[str] | tuple[str, ...],
+    facts_bloqueantes_gold: list[str] | tuple[str, ...],
+) -> bool:
+    return bool(set(facts_con_error).intersection(facts_bloqueantes_gold))
+
+
+def _estado_calidad_cama_bloqueante(
+    estado_calidad: str | None,
+    estados_bloqueantes: list[str] | tuple[str, ...],
+) -> bool:
+    return str(estado_calidad or '').strip().upper() in {
+        str(item).strip().upper()
+        for item in estados_bloqueantes
+        if str(item).strip()
+    }
 
 
 class ErrorEjecucionPipeline(RuntimeError):
@@ -120,9 +208,9 @@ def _resumen_final(inicio: datetime, resumen: dict) -> None:
 
 def _ejecutar_sp_upsert_cama(
     engine,
-    modo_aplicar: int = 1,
-    cama_min_permitida: int = CAMA_MIN_PERMITIDA,
-    cama_max_permitida: int = CAMA_MAX_PERMITIDA,
+    modo_aplicar: int = DEFAULT_SP_CAMA_MODO_APLICAR,
+    cama_min_permitida: int = DEFAULT_CAMA_MIN_PERMITIDA,
+    cama_max_permitida: int = DEFAULT_CAMA_MAX_PERMITIDA,
 ) -> dict:
     with engine.begin() as conexion:
         fila = conexion.execute(text("""
@@ -149,8 +237,8 @@ def _ejecutar_sp_upsert_cama(
 
 def _ejecutar_sp_validar_camas(
     engine,
-    cama_max_permitida: int = CAMA_MAX_PERMITIDA,
-    max_camas_por_geografia: int = MAX_CAMAS_POR_GEOGRAFIA,
+    cama_max_permitida: int = DEFAULT_CAMA_MAX_PERMITIDA,
+    max_camas_por_geografia: int = DEFAULT_MAX_CAMAS_POR_GEOGRAFIA,
 ) -> dict:
     with engine.connect() as conexion:
         fila = conexion.execute(text("""
@@ -244,7 +332,12 @@ def _reiniciar_estado_carga_bronce(engine, tabla_bronce: str) -> int:
         return int(resultado.rowcount or 0)
 
 
-def _ejecutar_dependencia_reproceso(engine, dependencia: str, resumen: dict) -> None:
+def _ejecutar_dependencia_reproceso(
+    engine,
+    dependencia: str,
+    resumen: dict,
+    config_operativa: dict,
+) -> None:
     if dependencia == DEPENDENCIA_DIM_PERSONAL:
         r = cargar_dim_personal(engine)
         resumen['Dim_Personal insertados'] = r['insertados']
@@ -264,9 +357,9 @@ def _ejecutar_dependencia_reproceso(engine, dependencia: str, resumen: dict) -> 
         bridge_antes = _contar_bridge_geografia_cama(engine)
         r = _ejecutar_sp_upsert_cama(
             engine,
-            modo_aplicar=1,
-            cama_min_permitida=CAMA_MIN_PERMITIDA,
-            cama_max_permitida=CAMA_MAX_PERMITIDA,
+            modo_aplicar=config_operativa['sp_cama_modo_aplicar'],
+            cama_min_permitida=config_operativa['cama_min_permitida'],
+            cama_max_permitida=config_operativa['cama_max_permitida'],
         )
         bridge_despues = _contar_bridge_geografia_cama(engine)
         resumen['SP_Cama filas evaluadas'] = r.get('Filas_Evaluadas', 0)
@@ -284,14 +377,17 @@ def _ejecutar_dependencia_reproceso(engine, dependencia: str, resumen: dict) -> 
     if dependencia == DEPENDENCIA_SP_CAMA_VALIDACION:
         r = _ejecutar_sp_validar_camas(
             engine,
-            cama_max_permitida=CAMA_MAX_PERMITIDA,
-            max_camas_por_geografia=MAX_CAMAS_POR_GEOGRAFIA,
+            cama_max_permitida=config_operativa['cama_max_permitida'],
+            max_camas_por_geografia=config_operativa['max_camas_por_geografia'],
         )
         resumen['SP_Cama fuera regla'] = r.get('Cama_Fuera_Regla')
         resumen['SP_Cama geo saturadas'] = r.get('Geografias_Saturadas')
         resumen['SP_Cama estado calidad'] = r.get('Estado_Calidad_Cama')
-        if r.get('Estado_Calidad_Cama') == 'RIESGO_CONTAMINACION':
-            raise RuntimeError('Calidad cama en estado RIESGO_CONTAMINACION.')
+        if _estado_calidad_cama_bloqueante(
+            r.get('Estado_Calidad_Cama'),
+            config_operativa['estados_bloqueantes_calidad_cama'],
+        ):
+            raise RuntimeError(f"Calidad cama en estado {r.get('Estado_Calidad_Cama')}.")
         return
 
     raise ValueError(f'Dependencia no soportada: {dependencia}')
@@ -386,6 +482,7 @@ def ejecutar_reproceso_facts(
         'Facts solicitadas': ', '.join(plan['facts']),
     }
     errores_pipeline: list[str] = []
+    facts_con_error: list[str] = []
 
     paso_actual = 1
     _paso(paso_actual, total, 'Verificando conexion SQL Server...')
@@ -400,11 +497,12 @@ def ejecutar_reproceso_facts(
     _paso(paso_actual, total, 'Limpiando cache...')
     limpiar_lookup()
     limpiar_params()
+    config_operativa = _cargar_configuracion_operativa()
 
     for dependencia in plan['dependencias']:
         paso_actual += 1
         _paso(paso_actual, total, f'Ejecutando dependencia {dependencia}...')
-        _ejecutar_dependencia_reproceso(engine, dependencia, resumen)
+        _ejecutar_dependencia_reproceso(engine, dependencia, resumen, config_operativa)
 
     for nombre_fact in plan['facts']:
         paso_actual += 1
@@ -427,10 +525,11 @@ def ejecutar_reproceso_facts(
         )
         if error_fact:
             errores_pipeline.append(error_fact)
+            facts_con_error.append(nombre_fact)
 
     if plan['marts']:
         paso_actual += 1
-        if errores_pipeline:
+        if _gold_debe_bloquearse(facts_con_error, config_operativa['facts_bloqueantes_gold']):
             _paso(paso_actual, total, 'Omitiendo Marts Gold por errores previos...')
             resumen['Gold estado'] = 'OMITIDO_POR_ERROR_EN_FACTS'
         else:
@@ -460,6 +559,7 @@ def ejecutar() -> None:
     total = 22
     resumen = {}
     errores_pipeline: list[str] = []
+    facts_con_error: list[str] = []
 
     _paso(1, total, 'Verificando conexion SQL Server...')
     if not verificar_conexion():
@@ -472,6 +572,7 @@ def ejecutar() -> None:
     _paso(2, total, 'Limpiando cache...')
     limpiar_lookup()
     limpiar_params()
+    config_operativa = _cargar_configuracion_operativa()
 
     _paso(3, total, 'Cargando archivos Excel a Bronce...')
     resultados_bronce = ejecutar_carga_bronce()
@@ -506,13 +607,13 @@ def ejecutar() -> None:
 
     _paso(6, total, 'Sincronizando catalogo/bridge de cama via SP...')
     try:
-        if tablas_bronce_ok & TABLAS_BRONCE_SP_CAMA:
+        if tablas_bronce_ok & set(config_operativa['tablas_bronce_sp_cama']):
             bridge_antes = _contar_bridge_geografia_cama(engine)
             r = _ejecutar_sp_upsert_cama(
                 engine,
-                modo_aplicar=1,
-                cama_min_permitida=CAMA_MIN_PERMITIDA,
-                cama_max_permitida=CAMA_MAX_PERMITIDA,
+                modo_aplicar=config_operativa['sp_cama_modo_aplicar'],
+                cama_min_permitida=config_operativa['cama_min_permitida'],
+                cama_max_permitida=config_operativa['cama_max_permitida'],
             )
             bridge_despues = _contar_bridge_geografia_cama(engine)
             resumen['SP_Cama filas evaluadas'] = r.get('Filas_Evaluadas', 0)
@@ -542,43 +643,34 @@ def ejecutar() -> None:
     try:
         r = _ejecutar_sp_validar_camas(
             engine,
-            cama_max_permitida=CAMA_MAX_PERMITIDA,
-            max_camas_por_geografia=MAX_CAMAS_POR_GEOGRAFIA,
+            cama_max_permitida=config_operativa['cama_max_permitida'],
+            max_camas_por_geografia=config_operativa['max_camas_por_geografia'],
         )
         resumen['SP_Cama fuera regla'] = r.get('Cama_Fuera_Regla')
         resumen['SP_Cama geo saturadas'] = r.get('Geografias_Saturadas')
         resumen['SP_Cama estado calidad'] = r.get('Estado_Calidad_Cama')
-        if r.get('Estado_Calidad_Cama') == 'RIESGO_CONTAMINACION':
-            print('  ERROR: Calidad cama en estado RIESGO_CONTAMINACION. Pipeline detenido.')
+        if _estado_calidad_cama_bloqueante(
+            r.get('Estado_Calidad_Cama'),
+            config_operativa['estados_bloqueantes_calidad_cama'],
+        ):
+            print(f"  ERROR: Calidad cama en estado {r.get('Estado_Calidad_Cama')}. Pipeline detenido.")
             sys.exit(1)
     except Exception as error:
         print(f'  ERROR en SP_Cama_Validacion: {error}')
         resumen['SP_Cama_Validacion ERROR'] = str(error)
         sys.exit(1)
 
-    facts = [
-        (8, 'Fact_Cosecha_SAP', 'Silver.Fact_Cosecha_SAP', cargar_fact_cosecha_sap),
-        (9, 'Fact_Conteo_Fenologico', 'Silver.Fact_Conteo_Fenologico', cargar_fact_conteo_fenologico),
-        (10, 'Fact_Maduracion', 'Silver.Fact_Maduracion', cargar_fact_maduracion),
-        (11, 'Fact_Peladas', 'Silver.Fact_Peladas', cargar_fact_peladas),
-        (12, 'Fact_Telemetria_Clima', 'Silver.Fact_Telemetria_Clima', cargar_fact_telemetria_clima),
-        (13, 'Fact_Evaluacion_Pesos', 'Silver.Fact_Evaluacion_Pesos', cargar_fact_evaluacion_pesos),
-        (14, 'Fact_Tareo', 'Silver.Fact_Tareo', cargar_fact_tareo),
-        (15, 'Fact_Fisiologia', 'Silver.Fact_Fisiologia', cargar_fact_fisiologia),
-        (16, 'Fact_Evaluacion_Vegetativa', 'Silver.Fact_Evaluacion_Vegetativa', cargar_fact_evaluacion_vegetativa),
-        (17, 'Fact_Induccion_Floral', 'Silver.Fact_Induccion_Floral', cargar_fact_induccion_floral),
-        (18, 'Fact_Tasa_Crecimiento_Brotes', 'Silver.Fact_Tasa_Crecimiento_Brotes', cargar_fact_tasa_crecimiento_brotes),
-        (19, 'Fact_Sanidad_Activo', 'Silver.Fact_Sanidad_Activo', cargar_fact_sanidad_activo),
-        (20, 'Fact_Ciclo_Poda', 'Silver.Fact_Ciclo_Poda', cargar_fact_ciclo_poda),
-    ]
-
-    for numero, nombre, tabla_destino, funcion in facts:
+    for nombre, meta_fact in CATALOGO_FACTS.items():
+        numero = int(meta_fact['orden'])
+        tabla_destino = meta_fact['tabla_destino']
+        funcion = meta_fact['funcion']
         _paso(numero, total, f'Cargando {nombre}...')
         error_fact = _ejecutar_fact(nombre, tabla_destino, funcion, engine, resumen)
         if error_fact:
             errores_pipeline.append(error_fact)
+            facts_con_error.append(nombre)
 
-    if errores_pipeline:
+    if _gold_debe_bloquearse(facts_con_error, config_operativa['facts_bloqueantes_gold']):
         _paso(21, total, 'Omitiendo Marts Gold por errores previos...')
         resumen['Gold estado'] = 'OMITIDO_POR_ERROR_EN_FACTS'
     else:

@@ -16,11 +16,12 @@ import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from dq.cuarentena import enviar_a_cuarentena
 from dq.validador import normalizar_humedad
 from mdm.lookup import obtener_id_tiempo as obtener_id_tiempo_dim
+from utils.contexto_transaccional import ContextoTransaccionalETL
 from utils.fechas import obtener_id_tiempo as construir_id_tiempo, procesar_fecha
-from utils.sql_lotes import ejecutar_en_lotes_con_engine, marcar_estado_carga_por_ids
+from utils.sql_lotes import ejecutar_en_lotes
+from silver.facts._helpers_fact_comunes import finalizar_resumen_fact as _finalizar_resumen_fact
 
 
 TABLA_CLIMA = 'Bronce.Reporte_Clima'
@@ -337,32 +338,6 @@ def cargar_fact_telemetria_clima(engine: Engine) -> dict:
     )
     resumen['insertados'] += len(payload_clima)
 
-    if payload_clima:
-        ejecutar_en_lotes_con_engine(
-            engine,
-            SQL_INSERT_CLIMA_REPORTE,
-            [
-                {
-                    'sector_climatico': registro['sector_climatico'],
-                    'id_tiempo': registro['id_tiempo'],
-                    'temp_max': registro['temp_max'],
-                    'temp_min': registro['temp_min'],
-                    'humedad': registro['humedad'],
-                    'precipitacion': registro['precipitacion'],
-                    'fecha_evento': registro['fecha_evento'],
-                }
-                for registro in payload_clima
-            ],
-            tam_lote=TAM_LOTE_CLIMA,
-        )
-
-    marcar_estado_carga_por_ids(
-        engine, TABLA_CLIMA, 'ID_Reporte_Clima', ids_clima_insertados, estado='PROCESADO'
-    )
-    marcar_estado_carga_por_ids(
-        engine, TABLA_CLIMA, 'ID_Reporte_Clima', ids_clima_rechazados, estado='RECHAZADO'
-    )
-
     ids_vars_rechazados = []
     registros_vars_validos = []
     total_vars = len(df_vars)
@@ -444,34 +419,67 @@ def cargar_fact_telemetria_clima(engine: Engine) -> dict:
     )
     resumen['insertados'] += len(payload_vars)
 
-    if payload_vars:
-        ejecutar_en_lotes_con_engine(
-            engine,
-            SQL_INSERT_CLIMA_VARIABLES,
-            [
-                {
-                    'sector_climatico': registro['sector_climatico'],
-                    'id_tiempo': registro['id_tiempo'],
-                    'temp_max': registro['temp_max'],
-                    'temp_min': registro['temp_min'],
-                    'humedad': registro['humedad'],
-                    'vpd': registro['vpd'],
-                    'radiacion': registro['radiacion'],
-                    'fecha_evento': registro['fecha_evento'],
-                }
-                for registro in payload_vars
-            ],
-            tam_lote=TAM_LOTE_CLIMA,
-        )
+    with ContextoTransaccionalETL(engine) as contexto:
+        conexion = contexto._conexion_activa()
 
-    marcar_estado_carga_por_ids(
-        engine, TABLA_VARIABLES, 'ID_Variables_Met', ids_vars_insertados, estado='PROCESADO'
-    )
-    marcar_estado_carga_por_ids(
-        engine, TABLA_VARIABLES, 'ID_Variables_Met', ids_vars_rechazados, estado='RECHAZADO'
-    )
+        if payload_clima:
+            ejecutar_en_lotes(
+                conexion,
+                SQL_INSERT_CLIMA_REPORTE,
+                [
+                    {
+                        'sector_climatico': registro['sector_climatico'],
+                        'id_tiempo': registro['id_tiempo'],
+                        'temp_max': registro['temp_max'],
+                        'temp_min': registro['temp_min'],
+                        'humedad': registro['humedad'],
+                        'precipitacion': registro['precipitacion'],
+                        'fecha_evento': registro['fecha_evento'],
+                    }
+                    for registro in payload_clima
+                ],
+                tam_lote=TAM_LOTE_CLIMA,
+            )
 
-    if resumen['cuarentena']:
-        enviar_a_cuarentena(engine, TABLA_CUARENTENA, resumen['cuarentena'])
+        if ids_clima_insertados:
+            contexto.marcar_estado_carga(
+                TABLA_CLIMA, 'ID_Reporte_Clima', ids_clima_insertados, estado='PROCESADO'
+            )
+        if ids_clima_rechazados:
+            contexto.marcar_estado_carga(
+                TABLA_CLIMA, 'ID_Reporte_Clima', ids_clima_rechazados, estado='RECHAZADO'
+            )
 
-    return resumen
+        if payload_vars:
+            ejecutar_en_lotes(
+                conexion,
+                SQL_INSERT_CLIMA_VARIABLES,
+                [
+                    {
+                        'sector_climatico': registro['sector_climatico'],
+                        'id_tiempo': registro['id_tiempo'],
+                        'temp_max': registro['temp_max'],
+                        'temp_min': registro['temp_min'],
+                        'humedad': registro['humedad'],
+                        'vpd': registro['vpd'],
+                        'radiacion': registro['radiacion'],
+                        'fecha_evento': registro['fecha_evento'],
+                    }
+                    for registro in payload_vars
+                ],
+                tam_lote=TAM_LOTE_CLIMA,
+            )
+
+        if ids_vars_insertados:
+            contexto.marcar_estado_carga(
+                TABLA_VARIABLES, 'ID_Variables_Met', ids_vars_insertados, estado='PROCESADO'
+            )
+        if ids_vars_rechazados:
+            contexto.marcar_estado_carga(
+                TABLA_VARIABLES, 'ID_Variables_Met', ids_vars_rechazados, estado='RECHAZADO'
+            )
+
+        if resumen['cuarentena']:
+            contexto.enviar_cuarentena(TABLA_CUARENTENA, resumen['cuarentena'])
+
+    return _finalizar_resumen_fact(resumen)

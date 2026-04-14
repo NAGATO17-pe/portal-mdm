@@ -1,4 +1,4 @@
-﻿import pandas as pd
+import pandas as pd
 import streamlit as st
 from utils.componentes import badge_html, estado_vacio_html, seccion_tabla_con_guardar
 from utils.formato import header_pagina

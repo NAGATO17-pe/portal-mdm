@@ -31,6 +31,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy import text
 from datetime import datetime
 
+from utils.contexto_transaccional import RecursoDB, administrar_recurso_db
 from utils.texto import (
     compactar_variedad_para_match,
     normalizar_variedad,
@@ -212,7 +213,7 @@ def buscar_sugerencia_levenshtein(valor: str,
     return (canonicos[0] if len(canonicos) == 1 else None), score / 100.0
 
 
-def registrar_homologacion(engine: Engine,
+def registrar_homologacion(recurso_db: RecursoDB,
                             tabla_origen: str,
                             campo_origen: str,
                             texto_crudo: str,
@@ -226,7 +227,7 @@ def registrar_homologacion(engine: Engine,
     """
     aprobado_por = 'SISTEMA' if aprobado else 'PENDIENTE'
 
-    with engine.begin() as conexion:
+    with administrar_recurso_db(recurso_db) as conexion:
         existe = conexion.execute(text("""
             SELECT COUNT(*)
             FROM MDM.Diccionario_Homologacion
@@ -301,7 +302,7 @@ def homologar_valor(valor: str | None,
                     campo_origen: str,
                     diccionario: pd.DataFrame,
                     catalogo: pd.DataFrame,
-                    engine: Engine) -> tuple[str | None, str]:
+                    recurso_db: RecursoDB) -> tuple[str | None, str]:
     """
     Homologa un valor contra el diccionario canÃ³nico.
     Retorna (valor_homologado, estado):
@@ -317,24 +318,24 @@ def homologar_valor(valor: str | None,
 
     canonico = buscar_match_exacto(valor, diccionario)
     if canonico:
-        registrar_homologacion(engine, tabla_origen, campo_origen,
+        registrar_homologacion(recurso_db, tabla_origen, campo_origen,
                                valor, canonico, 1.0, aprobado=True)
         return canonico, 'EXACTO'
 
     canonico = buscar_match_catalogo(valor, catalogo)
     if canonico:
-        registrar_homologacion(engine, tabla_origen, campo_origen,
+        registrar_homologacion(recurso_db, tabla_origen, campo_origen,
                                valor, canonico, 1.0, aprobado=True)
         return canonico, 'CATALOGO'
 
     canonico, score = buscar_match_levenshtein(valor, catalogo)
     if canonico:
-        registrar_homologacion(engine, tabla_origen, campo_origen,
+        registrar_homologacion(recurso_db, tabla_origen, campo_origen,
                                valor, canonico, score, aprobado=True)
         return canonico, 'LEVENSHTEIN'
 
     sugerencia, score = buscar_sugerencia_levenshtein(valor, catalogo)
-    registrar_homologacion(engine, tabla_origen, campo_origen,
+    registrar_homologacion(recurso_db, tabla_origen, campo_origen,
                            valor, sugerencia or normalizar_variedad(valor) or valor,
                            score, aprobado=False)
     return None, 'CUARENTENA'
@@ -344,12 +345,17 @@ def homologar_columna(df: pd.DataFrame,
                        columna_raw: str,
                        columna_destino: str,
                        tabla_origen: str,
-                       engine: Engine,
+                       recurso_db: RecursoDB,
                        columna_id_origen: str | None = None) -> tuple[pd.DataFrame, list[dict]]:
     """
     Homologa una columna completa del DataFrame.
     Retorna (df con columna_destino, lista de cuarentenas).
     """
+    if isinstance(recurso_db, Engine):
+        engine = recurso_db
+    else:
+        engine = recurso_db.engine
+
     diccionario = cargar_diccionario(engine, tabla_origen)
     catalogo    = cargar_catalogo_variedades(engine)
     cuarentenas = []
@@ -367,7 +373,7 @@ def homologar_columna(df: pd.DataFrame,
             homologado, estado = cache_resoluciones[clave_cache]
         else:
             homologado, estado = homologar_valor(
-                valor, tabla_origen, columna_raw, diccionario, catalogo, engine
+                valor, tabla_origen, columna_raw, diccionario, catalogo, recurso_db
             )
             cache_resoluciones[clave_cache] = (homologado, estado)
 

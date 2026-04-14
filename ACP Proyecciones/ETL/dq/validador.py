@@ -18,7 +18,7 @@ Reglas que aplica:
 
 import pandas as pd
 from utils.dni    import procesar_dni
-from utils.fechas import procesar_fecha, FECHA_CAMPANA_INICIO, FECHA_CAMPANA_FIN
+from utils.fechas import describir_rango_campana, procesar_fecha, resolver_dominio_fecha
 from utils.texto  import (
     normalizar_variedad,
     normalizar_nombre_persona,
@@ -26,27 +26,6 @@ from utils.texto  import (
     es_test_block,
     limpiar_numerico_texto,
 )
-
-
-DOMINIO_FECHA_POR_TIPO_TABLA = {
-    'clima': 'clima',
-    'conteo_fruta': 'conteo_fenologico',
-    'conteo_fenologico': 'conteo_fenologico',
-    'cosecha_sap': 'cosecha_sap',
-    'evaluacion_pesos': 'evaluacion_pesos',
-    'evaluacion_vegetativa': 'evaluacion_vegetativa',
-    'fisiologia': 'fisiologia',
-    'induccion_floral': 'induccion_floral',
-    'maduracion': 'maduracion',
-    'peladas': 'peladas',
-    'sanidad': 'sanidad',
-    'sanidad_activo': 'sanidad_activo',
-    'tareo': 'tareo',
-    'tasa_crecimiento_brotes': 'tasa_crecimiento_brotes',
-    'ciclo_poda': 'ciclo_poda',
-}
-
-
 # ── Resultado de validación por fila ──────────────────────────
 def _error(columna: str, valor, motivo: str,
            severidad: str = 'ALTO') -> dict:
@@ -91,6 +70,12 @@ def validar_fecha(valor: str | None,
             'CRITICO'
         )
     if not valida:
+        rango = describir_rango_campana(dominio=dominio)
+        return fecha, _error(
+            nombre_columna, valor,
+            f'Fecha fuera del rango de campana ({rango})',
+            'ALTO'
+        )
         return fecha, _error(
             nombre_columna, valor,
             'Fecha fuera del rango de campaña (2025-06-01 → 2026-06-30)',
@@ -221,7 +206,7 @@ def validar_dataframe(df: pd.DataFrame,
 
     # ── Fecha ─────────────────────────────────────────────────
     if 'Fecha_Raw' in df.columns:
-        dominio_fecha = DOMINIO_FECHA_POR_TIPO_TABLA.get(tipo_tabla)
+        dominio_fecha = resolver_dominio_fecha(tipo_tabla)
         def procesar_col_fecha(valor):
             fecha, error = validar_fecha(valor, dominio=dominio_fecha)
             if error:
@@ -248,7 +233,7 @@ def validar_dataframe(df: pd.DataFrame,
         df['Muestras_Procesado'] = df['Muestras_Raw'].apply(procesar_col_muestras)
 
     # ── Total plantas ─────────────────────────────────────────
-    if tipo_tabla == 'sanidad' and 'Total_Plantas_Raw' in df.columns:
+    if tipo_tabla in {'sanidad', 'sanidad_activo'} and 'Total_Plantas_Raw' in df.columns:
         def procesar_col_plantas(valor):
             plantas, error = validar_total_plantas(valor)
             if error:

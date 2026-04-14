@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pandas as pd
+
 import mdm.lookup as lookup
 
 
@@ -40,3 +42,38 @@ def test_obtener_id_geografia_delega_a_resolver_geografia(monkeypatch):
     assert llamadas[0]["turno"] == 2
     assert llamadas[0]["valvula"] == "A1"
     assert llamadas[0]["cama"] == "10"
+
+
+def test_resolver_geografia_legacy_considera_submodulo_en_modulo_decimal(monkeypatch):
+    monkeypatch.setattr(lookup, "_resolver_geografia_sp", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        lookup,
+        "_cargar_dim_geografia",
+        lambda _engine: pd.DataFrame([
+            {
+                "ID_Geografia": 100,
+                "Fundo_token": None,
+                "Sector_token": None,
+                "Modulo_token": "9",
+                "SubModulo_token": "1",
+                "Turno_token": None,
+                "Valvula_token": None,
+                "Cama_token": None,
+            },
+            {
+                "ID_Geografia": 200,
+                "Fundo_token": None,
+                "Sector_token": None,
+                "Modulo_token": "9",
+                "SubModulo_token": "2",
+                "Turno_token": None,
+                "Valvula_token": None,
+                "Cama_token": None,
+            },
+        ]),
+    )
+
+    resultado = lookup.resolver_geografia(None, None, "9.1", object())
+
+    assert resultado["id_geografia"] == 100
+    assert resultado["estado"] == "RESUELTA_DIM_GEOGRAFIA"

@@ -12,6 +12,8 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.sql.elements import TextClause
 
+from utils.contexto_transaccional import RecursoDB, administrar_recurso_db
+
 
 TAM_LOTE_DEFECTO = 2000
 
@@ -36,8 +38,8 @@ def ejecutar_en_lotes(
     return len(payload)
 
 
-def ejecutar_en_lotes_con_engine(
-    engine: Engine,
+def ejecutar_en_lotes_con_recurso(
+    recurso_db: RecursoDB,
     sentencia: str | TextClause,
     payload: Sequence[Mapping],
     tam_lote: int = TAM_LOTE_DEFECTO,
@@ -45,12 +47,21 @@ def ejecutar_en_lotes_con_engine(
     if not payload:
         return 0
 
-    with engine.begin() as conexion:
+    with administrar_recurso_db(recurso_db) as conexion:
         return ejecutar_en_lotes(conexion, sentencia, payload, tam_lote)
 
 
-def marcar_estado_carga_por_ids(
+def ejecutar_en_lotes_con_engine(
     engine: Engine,
+    sentencia: str | TextClause,
+    payload: Sequence[Mapping],
+    tam_lote: int = TAM_LOTE_DEFECTO,
+) -> int:
+    return ejecutar_en_lotes_con_recurso(engine, sentencia, payload, tam_lote)
+
+
+def marcar_estado_carga_por_ids(
+    recurso_db: RecursoDB,
     tabla_origen: str,
     columna_id: str,
     ids: Sequence[int | None],
@@ -70,4 +81,4 @@ def marcar_estado_carga_por_ids(
         SET Estado_Carga = :estado_carga
         WHERE {columna_id} = :id_origen
     """
-    return ejecutar_en_lotes_con_engine(engine, sentencia, payload, tam_lote)
+    return ejecutar_en_lotes_con_recurso(recurso_db, sentencia, payload, tam_lote)

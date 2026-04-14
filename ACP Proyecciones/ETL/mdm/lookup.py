@@ -232,6 +232,17 @@ def _geo_token(valor) -> str | None:
 
     return str(texto).lower()
 
+
+def _descomponer_modulo_submodulo_token(modulo_token: str | None) -> tuple[str | None, str | None]:
+    if modulo_token is None:
+        return None, None
+
+    coincidencia = re.fullmatch(r'([+-]?\d+)\.(\d+)', modulo_token)
+    if coincidencia:
+        return coincidencia.group(1), str(int(coincidencia.group(2)))
+
+    return modulo_token, None
+
 def _cargar_dim_geografia(engine: Engine) -> pd.DataFrame:
     clave_cache = 'Silver.Dim_Geografia'
     if clave_cache in _cache:
@@ -244,6 +255,7 @@ def _cargar_dim_geografia(engine: Engine) -> pd.DataFrame:
                 Fundo,
                 Sector,
                 Modulo,
+                SubModulo,
                 Turno,
                 Valvula,
                 Cama,
@@ -255,13 +267,14 @@ def _cargar_dim_geografia(engine: Engine) -> pd.DataFrame:
             resultado.fetchall(),
             columns=[
                 'ID_Geografia', 'Fundo', 'Sector', 'Modulo',
-                'Turno', 'Valvula', 'Cama', 'Es_Test_Block'
+                'SubModulo', 'Turno', 'Valvula', 'Cama', 'Es_Test_Block'
             ]
         )
 
     dim['Fundo_token'] = dim['Fundo'].map(_geo_token)
     dim['Sector_token'] = dim['Sector'].map(_geo_token)
     dim['Modulo_token'] = dim['Modulo'].map(_geo_token)
+    dim['SubModulo_token'] = dim['SubModulo'].map(_geo_token)
     dim['Turno_token'] = dim['Turno'].map(_geo_token)
     dim['Valvula_token'] = dim['Valvula'].map(_geo_token)
     dim['Cama_token'] = dim['Cama'].map(_geo_token)
@@ -272,7 +285,7 @@ def _cargar_dim_geografia(engine: Engine) -> pd.DataFrame:
 def _es_modulo_especial(modulo_token: str | None) -> bool:
     if modulo_token is None:
         return False
-    return re.fullmatch(r'[+-]?\d+', modulo_token) is None
+    return re.fullmatch(r'[+-]?\d+(?:\.\d+)?', modulo_token) is None
 
 
 def _resolver_id_unico(coincidencias: pd.DataFrame) -> int | None:
@@ -358,6 +371,7 @@ def _resolver_geografia_legacy(fundo: str | None,
     fundo_token = _geo_token(fundo)
     sector_token = _geo_token(sector)
     modulo_token = _geo_token(modulo)
+    modulo_base_token, submodulo_token = _descomponer_modulo_submodulo_token(modulo_token)
     turno_token = _geo_token(turno)
     valvula_token = _geo_token(valvula)
     cama_token = _geo_token(cama)
@@ -388,8 +402,11 @@ def _resolver_geografia_legacy(fundo: str | None,
     if sector_token is not None:
         mascara_base &= dim['Sector_token'] == sector_token
 
-    if modulo_token is not None:
-        mascara_base &= dim['Modulo_token'] == modulo_token
+    if modulo_base_token is not None:
+        mascara_base &= dim['Modulo_token'] == modulo_base_token
+
+    if submodulo_token is not None:
+        mascara_base &= dim['SubModulo_token'] == submodulo_token
 
     if turno_token is not None:
         mascara_base &= dim['Turno_token'] == turno_token
@@ -523,6 +540,10 @@ def obtener_id_geografia(fundo: str | None,
                          turno=None,
                          valvula=None,
                          cama=None) -> int | None:
+    """
+    Wrapper temporal de compatibilidad.
+    El codigo nuevo debe consumir resolver_geografia(...) para no perder estado ni detalle.
+    """
     resultado = resolver_geografia(
         fundo,
         sector,

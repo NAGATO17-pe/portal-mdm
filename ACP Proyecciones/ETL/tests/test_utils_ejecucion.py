@@ -4,7 +4,9 @@ from utils.ejecucion import (
     DEPENDENCIA_SP_CAMA_SYNC,
     DEPENDENCIA_SP_CAMA_VALIDACION,
     CONFIG_FACTS,
+    construir_catalogo_facts,
     obtener_catalogo_facts,
+    obtener_tablas_bronce_por_dependencias,
     normalizar_facts_solicitadas,
     resolver_plan_reproceso,
 )
@@ -55,6 +57,27 @@ def test_catalogo_facts_expone_estrategia_y_fuentes():
     assert clima["tabla_destino"] == "Silver.Fact_Telemetria_Clima"
     assert clima["estrategia_rerun"] == "rebuild_fact"
     assert "Bronce.Reporte_Clima" in clima["fuentes_bronce"]
+
+
+def test_construir_catalogo_facts_adjunta_funcion_y_respeta_orden():
+    funciones = {nombre: object() for nombre in CONFIG_FACTS}
+
+    catalogo = construir_catalogo_facts(funciones)
+
+    assert list(catalogo.keys()) == list(CONFIG_FACTS.keys())
+    assert catalogo["Fact_Telemetria_Clima"]["funcion"] is funciones["Fact_Telemetria_Clima"]
+
+
+def test_obtener_tablas_bronce_por_dependencias_deduplica_y_respeta_orden_catalogo():
+    tablas = obtener_tablas_bronce_por_dependencias([
+        DEPENDENCIA_SP_CAMA_SYNC,
+        DEPENDENCIA_SP_CAMA_VALIDACION,
+    ])
+
+    assert tablas == [
+        "Bronce.Evaluacion_Pesos",
+        "Bronce.Evaluacion_Vegetativa",
+    ]
 
 
 def test_resolver_plan_reproceso_falla_si_falta_estrategia_rerun():

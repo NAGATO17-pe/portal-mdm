@@ -6,6 +6,7 @@ El ETL usa este diccionario para saber a qué tabla va cada archivo.
 """
 
 from pathlib import Path
+import json
 import re
 import unicodedata
 
@@ -118,11 +119,37 @@ def obtener_archivo_mas_reciente(carpeta: Path) -> Path | None:
     Si no hay archivos, retorna None.
     """
     archivos = sorted(
-        carpeta.glob('*.xlsx'),
+        (
+            archivo
+            for archivo in carpeta.glob('*.xlsx')
+            if not _archivo_tiene_marca_vigente(archivo)
+        ),
         key=lambda archivo: archivo.stat().st_mtime,
         reverse=True
     )
     return archivos[0] if archivos else None
+
+
+def _ruta_marca_archivo(ruta_archivo: Path) -> Path:
+    return ruta_archivo.with_name(f'{ruta_archivo.name}.procesado.json')
+
+
+def _archivo_tiene_marca_vigente(ruta_archivo: Path) -> bool:
+    ruta_marca = _ruta_marca_archivo(ruta_archivo)
+    if not ruta_marca.exists():
+        return False
+
+    try:
+        payload = json.loads(ruta_marca.read_text(encoding='utf-8'))
+        stat_actual = ruta_archivo.stat()
+    except Exception:
+        return False
+
+    return (
+        int(payload.get('tamano_bytes', -1)) == int(stat_actual.st_size)
+        and int(payload.get('mtime_ns', -1)) == int(stat_actual.st_mtime_ns)
+        and str(payload.get('estado', '')).upper() in {'PROCESADO', 'RECHAZADO'}
+    )
 
 
 def listar_carpetas_con_archivos() -> list[tuple[str, Path, str]]:
@@ -154,6 +181,9 @@ def listar_carpetas_con_archivos() -> list[tuple[str, Path, str]]:
 
         # 2) Archivos sueltos en data/entrada.
         for archivo in CARPETA_ENTRADA.glob('*.xlsx'):
+            if _archivo_tiene_marca_vigente(archivo):
+                continue
+
             carpeta_canonica = _inferir_carpeta_por_archivo(archivo.name)
             if not carpeta_canonica:
                 continue
