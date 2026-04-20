@@ -39,7 +39,7 @@ enrutador_cuarentena = APIRouter(prefix="/v1/cuarentena", tags=["Cuarentena"])
 )
 def listar(
     pagina:       int = Query(default=1,  ge=1,        description="Número de página."),
-    tamano:       int = Query(default=20, ge=1, le=100, description="Registros por página."),
+    tamano:       int = Query(default=20, ge=1, le=10000, description="Registros por página."),
     tabla_filtro: str | None = Query(default=None,      description="Filtrar por tabla Bronce."),
 ) -> RespuestaPaginada:
     resultado = listar_cuarentena(pagina=pagina, tamano=tamano, tabla_filtro=tabla_filtro)

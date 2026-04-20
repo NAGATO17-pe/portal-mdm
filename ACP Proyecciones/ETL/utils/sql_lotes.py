@@ -68,17 +68,41 @@ def marcar_estado_carga_por_ids(
     estado: str = 'PROCESADO',
     tam_lote: int = TAM_LOTE_DEFECTO,
 ) -> int:
-    payload = [
-        {'estado_carga': estado, 'id_origen': int(id_origen)}
-        for id_origen in ids
-        if id_origen is not None
-    ]
-    if not payload:
+    ids_limpios = list(set([int(i) for i in ids if i is not None]))
+    if not ids_limpios:
         return 0
 
-    sentencia = f"""
-        UPDATE {tabla_origen}
-        SET Estado_Carga = :estado_carga
-        WHERE {columna_id} = :id_origen
-    """
-    return ejecutar_en_lotes_con_recurso(recurso_db, sentencia, payload, tam_lote)
+    with administrar_recurso_db(recurso_db) as conexion:
+        nombre_temp = f"#Temp_Update_{tabla_origen.split('.')[-1]}"
+        
+        conexion.execute(text(f"IF OBJECT_ID('tempdb..{nombre_temp}') IS NOT NULL DROP TABLE {nombre_temp}"))
+        conexion.execute(text(f"CREATE TABLE {nombre_temp} (id_origen BIGINT PRIMARY KEY)"))
+        
+        sql_insert = f"INSERT INTO {nombre_temp} (id_origen) VALUES (?)"
+        
+        try:
+            raw_conn = conexion.connection
+            cursor = raw_conn.cursor()
+            cursor.fast_executemany = True
+            datos = [(i,) for i in ids_limpios]
+            cursor.executemany(sql_insert, datos)
+            cursor.close()
+        except AttributeError:
+             # Fallback just in case we are in sqlite mocked engine for some reason
+             for inicio in range(0, len(ids_limpios), tam_lote):
+                 conexion.execute(
+                     text(f"INSERT INTO {nombre_temp} (id_origen) VALUES (:id_origen)"),
+                     [{"id_origen": i} for i in ids_limpios[inicio:inicio + tam_lote]]
+                 )
+
+        sql_update = text(f"""
+            UPDATE orig
+            SET Estado_Carga = :estado
+            FROM {tabla_origen} orig
+            INNER JOIN {nombre_temp} tmp ON orig.{columna_id} = tmp.id_origen
+        """)
+        resultado = conexion.execute(sql_update, {"estado": estado})
+        
+        conexion.execute(text(f"IF OBJECT_ID('tempdb..{nombre_temp}') IS NOT NULL DROP TABLE {nombre_temp}"))
+        
+        return resultado.rowcount

@@ -1,9 +1,11 @@
 """
 fact_cosecha_sap.py
 ===================
-Carga Silver.Fact_Cosecha_SAP desde Bronce.Reporte_Cosecha y Bronce.Data_SAP.
+Carga Silver.Fact_Cosecha_SAP desde:
+  - Bronce.Reporte_Cosecha
+  - Bronce.Data_SAP
 
-Grain: Fecha + Geografía + Variedad + Campaña
+Grain: Fecha + Geografia + Variedad + Condicion_Cultivo
 FKs obligatorias: ID_Tiempo, ID_Geografia, ID_Variedad, ID_Condicion_Cultivo
 """
 
@@ -13,20 +15,16 @@ from sqlalchemy import text
 
 from config.parametros import obtener_int
 from utils.contexto_transaccional import ContextoTransaccionalETL
-from utils.fechas    import procesar_fecha, obtener_id_tiempo
-from utils.texto     import normalizar_modulo, es_test_block, titulo
-from mdm.lookup      import resolver_geografia, obtener_id_variedad
+from utils.fechas import procesar_fecha, obtener_id_tiempo
+from utils.texto import titulo
 from mdm.homologador import homologar_columna
-from silver.facts._helpers_fact_comunes import (
-    finalizar_resumen_fact as _finalizar_resumen_fact,
-    motivo_cuarentena_geografia as _motivo_cuarentena_geografia,
-    registrar_rechazo as _registrar_rechazo,
-)
+from silver.facts._base_processor import BaseFactProcessor
+from silver.facts._helpers_fact_comunes import finalizar_resumen_fact as _finalizar_resumen_fact
 
 
-TABLA_COSECHA  = 'Bronce.Reporte_Cosecha'
-TABLA_SAP      = 'Bronce.Data_SAP'
-TABLA_DESTINO  = 'Silver.Fact_Cosecha_SAP'
+TABLA_COSECHA = 'Bronce.Reporte_Cosecha'
+TABLA_SAP     = 'Bronce.Data_SAP'
+TABLA_DESTINO = 'Silver.Fact_Cosecha_SAP'
 
 
 def _obtener_id_condicion_default() -> int:
@@ -81,240 +79,183 @@ def _leer_bronce_sap(engine: Engine) -> pd.DataFrame:
         return pd.DataFrame(resultado.fetchall(), columns=resultado.keys())
 
 
-def _insertar_fila(conexion, campos: dict) -> None:
-    conexion.execute(text("""
-        INSERT INTO Silver.Fact_Cosecha_SAP (
-            ID_Geografia, ID_Tiempo, ID_Variedad, ID_Condicion_Cultivo,
-            Kg_Brutos, Kg_Neto_MP, Cantidad_Jabas,
-            Lote, Almacen, Doc_Remision, Codigo_Cliente,
-            Responsable, Descripcion_Material, Codigo_SAP_Material,
-            Fecha_Recepcion, Fecha_Evento, Fecha_Sistema, Estado_DQ
-        ) VALUES (
-            :id_geo, :id_tiempo, :id_variedad, :id_condicion,
-            :kg_brutos, :kg_neto, :jabas,
-            :lote, :almacen, :doc_remision, :codigo_cliente,
-            :responsable, :descripcion, :codigo_sap,
-            :fecha_recepcion, :fecha_evento, SYSDATETIME(), 'OK'
-        )
-    """), campos)
+def _a_decimal(v):
+    try:
+        return float(str(v).replace(',', '.'))
+    except (ValueError, TypeError):
+        return None
+
+
+def _a_int(v):
+    try:
+        return int(float(str(v)))
+    except (ValueError, TypeError):
+        return None
+
+
+class ProcesadorCosechaReporte(BaseFactProcessor):
+    """Procesador para Bronce.Reporte_Cosecha → Silver.Fact_Cosecha_SAP."""
+
+    def __init__(self, engine: Engine, id_condicion_default: int):
+        super().__init__(engine, TABLA_COSECHA, TABLA_DESTINO)
+        self.columnas_clave_unica = ['ID_Geografia', 'ID_Tiempo', 'ID_Variedad', 'ID_Condicion_Cultivo']
+        self._id_condicion_default = id_condicion_default
+
+    def _construir_payload(self, df: pd.DataFrame) -> list[dict]:
+        payload = []
+        for _, fila in df.iterrows():
+            id_origen = int(fila['ID_Reporte_Cosecha'])
+
+            fecha = self._validar_y_resolver_fecha(id_origen, fila.get('Fecha_Raw'), 'cosecha_sap')
+            if fecha is None:
+                continue
+
+            resultado_geo = self._validar_y_resolver_geografia(
+                id_origen,
+                fila.get('Fundo_Raw'),
+                fila.get('Modulo_Raw'),
+            )
+            if resultado_geo is None:
+                continue
+
+            id_var = self._validar_y_resolver_variedad(
+                id_origen,
+                fila.get('Variedad_Canonica'),
+                fila.get('Variedad_Raw'),
+            )
+            if id_var is None:
+                continue
+
+            self.ids_procesados.append(id_origen)
+            payload.append({
+                'ID_Geografia':        resultado_geo['id_geografia'],
+                'ID_Tiempo':           obtener_id_tiempo(fecha),
+                'ID_Variedad':         id_var,
+                'ID_Condicion_Cultivo': self._id_condicion_default,
+                'Kg_Brutos':           None,
+                'Kg_Neto_MP':          _a_decimal(fila.get('KgNeto_Raw')),
+                'Cantidad_Jabas':      _a_int(fila.get('Jabas_Raw')),
+                'Lote':                fila.get('Lote_Raw'),
+                'Almacen':             None,
+                'Doc_Remision':        None,
+                'Codigo_Cliente':      None,
+                'Responsable':         titulo(fila.get('Responsable_Raw')),
+                'Descripcion_Material': None,
+                'Codigo_SAP_Material': None,
+                'Fecha_Recepcion':     None,
+                'Fecha_Evento':        fecha,
+                'Estado_DQ':           'OK',
+                'id_origen_rastreo':   id_origen,
+            })
+        return payload
+
+
+class ProcesadorCosechaSAP(BaseFactProcessor):
+    """Procesador para Bronce.Data_SAP → Silver.Fact_Cosecha_SAP."""
+
+    def __init__(self, engine: Engine, id_condicion_default: int):
+        super().__init__(engine, TABLA_SAP, TABLA_DESTINO)
+        self.columnas_clave_unica = ['ID_Geografia', 'ID_Tiempo', 'ID_Variedad', 'ID_Condicion_Cultivo']
+        self._id_condicion_default = id_condicion_default
+
+    def _construir_payload(self, df: pd.DataFrame) -> list[dict]:
+        payload = []
+        for _, fila in df.iterrows():
+            id_origen = int(fila['ID_Data_SAP'])
+
+            fecha = self._validar_y_resolver_fecha(id_origen, fila.get('Fecha_Raw'), 'cosecha_sap')
+            if fecha is None:
+                continue
+
+            resultado_geo = self._validar_y_resolver_geografia(
+                id_origen,
+                fila.get('Fundo_Raw'),
+                fila.get('Modulo_Raw'),
+            )
+            if resultado_geo is None:
+                continue
+
+            id_var = self._validar_y_resolver_variedad(
+                id_origen,
+                fila.get('Variedad_Canonica'),
+                fila.get('Variedad_Raw'),
+            )
+            if id_var is None:
+                continue
+
+            fecha_recepcion, _ = procesar_fecha(fila.get('Fecha_Recepcion_Raw'), dominio='historico')
+
+            self.ids_procesados.append(id_origen)
+            payload.append({
+                'ID_Geografia':        resultado_geo['id_geografia'],
+                'ID_Tiempo':           obtener_id_tiempo(fecha),
+                'ID_Variedad':         id_var,
+                'ID_Condicion_Cultivo': self._id_condicion_default,
+                'Kg_Brutos':           _a_decimal(fila.get('Peso_Bruto_Raw')),
+                'Kg_Neto_MP':          _a_decimal(fila.get('Peso_Neto_Raw')),
+                'Cantidad_Jabas':      _a_int(fila.get('Cantidad_Jabas_Raw')),
+                'Lote':                fila.get('Lote_Raw'),
+                'Almacen':             fila.get('Almacen_Raw'),
+                'Doc_Remision':        fila.get('Doc_Remision_Raw'),
+                'Codigo_Cliente':      fila.get('Codigo_Cliente_Raw'),
+                'Responsable':         titulo(fila.get('Responsable_Raw')),
+                'Descripcion_Material': fila.get('Descripcion_Material_Raw'),
+                'Codigo_SAP_Material': fila.get('Material_Codigo_Raw'),
+                'Fecha_Recepcion':     fecha_recepcion,
+                'Fecha_Evento':        fecha,
+                'Estado_DQ':           'OK',
+                'id_origen_rastreo':   id_origen,
+            })
+        return payload
 
 
 def cargar_fact_cosecha_sap(engine: Engine) -> dict:
-    resumen = {'insertados': 0, 'rechazados': 0, 'cuarentena': []}
     id_condicion_default = _obtener_id_condicion_default()
 
     df_cosecha = _leer_bronce_cosecha(engine)
     df_sap = _leer_bronce_sap(engine)
-    resumen['leidos'] = len(df_cosecha) + len(df_sap)
+
     if df_cosecha.empty and df_sap.empty:
-        return _finalizar_resumen_fact(resumen)
+        return _finalizar_resumen_fact({'leidos': 0, 'insertados': 0, 'rechazados': 0, 'cuarentena': []})
+
+    proc_cosecha = ProcesadorCosechaReporte(engine, id_condicion_default)
+    proc_sap = ProcesadorCosechaSAP(engine, id_condicion_default)
+
+    proc_cosecha.resumen['leidos'] = len(df_cosecha)
+    proc_sap.resumen['leidos'] = len(df_sap)
 
     with ContextoTransaccionalETL(engine) as contexto:
         conexion = contexto._conexion_activa()
 
-        cuarentena_cosecha = []
-        cuarentena_sap = []
-
-        df_cosecha, cuar_var = homologar_columna(
-            df_cosecha, 'Variedad_Raw', 'Variedad_Canonica',
-            TABLA_COSECHA, conexion
-        )
-        resumen['cuarentena'].extend(cuar_var)
-        cuarentena_cosecha.extend(cuar_var)
-
-        ids_cosecha = []
-        ids_cosecha_rechazados = []
-        for _, fila in df_cosecha.iterrows():
-            id_origen = int(fila['ID_Reporte_Cosecha'])
-            fecha, valida = procesar_fecha(
-                fila.get('Fecha_Raw'),
-                dominio='cosecha_sap',
+        # Homologar variedades de cada fuente dentro de la misma transaccion
+        if not df_cosecha.empty:
+            df_cosecha, cuar_cosecha = homologar_columna(
+                df_cosecha, 'Variedad_Raw', 'Variedad_Canonica', TABLA_COSECHA, conexion
             )
-            if not valida:
-                _registrar_rechazo(
-                    resumen,
-                    ids_cosecha_rechazados,
-                    id_origen,
-                    columna='Fecha_Raw',
-                    valor=fila.get('Fecha_Raw'),
-                    motivo='Fecha invalida o fuera de campana',
-                )
-                cuarentena_cosecha.append(resumen['cuarentena'][-1])
-                continue
+            proc_cosecha.resumen['cuarentena'].extend(cuar_cosecha)
 
-            modulo  = None if es_test_block(fila.get('Modulo_Raw')) else normalizar_modulo(fila.get('Modulo_Raw'))
-            resultado_geo = resolver_geografia(fila.get('Fundo_Raw'), None, modulo, engine)
-            id_geo = resultado_geo.get('id_geografia')
-            id_var  = obtener_id_variedad(fila.get('Variedad_Canonica'), engine)
-
-            if not id_geo:
-                _registrar_rechazo(
-                    resumen,
-                    ids_cosecha_rechazados,
-                    id_origen,
-                    columna='Modulo_Raw',
-                    valor=f"Fundo={fila.get('Fundo_Raw')} | Modulo={fila.get('Modulo_Raw')}",
-                    motivo=_motivo_cuarentena_geografia(resultado_geo),
-                    tipo_regla='MDM',
-                )
-                cuarentena_cosecha.append(resumen['cuarentena'][-1])
-                continue
-
-            if not id_var:
-                _registrar_rechazo(
-                    resumen,
-                    ids_cosecha_rechazados,
-                    id_origen,
-                    columna='Variedad_Raw',
-                    valor=fila.get('Variedad_Raw'),
-                    motivo='Variedad sin match en Dim_Variedad',
-                    tipo_regla='MDM',
-                )
-                cuarentena_cosecha.append(resumen['cuarentena'][-1])
-                continue
-
-            try:
-                kg_neto = float(str(fila.get('KgNeto_Raw', 0)).replace(',', '.'))
-            except (ValueError, TypeError):
-                kg_neto = None
-
-            try:
-                jabas = int(float(str(fila.get('Jabas_Raw', 0))))
-            except (ValueError, TypeError):
-                jabas = None
-
-            _insertar_fila(conexion, {
-                'id_geo':         id_geo,
-                'id_tiempo':      obtener_id_tiempo(fecha),
-                'id_variedad':    id_var,
-                'id_condicion':   id_condicion_default,
-                'kg_brutos':      None,
-                'kg_neto':        kg_neto,
-                'jabas':          jabas,
-                'lote':           fila.get('Lote_Raw'),
-                'almacen':        None,
-                'doc_remision':   None,
-                'codigo_cliente': None,
-                'responsable':    titulo(fila.get('Responsable_Raw')),
-                'descripcion':    None,
-                'codigo_sap':     None,
-                'fecha_recepcion':None,
-                'fecha_evento':   fecha,
-            })
-            ids_cosecha.append(id_origen)
-            resumen['insertados'] += 1
-
-        if ids_cosecha:
-            contexto.marcar_estado_carga(
-                TABLA_COSECHA, 'ID_Reporte_Cosecha', ids_cosecha
+        if not df_sap.empty:
+            df_sap, cuar_sap = homologar_columna(
+                df_sap, 'Variedad_Raw', 'Variedad_Canonica', TABLA_SAP, conexion
             )
-        if ids_cosecha_rechazados:
-            contexto.marcar_estado_carga(
-                TABLA_COSECHA, 'ID_Reporte_Cosecha', ids_cosecha_rechazados, estado='RECHAZADO'
-            )
+            proc_sap.resumen['cuarentena'].extend(cuar_sap)
 
-        df_sap, cuar_sap = homologar_columna(
-            df_sap, 'Variedad_Raw', 'Variedad_Canonica',
-            TABLA_SAP, conexion
-        )
-        resumen['cuarentena'].extend(cuar_sap)
-        cuarentena_sap.extend(cuar_sap)
+        # Construir payloads y cargar cada fuente con su procesador
+        if not df_cosecha.empty:
+            payload_cosecha = proc_cosecha._construir_payload(df_cosecha)
+            proc_cosecha._ejecutar_insercion_masiva_segura(contexto, payload_cosecha, '#Temp_CosechaReporte')
+            proc_cosecha.finalizar_proceso(contexto)
 
-        ids_sap = []
-        ids_sap_rechazados = []
-        for _, fila in df_sap.iterrows():
-            id_origen = int(fila['ID_Data_SAP'])
-            fecha, valida = procesar_fecha(
-                fila.get('Fecha_Raw'),
-                dominio='cosecha_sap',
-            )
-            if not valida:
-                _registrar_rechazo(
-                    resumen,
-                    ids_sap_rechazados,
-                    id_origen,
-                    columna='Fecha_Raw',
-                    valor=fila.get('Fecha_Raw'),
-                    motivo='Fecha invalida o fuera de campana',
-                )
-                cuarentena_sap.append(resumen['cuarentena'][-1])
-                continue
+        if not df_sap.empty:
+            payload_sap = proc_sap._construir_payload(df_sap)
+            proc_sap._ejecutar_insercion_masiva_segura(contexto, payload_sap, '#Temp_CosechaSAP')
+            proc_sap.finalizar_proceso(contexto)
 
-            modulo = None if es_test_block(fila.get('Modulo_Raw')) else normalizar_modulo(fila.get('Modulo_Raw'))
-            resultado_geo = resolver_geografia(fila.get('Fundo_Raw'), None, modulo, engine)
-            id_geo = resultado_geo.get('id_geografia')
-            id_var = obtener_id_variedad(fila.get('Variedad_Canonica'), engine)
-
-            if not id_geo:
-                _registrar_rechazo(
-                    resumen,
-                    ids_sap_rechazados,
-                    id_origen,
-                    columna='Modulo_Raw',
-                    valor=f"Fundo={fila.get('Fundo_Raw')} | Modulo={fila.get('Modulo_Raw')}",
-                    motivo=_motivo_cuarentena_geografia(resultado_geo),
-                    tipo_regla='MDM',
-                )
-                cuarentena_sap.append(resumen['cuarentena'][-1])
-                continue
-
-            if not id_var:
-                _registrar_rechazo(
-                    resumen,
-                    ids_sap_rechazados,
-                    id_origen,
-                    columna='Variedad_Raw',
-                    valor=fila.get('Variedad_Raw'),
-                    motivo='Variedad sin match en Dim_Variedad',
-                    tipo_regla='MDM',
-                )
-                cuarentena_sap.append(resumen['cuarentena'][-1])
-                continue
-
-            def a_decimal(v):
-                try:
-                    return float(str(v).replace(',', '.'))
-                except (ValueError, TypeError):
-                    return None
-
-            fecha_recepcion, _ = procesar_fecha(
-                fila.get('Fecha_Recepcion_Raw'),
-                dominio='historico',
-            )
-
-            _insertar_fila(conexion, {
-                'id_geo':         id_geo,
-                'id_tiempo':      obtener_id_tiempo(fecha),
-                'id_variedad':    id_var,
-                'id_condicion':   id_condicion_default,
-                'kg_brutos':      a_decimal(fila.get('Peso_Bruto_Raw')),
-                'kg_neto':        a_decimal(fila.get('Peso_Neto_Raw')),
-                'jabas':          int(float(str(fila.get('Cantidad_Jabas_Raw', 0)))) if fila.get('Cantidad_Jabas_Raw') else None,
-                'lote':           fila.get('Lote_Raw'),
-                'almacen':        fila.get('Almacen_Raw'),
-                'doc_remision':   fila.get('Doc_Remision_Raw'),
-                'codigo_cliente': fila.get('Codigo_Cliente_Raw'),
-                'responsable':    titulo(fila.get('Responsable_Raw')),
-                'descripcion':    fila.get('Descripcion_Material_Raw'),
-                'codigo_sap':     fila.get('Material_Codigo_Raw'),
-                'fecha_recepcion':fecha_recepcion,
-                'fecha_evento':   fecha,
-            })
-            ids_sap.append(id_origen)
-            resumen['insertados'] += 1
-
-        if ids_sap:
-            contexto.marcar_estado_carga(
-                TABLA_SAP, 'ID_Data_SAP', ids_sap
-            )
-        if ids_sap_rechazados:
-            contexto.marcar_estado_carga(
-                TABLA_SAP, 'ID_Data_SAP', ids_sap_rechazados, estado='RECHAZADO'
-            )
-
-        if cuarentena_cosecha:
-            contexto.enviar_cuarentena(TABLA_COSECHA, cuarentena_cosecha)
-        if cuarentena_sap:
-            contexto.enviar_cuarentena(TABLA_SAP, cuarentena_sap)
-
-    return _finalizar_resumen_fact(resumen)
+    # Consolidar resumen de ambas fuentes
+    resumen_total = {
+        'leidos':      proc_cosecha.resumen['leidos'] + proc_sap.resumen['leidos'],
+        'insertados':  proc_cosecha.resumen['insertados'] + proc_sap.resumen['insertados'],
+        'rechazados':  proc_cosecha.resumen['rechazados'] + proc_sap.resumen['rechazados'],
+        'cuarentena':  proc_cosecha.resumen['cuarentena'] + proc_sap.resumen['cuarentena'],
+    }
+    return _finalizar_resumen_fact(resumen_total)

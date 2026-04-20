@@ -59,6 +59,77 @@ from utils.ejecucion import (
 from utils.metricas import formatear_resumen_fact, normalizar_resultado_fact
 
 
+import json
+import logging
+from datetime import datetime, timezone
+
+
+import json
+import logging
+from datetime import datetime, timezone
+import sys
+from pathlib import Path
+
+class PrettyConsoleFormatter(logging.Formatter):
+    COLORS = {
+        "INFO": "\033[36m",     # Cyan
+        "WARNING": "\033[33m",  # Yellow
+        "ERROR": "\033[31m",    # Red
+        "RESET": "\033[0m"
+    }
+    
+    def format(self, record):
+        ts = datetime.fromtimestamp(record.created).strftime('%H:%M:%S')
+        color = self.COLORS.get(record.levelname, self.COLORS["RESET"])
+        reset = self.COLORS["RESET"]
+        
+        # Resumir el mensaje si es The statement has been terminated o error gigante
+        msg = record.getMessage()
+        if "IntegrityError" in msg and "[SQL:" in msg:
+            # Extraer solo la esencia del integrity error
+            idx = msg.find("[SQL:")
+            if idx > -1:
+                # Truncate at [SQL: ...
+                msg = msg[:idx].strip() + " (SQL query omitted from console)"
+
+        return f"{color}[{ts}] [{record.levelname}] {msg}{reset}"
+
+def setup_etl_logger():
+    logger = logging.getLogger("ETL_Pipeline")
+    logger.setLevel(logging.INFO)
+    
+    # Prevenir que agregue multiples handlers si se llama varias veces
+    if logger.handlers:
+        return logger
+
+    # 1. Consola Bonita
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(PrettyConsoleFormatter())
+    logger.addHandler(stream_handler)
+
+    # 2. JSON oculto para auditoria
+    try:
+        log_dir = Path("logs")
+        log_dir.mkdir(exist_ok=True)
+        file_handler = logging.FileHandler(log_dir / "etl_last_run.json", mode='w', encoding='utf-8')
+        fmt = '{"timestamp": "%(asctime)s", "level": "%(levelname)s", "service": "acp-etl", "message": "%(message)s"}'
+        file_handler.setFormatter(logging.Formatter(fmt))
+        logger.addHandler(file_handler)
+    except Exception:
+        pass # Fallback silent if no write permissions
+
+    return logger
+
+etl_logger = setup_etl_logger()
+
+def _imprimir(msg: str = ""):
+    txt = str(msg).strip()
+    if txt and not txt.startswith("=="):
+        etl_logger.info(txt)
+
+
+
+
 def _delegar_funcion(nombre_funcion: str):
     def _wrapper(*args, **kwargs):
         return globals()[nombre_funcion](*args, **kwargs)
@@ -174,36 +245,36 @@ class ErrorEjecucionPipeline(RuntimeError):
 
 def _encabezado() -> datetime:
     inicio = datetime.now()
-    print()
-    print('=' * 60)
-    print('  DWH Geographic Phenology - ETL Pipeline')
-    print(f'  Inicio: {inicio.strftime("%Y-%m-%d %H:%M:%S")}')
-    print('=' * 60)
-    print()
+    _imprimir()
+    _imprimir('=' * 60)
+    _imprimir('  DWH Geographic Phenology - ETL Pipeline')
+    _imprimir(f'  Inicio: {inicio.strftime("%Y-%m-%d %H:%M:%S")}')
+    _imprimir('=' * 60)
+    _imprimir()
     return inicio
 
 
 def _paso(numero: int, total: int, descripcion: str) -> None:
-    print(f'[{numero:02d}/{total}] {descripcion}')
+    _imprimir(f'[{numero:02d}/{total}] {descripcion}')
 
 
 def _resumen_fact(resultado: dict) -> None:
     for linea in formatear_resumen_fact(resultado):
-        print(linea)
+        _imprimir(linea)
 
 
 def _resumen_final(inicio: datetime, resumen: dict) -> None:
     fin = datetime.now()
     duracion = round((fin - inicio).total_seconds(), 2)
-    print()
-    print('=' * 60)
-    print('  RESUMEN FINAL')
-    print('=' * 60)
+    _imprimir()
+    _imprimir('=' * 60)
+    _imprimir('  RESUMEN FINAL')
+    _imprimir('=' * 60)
     for clave, valor in resumen.items():
-        print(f'  {clave:45} {valor}')
-    print(f'  {"Duracion total":45} {duracion}s')
-    print('=' * 60)
-    print()
+        _imprimir(f'  {clave:45} {valor}')
+    _imprimir(f'  {"Duracion total":45} {duracion}s')
+    _imprimir('=' * 60)
+    _imprimir()
 
 
 def _ejecutar_sp_upsert_cama(
@@ -441,7 +512,7 @@ def _ejecutar_fact(nombre: str, tabla_destino: str, funcion, engine, resumen: di
         return None
     except Exception as error:
         mensaje_error = f'{nombre}: {error}'
-        print(f'  ERROR en {mensaje_error}')
+        _imprimir(f'  ERROR en {mensaje_error}')
         resumen[f'{nombre} ERROR'] = str(error)
         registrar_fin(id_log, {
             'estado': 'ERROR',
@@ -487,7 +558,7 @@ def ejecutar_reproceso_facts(
     paso_actual = 1
     _paso(paso_actual, total, 'Verificando conexion SQL Server...')
     if not verificar_conexion():
-        print('Sin conexion. Pipeline detenido.')
+        _imprimir('Sin conexion. Pipeline detenido.')
         sys.exit(1)
     contexto_sql = _obtener_contexto_sql(engine)
     resumen['Servidor SQL'] = contexto_sql.get('servidor')
@@ -540,7 +611,7 @@ def ejecutar_reproceso_facts(
                     resumen[mart] = valor if isinstance(valor, int) else valor
             except Exception as error:
                 mensaje_error = f'Gold: {error}'
-                print(f'  ERROR en {mensaje_error}')
+                _imprimir(f'  ERROR en {mensaje_error}')
                 resumen['Gold ERROR'] = str(error)
                 errores_pipeline.append(mensaje_error)
 
@@ -563,7 +634,7 @@ def ejecutar() -> None:
 
     _paso(1, total, 'Verificando conexion SQL Server...')
     if not verificar_conexion():
-        print('Sin conexion. Pipeline detenido.')
+        _imprimir('Sin conexion. Pipeline detenido.')
         sys.exit(1)
     contexto_sql = _obtener_contexto_sql(engine)
     resumen['Servidor SQL'] = contexto_sql.get('servidor')
@@ -587,8 +658,8 @@ def ejecutar() -> None:
     if error_critico_bronce:
         resumen['Bronce error critico'] = error_critico_bronce.get('codigo', 'ERROR_CRITICO')
         resumen['Bronce detalle'] = error_critico_bronce.get('mensaje', '')
-        print('  ERROR CRITICO EN BRONCE. Pipeline detenido antes de Silver/Gold.')
-        print(f'  {error_critico_bronce.get("mensaje", "")}')
+        _imprimir('  ERROR CRITICO EN BRONCE. Pipeline detenido antes de Silver/Gold.')
+        _imprimir(f'  {error_critico_bronce.get("mensaje", "")}')
         _resumen_final(inicio, resumen)
         sys.exit(1)
 
@@ -628,14 +699,14 @@ def ejecutar() -> None:
                     'SP_Cama inconsistente: hay combinaciones aptas pero '
                     'Silver.Bridge_Geografia_Cama sigue en 0.'
                 )
-                print(f'  ERROR: {mensaje}')
+                _imprimir(f'  ERROR: {mensaje}')
                 resumen['SP_Cama inconsistencia'] = mensaje
                 sys.exit(1)
         else:
             resumen['SP_Cama estado'] = 'OMITIDO_SIN_TABLAS_CON_CAMA_EN_ESTA_CORRIDA'
-            print('  SP_Cama omitido: no ingresaron tablas Bronce con cama en esta corrida.')
+            _imprimir('  SP_Cama omitido: no ingresaron tablas Bronce con cama en esta corrida.')
     except Exception as error:
-        print(f'  ERROR en SP_Cama_Upsert: {error}')
+        _imprimir(f'  ERROR en SP_Cama_Upsert: {error}')
         resumen['SP_Cama_Upsert ERROR'] = str(error)
         sys.exit(1)
 
@@ -653,10 +724,10 @@ def ejecutar() -> None:
             r.get('Estado_Calidad_Cama'),
             config_operativa['estados_bloqueantes_calidad_cama'],
         ):
-            print(f"  ERROR: Calidad cama en estado {r.get('Estado_Calidad_Cama')}. Pipeline detenido.")
+            _imprimir(f"  ERROR: Calidad cama en estado {r.get('Estado_Calidad_Cama')}. Pipeline detenido.")
             sys.exit(1)
     except Exception as error:
-        print(f'  ERROR en SP_Cama_Validacion: {error}')
+        _imprimir(f'  ERROR en SP_Cama_Validacion: {error}')
         resumen['SP_Cama_Validacion ERROR'] = str(error)
         sys.exit(1)
 
@@ -681,7 +752,7 @@ def ejecutar() -> None:
                 resumen[mart] = valor if isinstance(valor, int) else valor
         except Exception as error:
             mensaje_error = f'Gold: {error}'
-            print(f'  ERROR en {mensaje_error}')
+            _imprimir(f'  ERROR en {mensaje_error}')
             resumen['Gold ERROR'] = str(error)
             errores_pipeline.append(mensaje_error)
 
@@ -707,8 +778,8 @@ if __name__ == '__main__':
         else:
             ejecutar()
     except ValueError as error:
-        print(f'ERROR DE VALIDACION: {error}')
+        _imprimir(f'ERROR DE VALIDACION: {error}')
         sys.exit(1)
     except Exception as error:
-        print(f'ERROR: {error}')
+        _imprimir(f'ERROR: {error}')
         sys.exit(1)

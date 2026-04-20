@@ -10,9 +10,8 @@ from utils.componentes import seccion_tabla_con_guardar
 from utils.formato import header_pagina
 
 
-@st.cache_data(ttl=60, show_spinner=False)
 def cargar_catalogo(endpoint: str) -> pd.DataFrame:
-    resultado = get_api(f"/catalogos/{endpoint}?pagina=1&tamano=1000")
+    resultado = get_api(f"/catalogos/{endpoint}?pagina=1&tamano=10000")
     if resultado.ok and isinstance(resultado.data, dict):
         datos = resultado.data.get("datos", [])
         if datos:

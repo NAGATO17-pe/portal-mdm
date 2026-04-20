@@ -23,23 +23,11 @@ def listar_cuarentena(
     tamano: int = 20,
     tabla_filtro: str | None = None,
 ) -> dict:
-    """
-    Lista registros pendientes desde MDM.Cuarentena con paginación server-side.
-    Utiliza CacheAlpha (SQLite) para acelerar las respuestas repetitivas.
-    """
-    clave_cache = f"cuarentena:p{pagina}:s{tamano}:f{tabla_filtro or 'todas'}"
-    datos_cache = cache.obtener(clave_cache)
-    if datos_cache:
-        log.debug("Cache hit cuarentena", extra={"clave": clave_cache})
-        return datos_cache
-
-    resultado = repo.listar_pendientes(
+    return repo.listar_pendientes(
         pagina=pagina,
         tamano=tamano,
         tabla_filtro=tabla_filtro,
     )
-    cache.guardar(clave_cache, resultado, ttl_segundos=120)
-    return resultado
 
 
 def _invalidar_cache_cuarentena() -> None:

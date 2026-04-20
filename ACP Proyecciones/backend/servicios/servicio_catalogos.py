@@ -35,10 +35,7 @@ def _con_cache(clave: str, ttl: int, fn, *args, **kwargs):
 
 
 def _listar_catalogo(nombre_catalogo: str, pagina: int = 1, tamano: int = 20) -> dict:
-    return _con_cache(
-        f"cat:{nombre_catalogo}:p{pagina}:s{tamano}",
-        _TTL_CATALOGOS,
-        _REPOSITORIOS_CATALOGO[nombre_catalogo],
+    return _REPOSITORIOS_CATALOGO[nombre_catalogo](
         pagina=pagina,
         tamano=tamano,
     )

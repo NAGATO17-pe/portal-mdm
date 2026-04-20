@@ -3,28 +3,25 @@ paginas/configuracion/parametros_pipeline.py — Parámetros Pipeline (Enterpris
 Paginación SQL Server + health panel descriptivo.
 """
 
+import math
+
+import pandas as pd
 import streamlit as st
 
+from utils.api_client import get_api, patch_api
 from utils.componentes import (
     banner_aviso,
     estado_vacio_html,
     health_status_panel,
 )
-from utils.db import ejecutar_query_paginado
 from utils.formato import header_pagina
 
-import math
 
-_QUERY_BASE = """
-    SELECT
-        Nombre_Parametro AS [Parámetro],
-        Valor            AS [Valor actual],
-        Descripcion      AS [Descripción],
-        CONVERT(varchar, Fecha_Modificacion, 120) AS [Última modificación]
-    FROM Config.Parametros_Pipeline
-"""
-
-_ORDER_BY = "Nombre_Parametro"
+def cargar_parametros(pagina: int, tamano: int) -> dict:
+    resultado = get_api(f"/config/parametros?pagina={pagina}&tamano={tamano}")
+    if resultado.ok and isinstance(resultado.data, dict):
+        return resultado.data
+    return {"total": 0, "pagina": pagina, "tamano": tamano, "datos": []}
 
 
 def render():
@@ -35,26 +32,20 @@ def render():
 
     banner_aviso("Los cambios en parámetros aplican en la <b>próxima ejecución del ETL</b>.")
 
-    conectado = health_status_panel()
+    health_status_panel()
 
-    if not conectado:
-        return
-
-    # ── Paginación SQL ──
     page_size = 10
-    st_key = "pagi_sql_params_cfg"
+    st_key = "pagi_params_cfg"
     if st_key not in st.session_state:
         st.session_state[st_key] = 1
 
     current_page = st.session_state[st_key]
-
-    try:
-        df, total_count = ejecutar_query_paginado(
-            _QUERY_BASE, _ORDER_BY, current_page, page_size
-        )
-    except Exception as e:
-        st.error(f"Error: {e}")
-        return
+    data = cargar_parametros(current_page, page_size)
+    total_count = data.get("total", 0)
+    df = pd.DataFrame(data.get("datos", [])).rename(columns={
+        "nombre_parametro": "Parámetro", "valor": "Valor actual",
+        "descripcion": "Descripción", "fecha_modificacion": "Última modificación",
+    }) if data.get("datos") else pd.DataFrame()
 
     st.markdown("### ⚙️ Parámetros activos")
 
@@ -70,7 +61,7 @@ def render():
     start_display = (current_page - 1) * page_size + 1
     end_display   = min(current_page * page_size, total_count)
 
-    st.caption(f"Mostrando {start_display} a {end_display} de {total_count} · Paginación SQL Server")
+    st.caption(f"Mostrando {start_display} a {end_display} de {total_count}")
 
     # ── Formulario de edición ──
     for _, row in df.iterrows():
@@ -98,11 +89,11 @@ def render():
     if total_pages > 1:
         b1, b2, b3, b4, b5 = st.columns([1, 1, 3, 1, 1])
         with b1:
-            if st.button("⏮", key="btn_first_params", disabled=current_page <= 1, use_container_width=True):
+            if st.button("⏮", key="btn_first_params", disabled=current_page <= 1, width='stretch'):
                 st.session_state[st_key] = 1
                 st.rerun()
         with b2:
-            if st.button("◀", key="btn_prev_params", disabled=current_page <= 1, use_container_width=True):
+            if st.button("◀", key="btn_prev_params", disabled=current_page <= 1, width='stretch'):
                 st.session_state[st_key] -= 1
                 st.rerun()
         with b3:
@@ -111,13 +102,22 @@ def render():
                 f'font-weight:600; color:var(--text-color);">Pág {current_page} de {total_pages}</div>',
                 unsafe_allow_html=True)
         with b4:
-            if st.button("▶", key="btn_next_params", disabled=current_page >= total_pages, use_container_width=True):
+            if st.button("▶", key="btn_next_params", disabled=current_page >= total_pages, width='stretch'):
                 st.session_state[st_key] += 1
                 st.rerun()
         with b5:
-            if st.button("⏭", key="btn_last_params", disabled=current_page >= total_pages, use_container_width=True):
+            if st.button("⏭", key="btn_last_params", disabled=current_page >= total_pages, width='stretch'):
                 st.session_state[st_key] = total_pages
                 st.rerun()
 
     if st.button("💾 Guardar todos los cambios", key="btn_param_guardar", type="primary"):
-        st.toast("Cambios guardados con éxito (Simulación).", icon="✅")
+        cambios = [
+            {"nombre_parametro": row["Parámetro"], "valor": st.session_state.get(f"param_{row['Parámetro']}", row["Valor actual"])}
+            for _, row in df.iterrows()
+        ]
+        res = patch_api("/config/parametros", {"parametros": cambios})
+        if res.ok:
+            st.toast("Cambios guardados con éxito.", icon="✅")
+            st.rerun()
+        else:
+            st.error(f"Error al guardar: {res.error}")

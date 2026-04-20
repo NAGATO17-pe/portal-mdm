@@ -18,15 +18,14 @@ log = obtener_logger(__name__)
 
 _CATALOGOS = {
     "variedades": {
-        "sql_count": "SELECT COUNT(*) FROM MDM.Catalogo_Variedades WHERE Es_Activa = 1",
+        "sql_count": "SELECT COUNT(*) FROM MDM.Catalogo_Variedades",
         "sql_datos": """
             SELECT
                 Nombre_Canonico AS nombre_canonico,
                 Breeder         AS breeder,
                 Es_Activa       AS es_activa
             FROM MDM.Catalogo_Variedades
-            WHERE Es_Activa = 1
-            ORDER BY Nombre_Canonico
+            ORDER BY Es_Activa DESC, Nombre_Canonico
             OFFSET :offset ROWS FETCH NEXT :tamano ROWS ONLY
         """,
         "mensaje_error": "Error al listar variedades",

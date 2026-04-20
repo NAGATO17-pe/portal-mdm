@@ -1,4 +1,4 @@
-﻿"""
+"""
 cuarentena.py
 =============
 Envía filas rechazadas por DQ a MDM.Cuarentena.
@@ -53,11 +53,8 @@ def enviar_a_cuarentena(
     filas: list[dict],
 ) -> int:
     """
-    Inserta filas rechazadas en MDM.Cuarentena.
+    Inserta filas rechazadas en MDM.Cuarentena de forma masiva (BULK).
     Retorna el número de filas enviadas.
-
-    Compatibilidad:
-    - Si una fila no trae id_registro_origen, se inserta NULL.
     """
     if not filas:
         return 0
@@ -68,49 +65,65 @@ def enviar_a_cuarentena(
         for fila in filas
     ])
 
-    sentencia = text("""
-        INSERT INTO MDM.Cuarentena (
-            Tabla_Origen,
-            Campo_Origen,
-            Valor_Recibido,
-            Motivo,
-            Tipo_Regla,
-            Score_Levenshtein,
-            Estado,
-            ID_Registro_Origen,
-            Fecha_Ingreso
-        )
-        SELECT
-            :tabla_origen,
-            :campo_origen,
-            :valor_recibido,
-            :motivo,
-            :tipo_regla,
-            :score,
-            'PENDIENTE',
-            :id_registro_origen,
-            :fecha_ingreso
-        WHERE NOT EXISTS (
-            SELECT 1
-            FROM MDM.Cuarentena q
-            WHERE q.Tabla_Origen = :tabla_origen
-              AND q.Campo_Origen = :campo_origen
-              AND q.Valor_Recibido = :valor_recibido
-              AND q.Motivo = :motivo
-              AND q.Estado = 'PENDIENTE'
-              AND (
-                    q.ID_Registro_Origen = :id_registro_origen
-                    OR (q.ID_Registro_Origen IS NULL AND :id_registro_origen IS NULL)
-              )
-        )
-    """)
-
-    insertadas = 0
     with administrar_recurso_db(recurso_db) as conexion:
-        for inicio in range(0, len(payload), TAM_LOTE_DEFECTO):
-            resultado = conexion.execute(
-                sentencia,
-                payload[inicio:inicio + TAM_LOTE_DEFECTO],
+        # 1. Crear tabla temporal para el batch de errores
+        nombre_temp = "#Temp_Quarantine_Load"
+        conexion.execute(text(f"IF OBJECT_ID('tempdb..{nombre_temp}') IS NOT NULL DROP TABLE {nombre_temp}"))
+        conexion.execute(text(f"""
+            CREATE TABLE {nombre_temp} (
+                tabla_origen NVARCHAR(255),
+                campo_origen NVARCHAR(255),
+                valor_recibido NVARCHAR(MAX),
+                motivo NVARCHAR(MAX),
+                tipo_regla NVARCHAR(100),
+                score FLOAT,
+                id_registro_origen BIGINT,
+                fecha_ingreso DATETIME2
             )
-            insertadas += int(resultado.rowcount or 0)
-    return insertadas
+        """))
+
+        # 2. Carga masiva a la tabla temporal
+        cols = ['tabla_origen','campo_origen','valor_recibido','motivo','tipo_regla','score','id_registro_origen','fecha_ingreso']
+        datos = [
+            (f['tabla_origen'], f['campo_origen'], f['valor_recibido'], f['motivo'], f['tipo_regla'], f['score'], f['id_registro_origen'], f['fecha_ingreso'])
+            for f in payload
+        ]
+        
+        # Obtenemos la conexión raw para fast_executemany
+        raw_conn = conexion.connection
+        cursor = raw_conn.cursor()
+        cursor.fast_executemany = True
+        sql_temp = f"INSERT INTO {nombre_temp} ({','.join(cols)}) VALUES ({','.join(['?' for _ in cols])})"
+        cursor.executemany(sql_temp, datos)
+        cursor.close()
+
+        # 3. Inserción final en MDM.Cuarentena con filtrado de duplicados PENDIENTES
+        sql_final = text(f"""
+            INSERT INTO MDM.Cuarentena (
+                Tabla_Origen, Campo_Origen, Valor_Recibido, Motivo, 
+                Tipo_Regla, Score_Levenshtein, Estado, ID_Registro_Origen, Fecha_Ingreso
+            )
+            SELECT 
+                tmp.tabla_origen, tmp.campo_origen, tmp.valor_recibido, tmp.motivo,
+                tmp.tipo_regla, tmp.score, 'PENDIENTE', tmp.id_registro_origen, tmp.fecha_ingreso
+            FROM {nombre_temp} tmp
+            WHERE NOT EXISTS (
+                SELECT 1 FROM MDM.Cuarentena q
+                WHERE q.Tabla_Origen = tmp.tabla_origen
+                  AND q.Campo_Origen = tmp.campo_origen
+                  AND ISNULL(q.Valor_Recibido,'') = ISNULL(tmp.valor_recibido,'')
+                  AND q.Motivo = tmp.motivo
+                  AND q.Estado = 'PENDIENTE'
+                  AND (
+                        q.ID_Registro_Origen = tmp.id_registro_origen
+                        OR (q.ID_Registro_Origen IS NULL AND tmp.id_registro_origen IS NULL)
+                  )
+            )
+        """)
+        resultado = conexion.execute(sql_final)
+        total = int(resultado.rowcount or 0)
+
+        # 4. Limpieza
+        conexion.execute(text(f"IF OBJECT_ID('tempdb..{nombre_temp}') IS NOT NULL DROP TABLE {nombre_temp}"))
+
+    return total

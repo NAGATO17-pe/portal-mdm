@@ -1,4 +1,4 @@
-﻿"""
+"""
 fact_maduracion.py
 ==================
 Carga Silver.Fact_Maduracion desde Bronce.Maduracion.
@@ -13,11 +13,15 @@ from __future__ import annotations
 
 import re
 import unicodedata
+import logging
 
 import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
+_log = logging.getLogger("ETL_Pipeline")
+
+from silver.facts._base_processor import BaseFactProcessor
 from utils.contexto_transaccional import ContextoTransaccionalETL
 from utils.sql_lotes import ejecutar_en_lotes
 from mdm.homologador import (
@@ -39,6 +43,7 @@ from silver.facts._helpers_fact_comunes import (
     finalizar_resumen_fact as _finalizar_resumen_fact,
     motivo_cuarentena_geografia as _motivo_cuarentena_geografia,
     parsear_valores_raw as _parsear_valores_raw,
+    registrar_rechazo as _registrar_rechazo,
 )
 
 
@@ -78,35 +83,6 @@ MAPA_ESTADO_POR_ID = {
     7: 'Madura',
     8: 'Cosechable',
 }
-
-
-SQL_INSERT_FACT = text("""
-    INSERT INTO Silver.Fact_Maduracion (
-        ID_Personal,
-        ID_Geografia,
-        ID_Tiempo,
-        ID_Variedad,
-        ID_Estado_Fenologico,
-        ID_Cinta,
-        ID_Organo,
-        Dias_Pasados_Del_Marcado,
-        Fecha_Evento,
-        Fecha_Sistema,
-        Estado_DQ
-    ) VALUES (
-        :id_personal,
-        :id_geografia,
-        :id_tiempo,
-        :id_variedad,
-        :id_estado_fenologico,
-        :id_cinta,
-        :id_organo,
-        :dias_pasados,
-        :fecha_evento,
-        SYSDATETIME(),
-        'OK'
-    )
-""")
 
 
 def _leer_bronce(engine: Engine) -> pd.DataFrame:
@@ -204,55 +180,32 @@ def _resolver_estado_canonico(payload: dict[str, str]) -> str | None:
     return MAPA_ESTADO_POR_ID.get(id_estado)
 
 
-def _cargar_claves_existentes(engine: Engine) -> set[tuple[int, int, int, int, int]]:
-    with engine.connect() as conexion:
-        resultado = conexion.execute(text(f"""
-            SELECT
-                ID_Geografia,
-                ID_Tiempo,
-                ID_Variedad,
-                ID_Cinta,
-                ID_Organo
-            FROM {TABLA_DESTINO}
-        """))
-        return {
-            (
-                int(fila.ID_Geografia),
-                int(fila.ID_Tiempo),
-                int(fila.ID_Variedad),
-                int(fila.ID_Cinta),
-                int(fila.ID_Organo),
-            )
-            for fila in resultado.fetchall()
-        }
+class ProcesadorMaduracion(BaseFactProcessor):
+    def __init__(self, engine: Engine):
+        super().__init__(engine, TABLA_ORIGEN, TABLA_DESTINO)
+        self.columnas_clave_unica = ['ID_Geografia', 'ID_Tiempo', 'ID_Variedad', 'ID_Cinta', 'ID_Organo']
 
 
 def cargar_fact_maduracion(engine: Engine) -> dict:
-    resumen = {'insertados': 0, 'rechazados': 0, 'cuarentena': []}
-
+    procesador = ProcesadorMaduracion(engine)
+    
     df = _leer_bronce(engine)
     if df.empty:
-        return _finalizar_resumen_fact(resumen)
-    resumen['leidos'] = len(df)
+        return _finalizar_resumen_fact(procesador.resumen)
+    procesador.resumen['leidos'] = len(df)
 
-    claves_existentes = _cargar_claves_existentes(engine)
     diccionario_variedades = cargar_diccionario(engine, TABLA_ORIGEN)
     catalogo_variedades = cargar_catalogo_variedades(engine)
     cache_variedades: dict[str, tuple[str | None, str]] = {}
     tabla_soporta_estado_carga = _tabla_maduracion_tiene_estado_carga(engine)
-    ids_procesados: list[int] = []
-    ids_rechazados: list[int] = []
+    
     payload_inserts: list[dict] = []
-    cache_geografia: dict[tuple[str | None, str | None, str | None], dict] = {}
     cache_cinta: dict[str | None, int | None] = {}
-    cache_tiempo: dict[object, int | None] = {}
-    cache_personal: dict[str | None, int] = {}
 
     with ContextoTransaccionalETL(engine) as contexto:
         conexion = contexto._conexion_activa()
+        
         for indice, fila in enumerate(df.itertuples(index=False), start=1):
-            if indice % TAM_LOTE_PROGRESO == 0:
-                print(f'          progreso maduracion: {indice}/{len(df)}')
 
             fila_dict = fila._asdict()
             id_origen = int(fila_dict['ID_Maduracion'])
@@ -264,15 +217,7 @@ def cargar_fact_maduracion(engine: Engine) -> dict:
                 dominio='maduracion',
             )
             if not fecha_valida:
-                resumen['rechazados'] += 1
-                ids_rechazados.append(id_origen)
-                resumen['cuarentena'].append({
-                    'columna': 'FECHA_Raw',
-                    'valor': fecha_raw,
-                    'motivo': 'Fecha invalida o fuera de campana',
-                    'severidad': 'ALTO',
-                    'id_registro_origen': id_origen,
-                })
+                procesador.registrar_rechazo(id_origen, 'FECHA_Raw', fecha_raw, 'Fecha invalida o fuera de campana')
                 continue
 
             modulo_raw = _obtener_valor(payload, 'MODULO_Raw', 'Modulo_Raw') or fila_dict.get('Modulo_Raw')
@@ -285,29 +230,13 @@ def cargar_fact_maduracion(engine: Engine) -> dict:
 
             numero_organo = _extraer_entero(organo_raw)
             if numero_organo is None or numero_organo < 1:
-                resumen['rechazados'] += 1
-                ids_rechazados.append(id_origen)
-                resumen['cuarentena'].append({
-                    'columna': 'ORGANO_Raw',
-                    'valor': organo_raw if organo_raw is not None else fila_dict.get('Valores_Raw'),
-                    'motivo': 'ID_Organo invalido o ausente en maduracion',
-                    'severidad': 'ALTO',
-                    'id_registro_origen': id_origen,
-                })
+                procesador.registrar_rechazo(id_origen, 'ORGANO_Raw', organo_raw if organo_raw is not None else fila_dict.get('Valores_Raw'), 'ID_Organo invalido o ausente en maduracion')
                 continue
 
             estado_canonico = _resolver_estado_canonico(payload)
             id_estado = obtener_id_estado_fenologico(estado_canonico, engine)
             if not id_estado:
-                resumen['rechazados'] += 1
-                ids_rechazados.append(id_origen)
-                resumen['cuarentena'].append({
-                    'columna': 'DESCRIPCIONESTADOCICLO_Raw',
-                    'valor': _obtener_valor(payload, 'DESCRIPCIONESTADOCICLO_Raw', 'IDESTADOCICLO_Raw'),
-                    'motivo': 'Estado fenologico no reconocido en maduracion',
-                    'severidad': 'ALTO',
-                    'id_registro_origen': id_origen,
-                })
+                procesador.registrar_rechazo(id_origen, 'DESCRIPCIONESTADOCICLO_Raw', _obtener_valor(payload, 'DESCRIPCIONESTADOCICLO_Raw', 'IDESTADOCICLO_Raw'), 'Estado fenologico no reconocido en maduracion')
                 continue
 
             modulo = None if es_test_block(modulo_raw) else normalizar_modulo(modulo_raw)
@@ -316,8 +245,8 @@ def cargar_fact_maduracion(engine: Engine) -> dict:
                 None if turno_raw is None else str(turno_raw).strip(),
                 None if valvula_raw is None else str(valvula_raw).strip(),
             )
-            if clave_geo not in cache_geografia:
-                cache_geografia[clave_geo] = resolver_geografia(
+            if clave_geo not in procesador._cache_geografia:
+                procesador._cache_geografia[clave_geo] = resolver_geografia(
                     None,
                     None,
                     modulo,
@@ -326,22 +255,13 @@ def cargar_fact_maduracion(engine: Engine) -> dict:
                     valvula=valvula_raw,
                     cama=None,
                 )
-            resultado_geo = cache_geografia[clave_geo]
+            resultado_geo = procesador._cache_geografia[clave_geo]
             id_geografia = resultado_geo.get('id_geografia')
             if not id_geografia:
-                resumen['rechazados'] += 1
-                ids_rechazados.append(id_origen)
-                resumen['cuarentena'].append({
-                    'columna': 'MODULO_Raw',
-                    'valor': f"Modulo={modulo_raw} | Turno={turno_raw} | Valvula={valvula_raw}",
-                    'motivo': _motivo_cuarentena_geografia(resultado_geo),
-                    'severidad': 'ALTO',
-                    'tipo_regla': 'MDM',
-                    'id_registro_origen': id_origen,
-                })
+                procesador.registrar_rechazo(id_origen, 'MODULO_Raw', f"Modulo={modulo_raw}  Turno={turno_raw}  Valvula={valvula_raw}", _motivo_cuarentena_geografia(resultado_geo), tipo_regla='MDM')
                 continue
 
-            variedad_token = '' if variedad_raw is None else str(variedad_raw).strip()
+            variedad_token = "" if variedad_raw is None else str(variedad_raw).strip()
             if variedad_token in cache_variedades:
                 variedad_canonica, _estado_variedad = cache_variedades[variedad_token]
             else:
@@ -357,101 +277,73 @@ def cargar_fact_maduracion(engine: Engine) -> dict:
 
             id_variedad = obtener_id_variedad(variedad_canonica, engine)
             if not id_variedad:
-                resumen['rechazados'] += 1
-                ids_rechazados.append(id_origen)
-                resumen['cuarentena'].append({
-                    'columna': 'VARIEDAD_Raw',
-                    'valor': variedad_raw,
-                    'motivo': 'Variedad sin match en Dim_Variedad',
-                    'severidad': 'ALTO',
-                    'id_registro_origen': id_origen,
-                })
+                procesador.registrar_rechazo(id_origen, 'VARIEDAD_Raw', variedad_raw, 'Variedad sin match en Dim_Variedad', tipo_regla='MDM')
                 continue
 
             dni, _ = procesar_dni(evaluador_raw)
             clave_personal = None if dni is None else str(dni)
-            if clave_personal not in cache_personal:
-                cache_personal[clave_personal] = obtener_id_personal(dni, engine)
-            id_personal = cache_personal[clave_personal]
+            if clave_personal not in procesador._cache_personal:
+                procesador._cache_personal[clave_personal] = obtener_id_personal(dni, engine)
+            id_personal = procesador._cache_personal[clave_personal]
 
             clave_cinta = None if color_raw is None else str(color_raw).strip().upper()
             if clave_cinta not in cache_cinta:
                 cache_cinta[clave_cinta] = obtener_id_cinta(color_raw, engine)
             id_cinta = cache_cinta[clave_cinta]
             if not id_cinta:
-                resumen['rechazados'] += 1
-                ids_rechazados.append(id_origen)
-                resumen['cuarentena'].append({
-                    'columna': 'COLOR_Raw',
-                    'valor': color_raw if color_raw is not None else fila_dict.get('Valores_Raw'),
-                    'motivo': 'Cinta no reconocida o ausente en maduracion',
-                    'severidad': 'ALTO',
-                    'id_registro_origen': id_origen,
-                })
+                procesador.registrar_rechazo(id_origen, 'COLOR_Raw', color_raw if color_raw is not None else fila_dict.get('Valores_Raw'), 'Cinta no reconocida o ausente en maduracion')
                 continue
 
-            if fecha not in cache_tiempo:
-                cache_tiempo[fecha] = obtener_id_tiempo(fecha)
-            id_tiempo = cache_tiempo[fecha]
+            if fecha not in procesador._cache_tiempo:
+                procesador._cache_tiempo[fecha] = obtener_id_tiempo(fecha)
+            id_tiempo = procesador._cache_tiempo[fecha]
             if id_tiempo is None:
-                resumen['rechazados'] += 1
-                ids_rechazados.append(id_origen)
-                resumen['cuarentena'].append({
-                    'columna': 'FECHA_Raw',
-                    'valor': fecha_raw,
-                    'motivo': 'Fecha sin match en Dim_Tiempo',
-                    'severidad': 'ALTO',
-                    'id_registro_origen': id_origen,
-                })
-                continue
-
-            clave_unica = (
-                int(id_geografia),
-                int(id_tiempo),
-                int(id_variedad),
-                int(id_cinta),
-                int(numero_organo),
-            )
-            if clave_unica in claves_existentes:
-                resumen['rechazados'] += 1
-                ids_procesados.append(id_origen)
-                resumen['cuarentena'].append({
-                    'columna': 'ID_Organo',
-                    'valor': (
-                        f"Geo={id_geografia} | Tiempo={id_tiempo} | Var={id_variedad} | "
-                        f"Cinta={id_cinta} | Organo={numero_organo}"
-                    ),
-                    'motivo': 'Posible duplicado en Fact_Maduracion',
-                    'severidad': 'MEDIO',
-                    'tipo_regla': 'DUPLICADO',
-                    'id_registro_origen': id_origen,
-                })
+                procesador.registrar_rechazo(id_origen, 'FECHA_Raw', fecha_raw, 'Fecha sin match en Dim_Tiempo')
                 continue
 
             payload_inserts.append({
-                'id_personal': id_personal,
-                'id_geografia': id_geografia,
-                'id_tiempo': id_tiempo,
-                'id_variedad': id_variedad,
-                'id_estado_fenologico': id_estado,
-                'id_cinta': id_cinta,
-                'id_organo': numero_organo,
-                'dias_pasados': None,
-                'fecha_evento': fecha,
+                "id_origen_rastreo": id_origen,
+                "ID_Personal": id_personal,
+                "ID_Geografia": id_geografia,
+                "ID_Tiempo": id_tiempo,
+                "ID_Variedad": id_variedad,
+                "ID_Estado_Fenologico": id_estado,
+                "ID_Cinta": id_cinta,
+                "ID_Organo": numero_organo,
+                "Dias_Pasados_Del_Marcado": None,
+                "Fecha_Evento": fecha,
+                "Fecha_Sistema": pd.Timestamp.now(),
+                "Estado_DQ": "OK",
+                "_fecha_registro": _obtener_valor(payload, 'FECHAREGISTRO_Raw', 'Fecha_Registro_Raw') or str(fecha)
             })
-            claves_existentes.add(clave_unica)
-            ids_procesados.append(id_origen)
 
         if payload_inserts:
-            ejecutar_en_lotes(conexion, SQL_INSERT_FACT, payload_inserts)
-        resumen['insertados'] = len(payload_inserts)
+            # --- DEDUPLICACIÓN FORENSE ("Latest Wins") ---
+            # Si hay mediciones duplicadas el mismo día para el mismo órgano, nos quedamos con la más reciente.
+            df_dedupe = pd.DataFrame(payload_inserts)
+            
+            # Definimos la clave natural de negocio
+            columnas_clave = ['ID_Geografia', 'ID_Tiempo', 'ID_Variedad', 'ID_Cinta', 'ID_Organo']
+            
+            # Convertimos _fecha_registro a datetime para comparar
+            df_dedupe['_fecha_registro_dt'] = pd.to_datetime(df_dedupe['_fecha_registro'], errors='coerce')
+            
+            # Ordenamos por clave y fecha registro descendente
+            df_dedupe = df_dedupe.sort_values(by=columnas_clave + ['_fecha_registro_dt'], ascending=[True]*5 + [False])
+            
+            # Quitamos los que sobran
+            df_final = df_dedupe.drop_duplicates(subset=columnas_clave, keep='first')
+            
+            # Limpiamos columnas auxiliares
+            final_payload = df_final.drop(columns=['_fecha_registro', '_fecha_registro_dt']).to_dict('records')
+            
+            # Sincronizamos los IDs procesados para marcar estado_carga correctamente
+            procesador.ids_procesados = [int(r['id_origen_rastreo']) for r in final_payload]
+            
+            _log.info(f"Deduplicación Forense: {len(payload_inserts) - len(final_payload)} registros técnicos/redundantes filtrados silenciosamente.")
+            
+            procesador._ejecutar_insercion_masiva_segura(contexto, final_payload, "#Temp_Fact_Maduracion")
+            
+        procesador.finalizar_proceso(contexto)
 
-        if tabla_soporta_estado_carga and ids_procesados:
-            contexto.marcar_estado_carga(TABLA_ORIGEN, 'ID_Maduracion', ids_procesados)
-        if tabla_soporta_estado_carga and ids_rechazados:
-            contexto.marcar_estado_carga(TABLA_ORIGEN, 'ID_Maduracion', ids_rechazados, estado='RECHAZADO')
-
-        if resumen['cuarentena']:
-            contexto.enviar_cuarentena(TABLA_ORIGEN, resumen['cuarentena'])
-
-    return _finalizar_resumen_fact(resumen)
+    return _finalizar_resumen_fact(procesador.resumen)

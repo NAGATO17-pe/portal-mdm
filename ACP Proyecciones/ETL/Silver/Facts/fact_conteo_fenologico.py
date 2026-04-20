@@ -1,4 +1,4 @@
-﻿"""
+"""
 fact_conteo_fenologico.py
 =========================
 Carga Silver.Fact_Conteo_Fenologico desde Bronce.Conteo_Fruta.
@@ -15,22 +15,13 @@ from sqlalchemy.engine import Engine
 from sqlalchemy import text
 
 from utils.contexto_transaccional import ContextoTransaccionalETL
-from utils.fechas import procesar_fecha, obtener_id_tiempo
-from utils.texto import normalizar_modulo, es_test_block
-from utils.dni import procesar_dni
-from utils.sql_lotes import ejecutar_en_lotes
-from mdm.lookup import (
-    resolver_geografia,
-    obtener_id_variedad,
-    obtener_id_personal,
-    obtener_id_estado_fenologico,
-)
+from utils.fechas import obtener_id_tiempo
+from mdm.lookup import obtener_id_estado_fenologico
 from mdm.homologador import homologar_columna
+from silver.facts._base_processor import BaseFactProcessor
 from silver.facts._helpers_fact_comunes import (
     finalizar_resumen_fact as _finalizar_resumen_fact,
-    motivo_cuarentena_geografia as _motivo_cuarentena_geografia,
     parsear_valores_raw as _parsear_valores_raw,
-    registrar_rechazo as _registrar_rechazo,
 )
 
 
@@ -145,124 +136,51 @@ def _extraer_estados_desde_fila(fila: pd.Series) -> list[tuple[str, int]]:
     return estados
 
 
-def cargar_fact_conteo_fenologico(engine: Engine) -> dict:
-    resumen = {'insertados': 0, 'rechazados': 0, 'cuarentena': []}
+class ProcesadorConteoFenologico(BaseFactProcessor):
+    def __init__(self, engine: Engine):
+        super().__init__(engine, TABLA_ORIGEN, TABLA_DESTINO, columna_id='ID_Conteo_Fruta')
+        self.columnas_clave_unica = ['ID_Geografia', 'ID_Tiempo', 'ID_Variedad', 'ID_Estado_Fenologico', 'Punto']
 
-    df = _leer_bronce(engine)
-    if df.empty:
-        return _finalizar_resumen_fact(resumen)
-    resumen['leidos'] = len(df)
-
-    ids_procesados: set[int] = set()
-    ids_rechazados: set[int] = set()
-    payload_inserts = []
-
-    with ContextoTransaccionalETL(engine) as contexto:
-        conexion = contexto._conexion_activa()
-
-        df, cuarentenas_var = homologar_columna(
-            df,
-            'Variedad_Raw',
-            'Variedad_Canonica',
-            TABLA_ORIGEN,
-            conexion,
-            columna_id_origen='ID_Conteo_Fruta',
-        )
-        resumen['cuarentena'].extend(cuarentenas_var)
-
+    def _construir_payload(self, df: pd.DataFrame) -> list[dict]:
+        payload = []
         for _, fila in df.iterrows():
             id_origen = int(fila['ID_Conteo_Fruta'])
             tipo_evaluacion_raw = fila.get('Tipo_Evaluacion_Raw')
 
             if not _es_evaluacion_compatible_con_conteo(tipo_evaluacion_raw):
-                resumen['rechazados'] += 1
-                ids_rechazados.add(id_origen)
-                resumen['cuarentena'].append({
-                    'columna': 'Tipo_Evaluacion_Raw',
-                    'valor': tipo_evaluacion_raw,
-                    'motivo': 'Evaluacion no compatible con Fact_Conteo_Fenologico',
-                    'severidad': 'ALTO',
-                    'id_registro_origen': id_origen,
-                })
+                self.registrar_rechazo(id_origen, 'Tipo_Evaluacion_Raw', tipo_evaluacion_raw, 'Evaluacion no compatible con Fact_Conteo_Fenologico')
                 continue
 
-            fecha, fecha_valida = procesar_fecha(
-                fila.get('Fecha_Raw'),
-                dominio='conteo_fenologico',
-            )
-            if not fecha_valida:
-                _registrar_rechazo(
-                    resumen,
-                    ids_rechazados,
-                    id_origen,
-                    columna='Fecha_Raw',
-                    valor=fila.get('Fecha_Raw'),
-                    motivo='Fecha invalida o fuera de campana',
-                )
+            fecha = self._validar_y_resolver_fecha(id_origen, fila.get('Fecha_Raw'), 'conteo_fenologico')
+            if fecha is None:
                 continue
 
-            id_tiempo = obtener_id_tiempo(fecha)
-
-            modulo_raw = fila.get('Modulo_Raw')
-            test_block = es_test_block(modulo_raw)
-            modulo = None if test_block else normalizar_modulo(modulo_raw)
-
-            resultado_geo = resolver_geografia(
+            resultado_geo = self._validar_y_resolver_geografia(
+                id_origen,
                 fila.get('Fundo_Raw'),
-                fila.get('Sector_Raw'),
-                modulo,
-                engine,
+                fila.get('Modulo_Raw'),
                 turno=fila.get('Turno_Raw'),
                 valvula=fila.get('Valvula_Raw'),
-                cama=None,
             )
-            id_geo = resultado_geo.get('id_geografia')
-            if not id_geo:
-                _registrar_rechazo(
-                    resumen,
-                    ids_rechazados,
-                    id_origen,
-                    columna='Modulo_Raw',
-                    valor=f"Modulo={modulo_raw} | Turno={fila.get('Turno_Raw')} | Valvula={fila.get('Valvula_Raw')}",
-                    motivo=_motivo_cuarentena_geografia(resultado_geo),
-                    tipo_regla='MDM',
-                )
+            if resultado_geo is None:
                 continue
 
-            id_variedad = obtener_id_variedad(fila.get('Variedad_Canonica'), engine)
-            if not id_variedad:
-                _registrar_rechazo(
-                    resumen,
-                    ids_rechazados,
-                    id_origen,
-                    columna='Variedad_Raw',
-                    valor=fila.get('Variedad_Raw'),
-                    motivo='Variedad sin match en Dim_Variedad',
-                    tipo_regla='MDM',
-                )
+            id_var = self._validar_y_resolver_variedad(id_origen, fila.get('Variedad_Canonica'), fila.get('Variedad_Raw'))
+            if id_var is None:
                 continue
 
-            dni, _ = procesar_dni(fila.get('Evaluador_Raw'))
-            id_personal = obtener_id_personal(dni, engine)
+            id_personal = self._validar_y_resolver_personal(fila.get('Evaluador_Raw'))
 
             estados_cantidades = _extraer_estados_desde_fila(fila)
             if not estados_cantidades:
-                resumen['rechazados'] += 1
-                ids_rechazados.add(id_origen)
-                resumen['cuarentena'].append({
-                    'columna': 'Valores_Raw',
-                    'valor': fila.get('Valores_Raw'),
-                    'motivo': 'No se encontraron estados fenologicos/cantidades en fila',
-                    'severidad': 'ALTO',
-                    'id_registro_origen': id_origen,
-                })
+                self.registrar_rechazo(id_origen, 'Valores_Raw', fila.get('Valores_Raw'), 'No se encontraron estados fenologicos/cantidades en fila')
                 continue
 
-            insertados_fila = 0
+            filas_expandidas = 0
             for estado_raw, cantidad in estados_cantidades:
-                id_estado = obtener_id_estado_fenologico(estado_raw, engine)
+                id_estado = obtener_id_estado_fenologico(estado_raw, self.engine)
                 if not id_estado:
-                    resumen['cuarentena'].append({
+                    self.resumen['cuarentena'].append({
                         'columna': 'Estado_Raw',
                         'valor': estado_raw,
                         'motivo': 'Estado fenologico no reconocido',
@@ -271,42 +189,50 @@ def cargar_fact_conteo_fenologico(engine: Engine) -> dict:
                     })
                     continue
 
-                payload_inserts.append({
-                    'id_geo': id_geo,
-                    'id_tiempo': id_tiempo,
-                    'id_variedad': id_variedad,
-                    'id_personal': id_personal,
-                    'id_estado': id_estado,
-                    'cantidad': cantidad,
-                    'fecha_evento': fecha,
+                # Extracción robusta del Punto (limpiando espacios)
+                valores_dict = _parsear_valores_raw(fila.get('Valores_Raw'))
+                punto_val = str(valores_dict.get('Punto_Raw') or valores_dict.get('Punto') or '0').strip()
+
+                payload.append({
+                    'ID_Geografia':        resultado_geo['id_geografia'],
+                    'ID_Tiempo':           obtener_id_tiempo(fecha),
+                    'ID_Variedad':         id_var,
+                    'ID_Personal':         id_personal,
+                    'ID_Estado_Fenologico': id_estado,
+                    'Cantidad_Organos':    cantidad,
+                    'Punto':               punto_val,
+                    'Fecha_Evento':        fecha,
+                    'Estado_DQ':           'OK',
+                    'id_origen_rastreo':   id_origen,
                 })
-                insertados_fila += 1
+                filas_expandidas += 1
 
-            if insertados_fila > 0:
-                ids_procesados.add(id_origen)
-                resumen['insertados'] += insertados_fila
+            if filas_expandidas > 0:
+                self.ids_procesados.append(id_origen)
             else:
-                resumen['rechazados'] += 1
-                ids_rechazados.add(id_origen)
+                self.registrar_rechazo(id_origen, 'Estado_Raw', None, 'Ningún estado fenologico reconocido en la fila')
 
-        if payload_inserts:
-            ejecutar_en_lotes(conexion, SQL_INSERT_FACT, payload_inserts)
+        return payload
 
-        if ids_procesados:
-            contexto.marcar_estado_carga(
-                TABLA_ORIGEN,
-                'ID_Conteo_Fruta',
-                sorted(ids_procesados),
-            )
-        if ids_rechazados:
-            contexto.marcar_estado_carga(
-                TABLA_ORIGEN,
-                'ID_Conteo_Fruta',
-                sorted(ids_rechazados),
-                estado='RECHAZADO',
-            )
 
-        if resumen['cuarentena']:
-            contexto.enviar_cuarentena(TABLA_ORIGEN, resumen['cuarentena'])
+def cargar_fact_conteo_fenologico(engine: Engine) -> dict:
+    proc = ProcesadorConteoFenologico(engine)
 
-    return _finalizar_resumen_fact(resumen)
+    df = _leer_bronce(engine)
+    if df.empty:
+        return _finalizar_resumen_fact(proc.resumen)
+    proc.resumen['leidos'] = len(df)
+
+    with ContextoTransaccionalETL(engine) as contexto:
+        conexion = contexto._conexion_activa()
+
+        df, cuarentenas_var = homologar_columna(
+            df, 'Variedad_Raw', 'Variedad_Canonica', TABLA_ORIGEN, conexion,
+            columna_id_origen='ID_Conteo_Fruta',
+        )
+        proc.resumen['cuarentena'].extend(cuarentenas_var)
+
+        payload = proc._construir_payload(df)
+        proc._ejecutar_insercion_masiva_segura(contexto, payload, '#Temp_ConteoFenologico')
+
+        return proc.finalizar_proceso(contexto)

@@ -25,38 +25,47 @@ if not login_gate():
 aplicar_css()
 
 usuario = obtener_usuario()
-rol_badge = {"admin": "🔑 Admin", "editor": "✏️ Editor", "viewer": "👁️ Viewer"}
+rol_badge = {
+    "admin":        "🔑 Admin",
+    "analista_mdm": "📊 Analista MDM",
+    "operador_etl": "⚙️ Operador ETL",
+    "viewer":       "👁️ Viewer",
+}
 
 # ── Sidebar con secciones agrupadas ───────────────────────────────────────
 with st.sidebar:
     # ── Header: Logo + info de usuario ──
     st.markdown(f"""
         <div class="sidebar-logo">
-            <div style="font-size:2.4rem; filter: drop-shadow(0 4px 6px rgba(45,90,39,0.3));
-                        margin-bottom: 6px;">🌿</div>
+            <span style="font-size:1.4rem; line-height:1;">🌿</span>
             <h2>ACP MDM</h2>
-            <p>Data Quality · Enterprise</p>
         </div>
     """, unsafe_allow_html=True)
 
-    # ── User card ──
+    # ── User card — compact ──
     st.markdown(f"""
         <div style="
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.10);
-            border-radius: 12px;
-            padding: 14px 16px;
-            margin: 0 8px 12px 8px;
+            background: #F4F8F6;
+            border: 1px solid #E9EEF2;
+            border-radius: 8px;
+            padding: 8px 12px;
+            margin: 0 10px 8px 10px;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 9px;
         ">
-            <div style="font-size: 1.6rem; line-height: 1;">{usuario['avatar']}</div>
-            <div>
-                <div style="font-size: 0.88rem; font-weight: 600; color: #ffffff;
-                            line-height: 1.3;">{usuario['nombre']}</div>
-                <div style="font-size: 0.72rem; color: rgba(255,255,255,0.45);
-                            margin-top: 2px;">{rol_badge.get(usuario['rol'], usuario['rol'])}</div>
+            <div style="
+                font-size: 1.1rem; line-height: 1;
+                background: rgba(27,107,90,0.1);
+                border-radius: 6px;
+                width: 30px; height: 30px;
+                display: flex; align-items: center; justify-content: center;
+                flex-shrink: 0;
+            ">{usuario['avatar']}</div>
+            <div style="min-width:0; overflow:hidden;">
+                <div style="font-size: 0.8rem; font-weight: 600; color: #1F2937;
+                            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{usuario['nombre']}</div>
+                <div style="font-size: 0.68rem; color: #6B7280;">{rol_badge.get(usuario['rol'], usuario['rol'])}</div>
             </div>
         </div>
     """, unsafe_allow_html=True)
@@ -67,6 +76,7 @@ with st.sidebar:
             "🏠  Inicio",
             "🔴  Cuarentena",
             "🔗  Homologación",
+            "📋  Auditoría ETL",
         ],
         "📋 CATÁLOGOS MAESTROS": [
             "🍇  Variedades",
@@ -75,6 +85,11 @@ with st.sidebar:
         ],
     }
     
+    # Agregar Sistema (health) — visible para todos los autenticados
+    opciones_navegacion["🖥️ SISTEMA"] = [
+        "🖥️  Sistema · Health",
+    ]
+
     # Agregar Configuración solo si tiene permisos
     if tiene_permiso("configurar") or tiene_permiso("escribir"):
         opciones_navegacion["⚙️ CONFIGURACIÓN"] = [
@@ -90,7 +105,7 @@ with st.sidebar:
 
     st.markdown('<div class="sidebar-section">Navegación del Portal</div>', unsafe_allow_html=True)
     
-    pagina_activa = st.selectbox(
+    pagina_activa = st.radio(
         "Seleccione Sección",
         options=lista_plana,
         index=0,
@@ -98,11 +113,19 @@ with st.sidebar:
         label_visibility="collapsed"
     )
 
-    # ── Botón de logout ──
-    st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
-    if st.button("🚪 Cerrar sesión", key="btn_logout", use_container_width=True):
+    # ── Botones de acción ──
+    st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
+    if st.button("🚪 Cerrar sesión", key="btn_logout", width='stretch'):
         cerrar_sesion()
         st.rerun()
+
+    # Botón de refresco de caché (solo admin/operador)
+    if tiene_permiso("configurar"):
+        if st.button("🔄 Refrescar datos", key="btn_clear_cache", width='stretch',
+                     help="Limpia el caché local del portal y recarga todos los datos del backend"):
+            st.cache_data.clear()
+            st.toast("Caché limpiado. Los datos se recargarán del backend.", icon="🔄")
+            st.rerun()
 
     st.markdown("""
         <div class="sidebar-footer">
@@ -124,12 +147,14 @@ _RUTAS = {
     "Inicio":              "paginas.inicio",
     "Cuarentena":          "paginas.cuarentena",
     "Homologación":        "paginas.homologacion",
+    "Auditoría ETL":       "paginas.auditoria",
+    "Sistema · Health":    "paginas.sistema",
     "Variedades":          "paginas.catalogos.variedades",
     "Geografía":           "paginas.catalogos.geografia",
     "Personal":            "paginas.catalogos.personal",
     "Reglas de Validación": "paginas.configuracion.reglas_validacion",
     "Parámetros Pipeline": "paginas.configuracion.parametros_pipeline",
-    "Pruebas BD":          "paginas.configuracion.pruebas_bd",
+    "Pruebas BD":          "paginas.configuracion.consola_admin",
 }
 
 modulo = _RUTAS.get(_nombre, "paginas.inicio")

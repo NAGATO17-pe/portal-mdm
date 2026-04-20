@@ -20,13 +20,14 @@ from dq.validador import normalizar_humedad
 from mdm.lookup import obtener_id_tiempo as obtener_id_tiempo_dim
 from utils.contexto_transaccional import ContextoTransaccionalETL
 from utils.fechas import obtener_id_tiempo as construir_id_tiempo, procesar_fecha
-from utils.sql_lotes import ejecutar_en_lotes
+from silver.facts._base_processor import BaseFactProcessor
 from silver.facts._helpers_fact_comunes import finalizar_resumen_fact as _finalizar_resumen_fact
 
 
 TABLA_CLIMA = 'Bronce.Reporte_Clima'
 TABLA_VARIABLES = 'Bronce.Variables_Meteorologicas'
 TABLA_CUARENTENA = 'Bronce.Clima'
+TABLA_DESTINO = 'Silver.Fact_Telemetria_Clima'
 TAM_LOTE_CLIMA = 2000
 PATRON_HORA_VALORES_RAW = re.compile(r'(?:^|\s\|\s)Hora_Raw=([^|]+)')
 
@@ -420,26 +421,30 @@ def cargar_fact_telemetria_clima(engine: Engine) -> dict:
     resumen['insertados'] += len(payload_vars)
 
     with ContextoTransaccionalETL(engine) as contexto:
-        conexion = contexto._conexion_activa()
 
         if payload_clima:
-            ejecutar_en_lotes(
-                conexion,
-                SQL_INSERT_CLIMA_REPORTE,
+            _proc_clima = BaseFactProcessor(engine, TABLA_CLIMA, TABLA_DESTINO)
+            _proc_clima.columnas_clave_unica = ['Sector_Climatico', 'ID_Tiempo']
+            _proc_clima._ejecutar_insercion_masiva_segura(
+                contexto,
                 [
                     {
-                        'sector_climatico': registro['sector_climatico'],
-                        'id_tiempo': registro['id_tiempo'],
-                        'temp_max': registro['temp_max'],
-                        'temp_min': registro['temp_min'],
-                        'humedad': registro['humedad'],
-                        'precipitacion': registro['precipitacion'],
-                        'fecha_evento': registro['fecha_evento'],
+                        'Sector_Climatico': r['sector_climatico'],
+                        'ID_Tiempo':        r['id_tiempo'],
+                        'Temperatura_Max_C': r['temp_max'],
+                        'Temperatura_Min_C': r['temp_min'],
+                        'Humedad_Relativa_Pct': r['humedad'],
+                        'Precipitacion_mm': r['precipitacion'],
+                        'VPD':              None,
+                        'Radiacion_Solar':  None,
+                        'Fecha_Evento':     r['fecha_evento'],
+                        'id_origen_rastreo': r['id_origen'],
                     }
-                    for registro in payload_clima
+                    for r in payload_clima
                 ],
-                tam_lote=TAM_LOTE_CLIMA,
+                '#Temp_TelemetriaClima_Reporte',
             )
+            resumen['insertados'] = _proc_clima.resumen['insertados']
 
         if ids_clima_insertados:
             contexto.marcar_estado_carga(
@@ -451,24 +456,28 @@ def cargar_fact_telemetria_clima(engine: Engine) -> dict:
             )
 
         if payload_vars:
-            ejecutar_en_lotes(
-                conexion,
-                SQL_INSERT_CLIMA_VARIABLES,
+            _proc_vars = BaseFactProcessor(engine, TABLA_VARIABLES, TABLA_DESTINO)
+            _proc_vars.columnas_clave_unica = ['Sector_Climatico', 'ID_Tiempo']
+            _proc_vars._ejecutar_insercion_masiva_segura(
+                contexto,
                 [
                     {
-                        'sector_climatico': registro['sector_climatico'],
-                        'id_tiempo': registro['id_tiempo'],
-                        'temp_max': registro['temp_max'],
-                        'temp_min': registro['temp_min'],
-                        'humedad': registro['humedad'],
-                        'vpd': registro['vpd'],
-                        'radiacion': registro['radiacion'],
-                        'fecha_evento': registro['fecha_evento'],
+                        'Sector_Climatico': r['sector_climatico'],
+                        'ID_Tiempo':        r['id_tiempo'],
+                        'Temperatura_Max_C': r['temp_max'],
+                        'Temperatura_Min_C': r['temp_min'],
+                        'Humedad_Relativa_Pct': r['humedad'],
+                        'Precipitacion_mm': None,
+                        'VPD':              r['vpd'],
+                        'Radiacion_Solar':  r['radiacion'],
+                        'Fecha_Evento':     r['fecha_evento'],
+                        'id_origen_rastreo': r['id_origen'],
                     }
-                    for registro in payload_vars
+                    for r in payload_vars
                 ],
-                tam_lote=TAM_LOTE_CLIMA,
+                '#Temp_TelemetriaClima_Variables',
             )
+            resumen['insertados'] += _proc_vars.resumen['insertados']
 
         if ids_vars_insertados:
             contexto.marcar_estado_carga(

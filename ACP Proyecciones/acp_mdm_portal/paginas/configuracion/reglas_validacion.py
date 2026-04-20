@@ -5,38 +5,24 @@ Paginación delegada a SQL Server via OFFSET/FETCH.
 
 import streamlit as st
 
+import pandas as pd
+
+from utils.api_client import get_api
 from utils.componentes import (
     banner_aviso,
     health_status_panel,
     mostrar_kpis,
-    seccion_tabla_sql_paginada,
     mostrar_dialogo_confirmacion,
+    seccion_tabla_con_guardar,
 )
-from utils.db import ejecutar_query
 from utils.formato import header_pagina
 
 
-_KPI_QUERY = """
-    SELECT
-        COUNT(*)                      AS total,
-        SUM(CAST(Activo AS INT))      AS activas,
-        COUNT(*) - SUM(CAST(Activo AS INT)) AS inactivas
-    FROM Config.Reglas_Validacion
-"""
-
-_TABLA_QUERY = """
-    SELECT
-        Tabla_Destino   AS [Tabla destino],
-        Columna,
-        Tipo_Validacion AS [Tipo validación],
-        Valor_Min       AS [Valor min],
-        Valor_Max       AS [Valor max],
-        Accion          AS [Acción],
-        Activo
-    FROM Config.Reglas_Validacion
-"""
-
-_ORDER_BY = "Tabla_Destino, Columna"
+def _cargar_reglas(pagina: int = 1, tamano: int = 15) -> dict:
+    resultado = get_api(f"/config/reglas?pagina={pagina}&tamano={tamano}")
+    if resultado.ok and isinstance(resultado.data, dict):
+        return resultado.data
+    return {"total": 0, "pagina": pagina, "tamano": tamano, "kpis": {}, "datos": []}
 
 
 def render():
@@ -47,24 +33,15 @@ def render():
 
     banner_aviso("Los cambios en reglas aplican en la <b>próxima ejecución del ETL</b>.")
 
-    conectado = health_status_panel()
+    health_status_panel()
 
-    # ── KPIs ──
-    total = activas = inactivas = 0
-    if conectado:
-        try:
-            row = ejecutar_query(_KPI_QUERY)
-            if not row.empty:
-                total     = int(row["total"].iloc[0])
-                activas   = int(row["activas"].iloc[0])
-                inactivas = int(row["inactivas"].iloc[0])
-        except Exception:
-            pass
-
+    # ── KPIs vía API ──
+    data = _cargar_reglas()
+    kpis = data.get("kpis", {})
     mostrar_kpis([
-        {"label": "Total reglas", "value": total},
-        {"label": "Activas",      "value": activas},
-        {"label": "Inactivas",    "value": inactivas},
+        {"label": "Total reglas", "value": kpis.get("total", 0)},
+        {"label": "Activas",      "value": kpis.get("activas", 0)},
+        {"label": "Inactivas",    "value": kpis.get("inactivas", 0)},
     ])
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -96,15 +73,15 @@ def render():
 
     st.markdown("---")
 
-    # ── Tabla con paginación SQL ──
-    if conectado:
-        seccion_tabla_sql_paginada(
-            query_base=_TABLA_QUERY,
-            order_by=_ORDER_BY,
-            key="reglas_cfg",
-            titulo="📋 Reglas de validación",
-            page_size=15,
-            columnas_check=["Activo"],
-            btn_key="btn_reg_guardar",
-            caption="Paginación SQL Server · solo viajan 15 registros por request.",
+    # ── Tabla vía API ──
+    datos = data.get("datos", [])
+    if datos:
+        df = pd.DataFrame(datos).rename(columns={
+            "tabla_destino": "Tabla destino", "columna": "Columna",
+            "tipo_validacion": "Tipo validación", "valor_min": "Valor min",
+            "valor_max": "Valor max", "accion": "Acción", "activo": "Activo",
+        })
+        seccion_tabla_con_guardar(
+            df, key="reglas_cfg", titulo="📋 Reglas de validación",
+            page_size=15, mostrar_boton_guardar=False,
         )

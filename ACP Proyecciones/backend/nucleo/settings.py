@@ -20,11 +20,12 @@ Orden de carga (del menos al más prioritario):
 from __future__ import annotations
 
 import os
+import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _DIR_BACKEND = Path(__file__).resolve().parents[1]
@@ -57,12 +58,12 @@ class Settings(BaseSettings):
 
     # ── Base de datos ──────────────────────────────────────────────────────────
     db_servidor: str = Field(
-        default="LCP-PAG-PRACTIC",
         alias="DB_SERVIDOR",
+        description="IP o Hostname del SQL Server",
     )
     db_nombre: str = Field(
-        default="ACP_DataWarehose_Proyecciones",
         alias="DB_NOMBRE",
+        description="Nombre de la Base de Datos DWH",
     )
     db_usuario: str | None = Field(
         default=None,
@@ -126,9 +127,9 @@ class Settings(BaseSettings):
 
     # ── JWT / Autenticación ────────────────────────────────────────────────
     jwt_secreto: str = Field(
-        default="CAMBIAR_EN_PRODUCCION_CLAVE_MINIMO_32_CHARS_XXXXXXXX",
         alias="ACP_JWT_SECRETO",
-        description="Clave HMAC para firmar JWT. Mínimo 32 chars en prod.",
+        description="Clave HMAC para firmar JWT. OBLIGATORIO.",
+        min_length=32,
     )
     jwt_ttl_min: int = Field(
         default=480,   # 8 horas
@@ -179,8 +180,30 @@ def obtener_settings() -> Settings:
     Retorna la instancia singleton de Settings.
     Usa lru_cache para garantizar que el .env se carga una sola vez.
     """
-    return Settings()
+    try:
+        return Settings()
+    except ValidationError as e:
+        print("\n\033[31m" + "!" * 80)
+        print("  ERROR DE CONFIGURACIÓN (ZERO-TRUST COMPLIANCE)")
+        print("!" * 80 + "\033[0m")
+        print("\nEl backend no puede iniciar porque faltan variables críticas en el archivo .env\n")
+        
+        for error in e.errors():
+            campo = " -> ".join(str(loc) for loc in error["loc"])
+            msg = error["msg"]
+            print(f"  \033[33m[ FALTA ]\033[0m {campo}: {msg}")
+            
+        print("\n\033[36mSOLUCIÓN:\033[0m")
+        print("  1. Abre (o crea) el archivo 'backend/.env'")
+        print("  2. Usa 'backend/.env.template' como guía.")
+        print("  3. Asegúrate de definir DB_SERVIDOR, DB_NOMBRE y ACP_JWT_SECRETO.")
+        print("\n" + "!" * 80 + "\n")
+        sys.exit(1)
 
 
 # Alias de importación directa: from nucleo.settings import settings
-settings = obtener_settings()
+try:
+    settings = obtener_settings()
+except Exception:
+    # Este bloque es por si algo falla fuera de la validación de Pydantic
+    sys.exit(1)

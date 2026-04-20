@@ -1321,18 +1321,20 @@ def ejecutar_carga_bronce() -> list[dict]:
     Busca todos los archivos pendientes y los carga a sus tablas destino.
     Retorna lista de resultados por archivo.
     """
+    import logging
+    _log = logging.getLogger("ETL_Pipeline")
     engine = obtener_engine()
     pendientes = listar_carpetas_con_archivos()
     resultados = []
 
     if not pendientes:
-        print('Bronce: sin archivos pendientes.')
+        _log.info("Bronce: sin archivos pendientes.")
         return resultados
 
-    print(f'Bronce: {len(pendientes)} archivo(s) encontrado(s).')
+    _log.info(f"Bronce: {len(pendientes)} archivo(s) encontrado(s).")
 
     for nombre_carpeta, ruta_archivo, tabla_destino in pendientes:
-        print(f'  Cargando {ruta_archivo.name} -> {tabla_destino}...', end=' ')
+        _log.info(f"Cargando {ruta_archivo.name} -> {tabla_destino}...")
 
         id_log = registrar_inicio(tabla_destino, ruta_archivo.name)
         resultado = cargar_archivo(
@@ -1340,8 +1342,8 @@ def ejecutar_carga_bronce() -> list[dict]:
         )
         registrar_fin(id_log, resultado)
 
-        icono = '[OK]' if resultado['estado'] == 'OK' else '[ERROR]'
-        print(f'{icono} {resultado["mensaje"]}')
+        estado_txt = "OK" if resultado["estado"] == "OK" else "ERROR"
+        _log.info(f"[{estado_txt}] {resultado['mensaje']}")
 
         resultados.append(resultado)
 

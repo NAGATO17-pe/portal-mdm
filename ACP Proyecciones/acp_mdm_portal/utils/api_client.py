@@ -137,3 +137,48 @@ def post_api(endpoint: str, payload: dict, base_url: str = URL_BASE) -> Resultad
 
 def patch_api(endpoint: str, payload: dict, base_url: str = URL_BASE) -> ResultadoApi:
     return _request("PATCH", f"{base_url}{endpoint}", json=payload, headers=_get_headers())
+
+
+def delete_api(endpoint: str, base_url: str = URL_BASE) -> ResultadoApi:
+    return _request("DELETE", f"{base_url}{endpoint}", headers=_get_headers())
+
+
+def stream_api(id_corrida: str):
+    """
+    Lee el stream SSE de una corrida ETL línea a línea.
+
+    Generador: yield str — cada línea de log emitida por el runner.
+    Termina automáticamente cuando el servidor cierra la conexión
+    o cuando el stream envía un evento con data '[DONE]'.
+
+    Uso:
+        for linea in stream_api(id_corrida):
+            consola += linea + "\\n"
+    """
+    url     = f"{URL_BASE}/etl/corridas/{id_corrida}/eventos"
+    headers = _get_headers()
+    headers.pop("Content-Type", None)          # SSE no lleva Content-Type
+    headers["Accept"] = "text/event-stream"
+
+    try:
+        with _SESSION.get(url, headers=headers, stream=True, timeout=(5, 1800)) as resp:
+            if not resp.ok:
+                yield f"[ERROR] El servidor respondió {resp.status_code}"
+                return
+
+            for raw_line in resp.iter_lines(decode_unicode=True):
+                if not raw_line:
+                    continue                    # líneas vacías = separador SSE
+                if raw_line.startswith("data:"):
+                    payload = raw_line[5:].strip()
+                    if payload == "[DONE]":
+                        return
+                    if payload:
+                        yield payload
+                elif raw_line.startswith("event:"):
+                    pass                        # ignoramos el tipo de evento
+    except requests.Timeout:
+        yield "[TIMEOUT] El backend tardó demasiado en responder."
+    except requests.RequestException as exc:
+        yield f"[ERROR] Conexión perdida: {exc}"
+

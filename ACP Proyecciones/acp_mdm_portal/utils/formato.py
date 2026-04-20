@@ -3,360 +3,490 @@ utils/formato.py — Sistema de diseño visual del Portal MDM ACP (Enterprise)
 =============================================================================
 CSS Premium + Componentes de renderizado HTML.
 
-Cambios v2 Enterprise:
-  - Google Fonts Inter via @import (tipografía profesional)
-  - Glassmorphism refinado en sidebar y paneles
-  - Micro-animaciones @keyframes (fadeIn, slideUp, pulse)
-  - Navegación sidebar con secciones agrupadas visualmente
-  - renderizar_tabla_premium_raw() — tabla sin paginación propia (para SQL paginado)
-  - Eliminada función load_lottieurl (dependencia removida)
+Cambios v3 Light Premium Glassmorphism:
+  - Google Fonts Inter + Outfit (tipografía premium dual)
+  - Light Glassmorphism: fondos translúcidos con backdrop-filter blur
+  - Sidebar con vidrio esmerilado semi-transparente (teal suave)
+  - Paleta de colores agradable a la vista (descanso visual)
+  - Header con gradiente sutil y bordes redondeados
+  - Micro-animaciones refinadas (fadeIn, slideUp, shimmer)
+  - Diseño 100% responsivo
 """
 
 import math
 
 import streamlit as st
 
-# ── Organic Premium Palette (Theme Aware) ──
-VERDE_ACP   = "#2D5A27"
-VERDE_CLARO = "#43843C"
-BRONCE      = "#C38D4F"
+# ── Light Premium Palette ──
+TEAL_PRIMARY  = "#1B6B5A"
+TEAL_LIGHT    = "#2D9B7E"
+TEAL_SOFT     = "#E8F5F1"
+AMBER_ACCENT  = "#D4915E"
+SLATE_700     = "#374151"
+SLATE_500     = "#64748B"
+SLATE_200     = "#E2E8F0"
+SURFACE_GLASS = "rgba(255, 255, 255, 0.72)"
 
 CSS_PORTAL = f"""
 <style>
 /* ── Google Fonts ── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap');
 
-/* ── Variables & Typography ── */
+/* ── Design Tokens ── */
 :root {{
-    --verde-acp: {VERDE_ACP};
-    --verde-claro: {VERDE_CLARO};
-    --bronce: {BRONCE};
-    --shadow-sm: 0 2px 8px rgba(0,0,0,0.06);
-    --shadow-md: 0 6px 20px rgba(0,0,0,0.10);
-    --shadow-lg: 0 12px 40px rgba(0,0,0,0.14);
-    --radius-sm: 8px;
-    --radius-md: 12px;
-    --radius-lg: 16px;
-    --radius-xl: 20px;
+    --teal-primary: {TEAL_PRIMARY};
+    --teal-light: {TEAL_LIGHT};
+    --teal-soft: {TEAL_SOFT};
+    --amber-accent: {AMBER_ACCENT};
+    --slate-700: {SLATE_700};
+    --slate-500: {SLATE_500};
+    --slate-200: {SLATE_200};
+
+    /* Legacy aliases (backward compat) */
+    --verde-acp: {TEAL_PRIMARY};
+    --verde-claro: {TEAL_LIGHT};
+    --bronce: {AMBER_ACCENT};
+
+    --glass-bg: {SURFACE_GLASS};
+    --glass-border: rgba(255, 255, 255, 0.45);
+    --glass-shadow: 0 8px 32px rgba(27, 107, 90, 0.08);
+
+    --shadow-xs: 0 1px 3px rgba(0,0,0,0.04);
+    --shadow-sm: 0 2px 8px rgba(0,0,0,0.05);
+    --shadow-md: 0 4px 16px rgba(0,0,0,0.08);
+    --shadow-lg: 0 8px 32px rgba(0,0,0,0.10);
+    --shadow-xl: 0 16px 48px rgba(0,0,0,0.12);
+
+    --radius-sm: 10px;
+    --radius-md: 14px;
+    --radius-lg: 18px;
+    --radius-xl: 24px;
 }}
 
+/* ── Typography ── */
 html, body, [class*="css"] {{
     font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}}
+
+h1, h2, h3, h4 {{
+    font-family: 'Outfit', 'Inter', system-ui, sans-serif;
 }}
 
 /* ── Micro-animations ── */
 @keyframes fadeIn {{
-    from {{ opacity: 0; transform: translateY(8px); }}
-    to {{ opacity: 1; transform: translateY(0); }}
+    from {{ opacity: 0; transform: translateY(6px); }}
+    to   {{ opacity: 1; transform: translateY(0); }}
 }}
 @keyframes slideUp {{
-    from {{ opacity: 0; transform: translateY(16px); }}
-    to {{ opacity: 1; transform: translateY(0); }}
+    from {{ opacity: 0; transform: translateY(14px); }}
+    to   {{ opacity: 1; transform: translateY(0); }}
 }}
-@keyframes pulseGlow {{
-    0%, 100% {{ box-shadow: 0 0 0 0 rgba(45,90,39,0.15); }}
-    50% {{ box-shadow: 0 0 12px 4px rgba(45,90,39,0.12); }}
+@keyframes shimmer {{
+    0%   {{ background-position: -200% 0; }}
+    100% {{ background-position: 200% 0; }}
 }}
-
-/* Global smooth transitions */
-* {{
-    transition: background-color 0.2s ease, border-color 0.2s ease,
-                box-shadow 0.2s ease, transform 0.15s ease, opacity 0.2s ease;
+@keyframes softPulse {{
+    0%, 100% {{ opacity: 1; }}
+    50%      {{ opacity: 0.7; }}
 }}
 
-/* ── App Background ── */
+/* Smooth transitions — solo elementos del design system, no widgets Streamlit */
+.kpi-card, .glass-card, .nav-item, .step-item, .badge,
+.stButton > button, .sidebar-nav-item {{
+    transition: background-color 0.25s ease, border-color 0.25s ease,
+                box-shadow 0.25s ease, transform 0.2s ease, opacity 0.25s ease;
+}}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   APP BACKGROUND — Soft warm gradient with floating orbs
+   ══════════════════════════════════════════════════════════════════════════════ */
 .stApp {{
-    background-image:
-        radial-gradient(ellipse at 10% 0%, rgba(45,90,39,0.06), transparent 50%),
-        radial-gradient(ellipse at 90% 100%, rgba(195,141,79,0.06), transparent 50%);
-    background-attachment: fixed;
-    animation: fadeIn 0.5s ease-out;
+    background:
+        radial-gradient(ellipse at 15% 5%, rgba(27,107,90,0.05) 0%, transparent 50%),
+        radial-gradient(ellipse at 85% 90%, rgba(212,145,94,0.04) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 50%, rgba(45,155,126,0.02) 0%, transparent 60%),
+        linear-gradient(170deg, #FAFBFC 0%, #F1F5F4 40%, #F5F3F0 100%) !important;
+    background-attachment: fixed !important;
+    animation: fadeIn 0.4s ease-out;
 }}
 
-/* ── Sidebar — Dark Green Glassmorphism ── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   SIDEBAR — Light Premium (Senior FE)
+   Pure white background, teal left-border accent. No dark backgrounds.
+   ══════════════════════════════════════════════════════════════════════════════ */
 section[data-testid="stSidebar"] {{
     background-color: transparent !important;
-    border-right: 1px solid rgba(128,128,128,0.15);
+    border-right: none !important;
 }}
 section[data-testid="stSidebar"] > div:first-child {{
-    background: linear-gradient(180deg, rgba(45,90,39,0.98) 0%, rgba(18,42,22,0.99) 100%) !important;
-    backdrop-filter: blur(12px);
-}}
-section[data-testid="stSidebar"] * {{
-    color: #ffffff !important;
+    background: #FFFFFF !important;
+    border-right: 1px solid #E9EEF2 !important;
+    box-shadow: 2px 0 16px rgba(27,107,90,0.05) !important;
 }}
 
-/* Sidebar nav items — hover glow */
+/* Reset all sidebar text to dark — excluye badges/spans con color inline */
+section[data-testid="stSidebar"] *:not(span[style]) {{
+    color: #374151 !important;
+}}
+
+/* ── Logo block — compact ── */
+.sidebar-logo {{
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 14px 14px 12px 14px;
+    border-bottom: 1px solid #F1F5F8;
+    margin-bottom: 4px;
+}}
+.sidebar-logo h2 {{
+    font-family: 'Outfit', 'Inter', sans-serif;
+    color: #1B6B5A !important;
+    font-size: 1.0rem;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: 0.3px;
+}}
+.sidebar-logo p {{
+    display: none;
+}}
+
+/* ── Section header label ── */
+.sidebar-section {{
+    font-size: 0.58rem;
+    text-transform: uppercase;
+    letter-spacing: 1.6px;
+    color: #9CA3AF !important;
+    padding: 14px 14px 4px 14px;
+    font-weight: 700;
+}}
+
+/* ── Radio nav: hide native circle bullet ── */
+section[data-testid="stSidebar"] div[role="radiogroup"] > label > div:first-child {{
+    display: none !important;
+}}
 section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label {{
-    padding: 10px 14px;
-    border-radius: var(--radius-sm);
-    margin-bottom: 2px;
+    padding: 8px 14px;
+    border-radius: 7px;
+    margin-bottom: 1px;
     background: transparent;
     cursor: pointer;
     border-left: 3px solid transparent;
+    transition: background 0.15s ease, border-color 0.15s ease;
 }}
 section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label:hover {{
-    background: rgba(255,255,255,0.08) !important;
-    border-left-color: var(--bronce);
+    background: #EFF8F5 !important;
+    border-left-color: #2D9B7E !important;
+}}
+/* ── Página activa: resaltar ítem seleccionado ── */
+section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label[data-checked="true"],
+section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label[aria-checked="true"] {{
+    background: rgba(27,107,90,0.10) !important;
+    border-left-color: var(--teal-primary) !important;
+}}
+section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label[data-checked="true"] p,
+section[data-testid="stSidebar"] .stRadio div[role="radiogroup"] > label[aria-checked="true"] p {{
+    color: var(--teal-primary) !important;
+    font-weight: 700 !important;
 }}
 section[data-testid="stSidebar"] .stRadio p,
 section[data-testid="stSidebar"] .stRadio span,
 section[data-testid="stSidebar"] .stRadio div[data-testid="stMarkdownContainer"] {{
-    color: #ffffff !important;
-    font-size: 0.93rem;
+    color: #374151 !important;
+    font-size: 0.87rem;
     font-weight: 500;
-    letter-spacing: 0.2px;
 }}
 
-/* Sidebar section dividers */
-.sidebar-section {{
-    font-size: 0.72rem;
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    color: rgba(255,255,255,0.35) !important;
-    padding: 16px 14px 4px 14px;
-    font-weight: 700;
-}}
-
-/* Logo */
-.sidebar-logo {{
-    text-align: center;
-    padding: 28px 12px 20px 12px;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-    margin-bottom: 8px;
-}}
-.sidebar-logo h2, .sidebar-logo p {{ color: #ffffff; }}
-.sidebar-logo h2 {{
-    color: var(--bronce);
-    font-size: 1.2rem;
-    font-weight: 700;
-    margin: 10px 0 2px 0;
-    letter-spacing: 0.5px;
-}}
-.sidebar-logo p {{
-    font-size: 0.78rem;
-    opacity: 0.6;
-    margin: 0;
-}}
-
-/* Sidebar footer */
+/* ── Footer ── */
 .sidebar-footer {{
     text-align: center;
-    padding: 20px 12px;
-    border-top: 1px solid rgba(255,255,255,0.06);
+    padding: 16px 12px;
+    border-top: 1px solid #F1F5F8;
     margin-top: 20px;
-    font-size: 0.72rem;
-    opacity: 0.4;
-    letter-spacing: 0.3px;
+    font-size: 0.68rem;
+    color: #CBD5E1 !important;
 }}
 
-/* ── Page Header Premium ── */
+/* ── Logout button ── */
+section[data-testid="stSidebar"] .stButton > button {{
+    background: #F9FAFB !important;
+    border: 1px solid #E5E7EB !important;
+    color: #6B7280 !important;
+    border-radius: 8px !important;
+    font-weight: 500 !important;
+}}
+section[data-testid="stSidebar"] .stButton > button:hover {{
+    background: #FEF2F2 !important;
+    border-color: #FECACA !important;
+    color: #DC2626 !important;
+}}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   PAGE HEADER — Glass card with teal accent
+   ══════════════════════════════════════════════════════════════════════════════ */
 .page-header {{
-    background: var(--secondary-background-color);
-    border: 1px solid rgba(128,128,128,0.15);
-    border-left: 6px solid var(--verde-acp);
-    padding: 26px 32px;
-    border-radius: var(--radius-lg);
-    margin-bottom: 28px;
-    box-shadow: var(--shadow-md);
-    animation: fadeIn 0.4s ease;
+    background: #FFFFFF;
+    border: 1px solid #EEF2F6;
+    border-left: 4px solid var(--teal-primary);
+    padding: 14px 20px;
+    border-radius: 10px;
+    margin-bottom: 18px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    animation: fadeIn 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }}
 .page-header h1 {{
+    font-family: 'Outfit', 'Inter', sans-serif;
     margin: 0;
-    font-size: 1.65rem;
+    font-size: 1.15rem;
     font-weight: 700;
-    color: var(--verde-acp);
-    letter-spacing: -0.5px;
+    color: var(--teal-primary);
+    letter-spacing: -0.2px;
 }}
 .page-header p {{
-    margin: 6px 0 0 0;
-    font-size: 0.92rem;
-    color: var(--text-color);
-    opacity: 0.7;
+    margin: 2px 0 0 0;
+    font-size: 0.78rem;
+    color: var(--slate-500);
+    font-weight: 400;
 }}
 
-/* ── Dataframes (nativo Streamlit) ── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   DATAFRAMES (native Streamlit) - Contrast not lines
+   ══════════════════════════════════════════════════════════════════════════════ */
 div[data-testid="stDataFrame"] {{
-    border-radius: var(--radius-md);
+    border-radius: 10px;
     overflow: hidden;
-    border: 1px solid rgba(128,128,128,0.15);
-    box-shadow: var(--shadow-sm);
+    border: 1px solid #EEF2F6;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}}
+/* Compact table font */
+div[data-testid="stDataFrame"] table {{
+    font-size: 0.82rem !important;
+}}
+div[data-testid="stDataFrame"] thead th {{
+    background: #F8FAFC !important;
+    color: #374151 !important;
+    font-weight: 600 !important;
+    font-size: 0.72rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 8px 12px !important;
+    border-bottom: 2px solid #EEF2F6 !important;
+    border-right: none !important;
+    border-left: none !important;
+}}
+div[data-testid="stDataFrame"] tbody tr:nth-child(even) td {{
+    background: #F8FAFC !important;
+}}
+div[data-testid="stDataFrame"] tbody tr:nth-child(odd) td {{
+    background: #FFFFFF !important;
+}}
+div[data-testid="stDataFrame"] tbody td {{
+    padding: 6px 12px !important;
+    border: none !important;
+    color: #374151 !important;
+    font-size: 0.82rem !important;
+}}
+div[data-testid="stDataFrame"] tbody tr:hover td {{
+    background: #EFF8F5 !important;
 }}
 
-/* ── KPI Cards ── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   KPI CARDS — Glassmorphism float cards
+   ══════════════════════════════════════════════════════════════════════════════ */
 .kpi-container {{
     display: flex;
-    gap: 16px;
+    gap: 14px;
     flex-wrap: wrap;
     animation: slideUp 0.5s ease;
 }}
 .kpi-card {{
-    background: var(--secondary-background-color);
-    border: 1px solid rgba(128,128,128,0.15);
-    border-radius: var(--radius-lg);
-    padding: 24px;
+    background: #FFFFFF;
+    border: 1px solid #EEF2F6;
+    border-radius: 10px;
+    padding: 14px 18px 14px 16px;
     flex: 1;
-    min-width: 200px;
-    box-shadow: var(--shadow-sm);
+    min-width: 150px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
     display: flex;
-    flex-direction: column;
-    justify-content: center;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
     position: relative;
     overflow: hidden;
-    border-top: 4px solid var(--bronce);
+    border-left: 3px solid var(--amber-accent);
+    border-top: none;
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
 }}
 .kpi-card:hover {{
-    transform: translateY(-4px);
-    box-shadow: var(--shadow-md);
-    border-top-color: var(--verde-acp);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.07);
 }}
 .kpi-icon {{
-    position: absolute;
-    right: -8px;
-    bottom: -8px;
-    font-size: 4.5rem;
-    opacity: 0.04;
-    transform: rotate(-12deg);
-    pointer-events: none;
+    font-size: 1.6rem;
+    opacity: 0.75;
+    flex-shrink: 0;
+    line-height: 1;
 }}
 .kpi-content {{ display: flex; flex-direction: column; }}
 .kpi-title {{
-    font-size: 0.82rem;
+    font-size: 0.68rem;
     text-transform: uppercase;
-    letter-spacing: 0.6px;
-    color: var(--text-color);
-    opacity: 0.6;
-    margin-bottom: 6px;
+    letter-spacing: 0.8px;
+    color: var(--slate-500);
+    margin-bottom: 3px;
     font-weight: 600;
 }}
 .kpi-value {{
-    font-size: 1.75rem;
+    font-family: 'Outfit', 'Inter', sans-serif;
+    font-size: 1.35rem;
     font-weight: 700;
-    color: var(--verde-acp);
-    line-height: 1;
+    color: var(--teal-primary);
+    line-height: 1.1;
 }}
-.kpi-card.success {{ border-top-color: var(--verde-acp); }}
-.kpi-card.success .kpi-icon, .kpi-card.success .kpi-value {{ color: var(--verde-acp); }}
-.kpi-card.warning {{ border-top-color: #E29D45; }}
-.kpi-card.warning .kpi-icon, .kpi-card.warning .kpi-value {{ color: #E29D45; }}
-.kpi-card.danger {{ border-top-color: #D35D47; }}
-.kpi-card.danger .kpi-icon, .kpi-card.danger .kpi-value {{ color: #D35D47; }}
+.kpi-card.success {{ border-left-color: #10B981; }}
+.kpi-card.success .kpi-value {{ color: #059669; }}
+.kpi-card.warning {{ border-left-color: #F59E0B; }}
+.kpi-card.warning .kpi-value {{ color: #D97706; }}
+.kpi-card.danger  {{ border-left-color: #EF4444; }}
+.kpi-card.danger  .kpi-value {{ color: #DC2626; }}
+.kpi-card.info    {{ border-left-color: var(--teal-light); }}
+.kpi-card.info    .kpi-value {{ color: var(--teal-primary); }}
 
-/* ── Decision Panel (cuarentena) ── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   DECISION PANEL (cuarentena)
+   ══════════════════════════════════════════════════════════════════════════════ */
 .decision-panel {{
-    background: var(--secondary-background-color);
-    border: 1px solid rgba(128,128,128,0.15);
-    border-left: 4px solid var(--verde-claro);
+    background: var(--glass-bg);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--glass-border);
+    border-left: 4px solid var(--teal-light);
     border-radius: var(--radius-md);
     padding: 20px 24px;
     margin-top: 12px;
     box-shadow: var(--shadow-sm);
     animation: fadeIn 0.3s ease;
 }}
-.decision-panel h4 {{ color: var(--verde-acp); margin: 0 0 12px 0; font-size: 1.05rem; }}
+.decision-panel h4 {{ color: var(--teal-primary); margin: 0 0 12px 0; font-size: 1.02rem; }}
 .decision-info {{
-    background: var(--background-color);
+    background: rgba(248, 250, 252, 0.8);
     border-radius: var(--radius-sm);
     padding: 12px 16px;
     margin-bottom: 14px;
-    border: 1px solid rgba(128,128,128,0.2);
-    font-size: 0.88rem;
+    border: 1px solid rgba(0,0,0,0.05);
+    font-size: 0.86rem;
+    color: var(--slate-700);
 }}
 
-/* ── Buttons Premium ── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   BUTTONS — Soft gradient with micro-lift
+   ══════════════════════════════════════════════════════════════════════════════ */
 .stButton > button {{
     border-radius: var(--radius-sm);
     font-weight: 600;
-    font-size: 0.88rem;
+    font-size: 0.86rem;
     border: 1px solid transparent;
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-xs);
     letter-spacing: 0.2px;
 }}
 .stButton > button[kind="primary"] {{
-    background: linear-gradient(135deg, var(--verde-acp) 0%, var(--verde-claro) 100%);
-    color: white;
+    background: linear-gradient(135deg, var(--teal-primary) 0%, var(--teal-light) 100%) !important;
+    color: white !important;
     border: none;
+    box-shadow: 0 2px 8px rgba(27,107,90,0.18);
 }}
 .stButton > button[kind="primary"]:hover {{
-    background: linear-gradient(135deg, var(--verde-claro) 0%, var(--verde-acp) 100%);
+    background: linear-gradient(135deg, var(--teal-light) 0%, var(--teal-primary) 100%) !important;
     transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(45,90,39,0.20);
-    border: none;
+    box-shadow: 0 6px 20px rgba(27,107,90,0.22) !important;
 }}
 .stButton > button[kind="secondary"]:hover {{
     transform: translateY(-1px);
-    border-color: var(--verde-claro);
-    color: var(--verde-acp);
+    border-color: var(--teal-light) !important;
+    color: var(--teal-primary) !important;
 }}
 
-/* ── Banner aviso ── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   BANNER
+   ══════════════════════════════════════════════════════════════════════════════ */
 .banner-aviso {{
-    background: var(--secondary-background-color);
-    border: 1px solid rgba(195,141,79,0.4);
-    border-left: 4px solid var(--bronce);
+    background: rgba(255, 251, 235, 0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(212,145,94,0.25);
+    border-left: 4px solid var(--amber-accent);
     border-radius: var(--radius-sm);
     padding: 14px 20px;
-    font-size: 0.88rem;
-    color: var(--text-color);
+    font-size: 0.86rem;
+    color: var(--slate-700);
     margin-bottom: 20px;
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-xs);
     animation: fadeIn 0.3s ease;
 }}
 
-/* ── Tabla Premium (Zebra + Teal Header) ── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   TABLE PREMIUM — Clean glass with soft teal header
+   ══════════════════════════════════════════════════════════════════════════════ */
 .tabla-premium-wrapper {{
     border-radius: var(--radius-md);
     overflow: hidden;
-    border: 1px solid rgba(128,128,128,0.18);
+    border: 1px solid rgba(0,0,0,0.06);
     box-shadow: var(--shadow-sm);
     margin-bottom: 8px;
     animation: fadeIn 0.35s ease;
+    background: var(--glass-bg);
+    backdrop-filter: blur(8px);
 }}
 .tabla-premium {{
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.86rem;
+    font-size: 0.84rem;
 }}
 .tabla-premium thead tr {{
-    background: linear-gradient(135deg, #3D8B7A 0%, #2D6B5F 100%);
+    background: linear-gradient(135deg, {TEAL_PRIMARY} 0%, {TEAL_LIGHT} 100%);
 }}
 .tabla-premium thead th {{
     color: #ffffff;
-    font-weight: 700;
-    padding: 13px 16px;
+    font-weight: 600;
+    padding: 12px 16px;
     text-align: left;
-    font-size: 0.82rem;
-    letter-spacing: 0.4px;
+    font-size: 0.76rem;
+    letter-spacing: 0.5px;
     text-transform: uppercase;
-    border-right: 1px solid rgba(255,255,255,0.12);
+    border-right: 1px solid rgba(255,255,255,0.10);
     white-space: nowrap;
+    font-family: 'Inter', sans-serif;
 }}
 .tabla-premium thead th:last-child {{ border-right: none; }}
 .tabla-premium tbody td {{
-    padding: 11px 16px;
-    border-bottom: 1px solid rgba(128,128,128,0.10);
-    color: var(--text-color);
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(0,0,0,0.04);
+    color: var(--slate-700);
     max-width: 300px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }}
-.tabla-premium tbody tr.zebra-even {{ background: rgba(61,139,122,0.05); }}
-.tabla-premium tbody tr.zebra-odd  {{ background: var(--background-color); }}
+.tabla-premium tbody tr.zebra-even {{ background: rgba(27,107,90,0.03); }}
+.tabla-premium tbody tr.zebra-odd  {{ background: rgba(255,255,255,0.6); }}
 .tabla-premium tbody tr:hover {{
-    background: rgba(61,139,122,0.12) !important;
+    background: rgba(27,107,90,0.07) !important;
     cursor: default;
 }}
 .tabla-premium tbody td input[type="checkbox"] {{
-    width: 16px; height: 16px; accent-color: #3D8B7A;
+    width: 16px; height: 16px;
+    accent-color: var(--teal-primary);
 }}
 
-/* ── Pagination Info Bar ── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   PAGINATION
+   ══════════════════════════════════════════════════════════════════════════════ */
 .pagi-info-box {{ padding: 8px 0; }}
 .pagi-info {{
-    font-size: 0.86rem;
-    color: var(--text-color);
-    opacity: 0.7;
+    font-size: 0.84rem;
+    color: var(--slate-500);
     font-weight: 500;
 }}
 .paginacion-bar {{
@@ -365,10 +495,13 @@ div[data-testid="stDataFrame"] {{
     margin-bottom: 8px;
 }}
 
-/* ── Streamlit metric cards enhancement ── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   METRIC CARDS (native Streamlit)
+   ══════════════════════════════════════════════════════════════════════════════ */
 div[data-testid="stMetric"] {{
-    background: var(--secondary-background-color);
-    border: 1px solid rgba(128,128,128,0.12);
+    background: var(--glass-bg);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--glass-border);
     border-radius: var(--radius-md);
     padding: 16px 20px;
     box-shadow: var(--shadow-sm);
@@ -379,48 +512,212 @@ div[data-testid="stMetric"]:hover {{
     transform: translateY(-2px);
 }}
 
-/* ── Expanders ── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   EXPANDERS
+   ══════════════════════════════════════════════════════════════════════════════ */
 details[data-testid="stExpander"] {{
-    border: 1px solid rgba(128,128,128,0.15) !important;
+    background: var(--glass-bg) !important;
+    backdrop-filter: blur(8px) !important;
+    border: 1px solid rgba(0,0,0,0.06) !important;
     border-radius: var(--radius-md) !important;
-    box-shadow: var(--shadow-sm);
+    box-shadow: var(--shadow-xs);
 }}
 details[data-testid="stExpander"] summary {{
     font-weight: 600;
-    font-size: 0.95rem;
+    font-size: 0.92rem;
 }}
 
-/* ── Tabs ── */
+/* ══════════════════════════════════════════════════════════════════════════════
+   TABS — Active tab visual differentiation
+   ══════════════════════════════════════════════════════════════════════════════ */
 button[data-baseweb="tab"] {{
     font-weight: 600 !important;
-    font-size: 0.92rem !important;
+    font-size: 0.9rem !important;
     letter-spacing: 0.2px;
+    border-bottom: 2px solid transparent !important;
+    transition: border-color 0.15s ease, color 0.15s ease !important;
+    padding-bottom: 10px !important;
+}}
+button[data-baseweb="tab"]:hover {{
+    color: var(--teal-primary) !important;
+    border-bottom-color: rgba(45,155,126,0.45) !important;
+}}
+button[data-baseweb="tab"][aria-selected="true"] {{
+    color: var(--teal-primary) !important;
+    border-bottom: 2px solid var(--teal-primary) !important;
+    font-weight: 700 !important;
 }}
 
-/* ── Scroll bars premium ── */
-::-webkit-scrollbar {{ width: 6px; height: 6px; }}
-::-webkit-scrollbar-track {{ background: transparent; }}
-::-webkit-scrollbar-thumb {{
-    background: rgba(128,128,128,0.25);
-    border-radius: 4px;
+/* ══════════════════════════════════════════════════════════════════════════════
+   CONTAINERS & FORMS (Glass treatment)
+   ══════════════════════════════════════════════════════════════════════════════ */
+div[data-testid="stForm"],
+div[data-testid="stVerticalBlock"] > div[data-testid="stHorizontalBlock"] > div > div > div > div[data-testid="stForm"] {{
+    background: var(--glass-bg) !important;
+    backdrop-filter: blur(12px) !important;
+    border: 1px solid var(--glass-border) !important;
+    border-radius: var(--radius-lg) !important;
 }}
-::-webkit-scrollbar-thumb:hover {{ background: rgba(128,128,128,0.4); }}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   SCROLLBARS — Visible en Windows
+   ══════════════════════════════════════════════════════════════════════════════ */
+::-webkit-scrollbar {{ width: 7px; height: 7px; }}
+::-webkit-scrollbar-track {{ background: transparent; border-radius: 10px; }}
+::-webkit-scrollbar-thumb {{
+    background: rgba(27,107,90,0.25);
+    border-radius: 10px;
+}}
+::-webkit-scrollbar-thumb:hover {{ background: rgba(27,107,90,0.45); }}
+/* Scrollbar lateral del stepper (neural-monitor) */
+.stepper-panel::-webkit-scrollbar {{ width: 5px; }}
+.stepper-panel::-webkit-scrollbar-thumb {{ background: rgba(100,116,139,0.2); }}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   RESPONSIVE
+   ══════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {{
+    .page-header {{ padding: 18px 20px; }}
+    .page-header h1 {{ font-size: 1.25rem; }}
+    .kpi-container {{ gap: 10px; }}
+    .kpi-card {{ min-width: 140px; padding: 16px 18px; }}
+    .kpi-value {{ font-size: 1.35rem; }}
+    .tabla-premium {{ font-size: 0.78rem; }}
+    .tabla-premium thead th {{ padding: 10px 12px; font-size: 0.72rem; }}
+    .tabla-premium tbody td {{ padding: 8px 12px; }}
+}}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   NEURAL MONITOR — Data Flow Visualization
+   ══════════════════════════════════════════════════════════════════════════════ */
+.neural-wrapper {{
+    display: flex;
+    align-items: stretch;
+    gap: 20px;
+    animation: fadeIn 0.4s ease;
+}}
+.neural-viz {{
+    flex: 0 0 260px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(145deg, #FAFBFC, #F1F5F4);
+    border-radius: var(--radius-lg);
+    border: 1px solid #EEF2F6;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+}}
+.neural-viz svg {{
+    width: 100%;
+    height: auto;
+    max-height: 200px;
+}}
+/* Phase label below the SVG */
+.neural-phase-label {{
+    position: absolute;
+    bottom: 10px;
+    left: 0; right: 0;
+    text-align: center;
+    font-family: 'Outfit', 'Inter', sans-serif;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+}}
+
+/* ── Vertical Stepper ── */
+.stepper-panel {{
+    flex: 1;
+    max-height: 280px;
+    overflow-y: auto;
+    padding: 4px 0;
+}}
+.step-item {{
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    transition: opacity 0.4s ease, background 0.2s ease;
+    position: relative;
+}}
+.step-item + .step-item::before {{
+    content: '';
+    position: absolute;
+    left: 22px;
+    top: -5px;
+    width: 2px;
+    height: 12px;
+    background: #E2E8F0;
+}}
+.step-item.step-done {{
+    opacity: 0.38;
+}}
+.step-item.step-active {{
+    opacity: 1;
+    background: rgba(27,107,90,0.04);
+    border-radius: 8px;
+}}
+.step-item.step-pending {{
+    opacity: 0.25;
+}}
+.step-dot {{
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 2px;
+    border: 2px solid #CBD5E1;
+    background: #FFFFFF;
+    transition: all 0.3s ease;
+}}
+.step-done .step-dot {{
+    background: #10B981;
+    border-color: #10B981;
+}}
+.step-active .step-dot {{
+    border-color: var(--teal-primary);
+    background: var(--teal-primary);
+    box-shadow: 0 0 0 4px rgba(27,107,90,0.15);
+    animation: softPulse 1.5s ease-in-out infinite;
+}}
+.step-error .step-dot {{
+    background: #EF4444;
+    border-color: #EF4444;
+}}
+.step-label {{
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--slate-700);
+    line-height: 1.35;
+}}
+.step-active .step-label {{
+    font-weight: 600;
+    color: var(--teal-primary);
+}}
+.step-meta {{
+    font-size: 0.68rem;
+    color: var(--slate-500);
+    margin-top: 1px;
+}}
 
 </style>
 """
 
-@st.cache_data
 def obtener_css() -> str:
     return CSS_PORTAL
 
 def aplicar_css():
     st.markdown(obtener_css(), unsafe_allow_html=True)
 
-def header_pagina(icono: str, titulo: str, descripcion: str):
+def header_pagina(icono: str, titulo: str, descripcion: str = ""):
     st.markdown(f"""
         <div class="page-header">
-            <h1>{icono} {titulo}</h1>
-            <p>{descripcion}</p>
+            <div style="display:flex; flex-direction:column; min-width:0;">
+                <h1 style="margin:0;">{icono} {titulo}</h1>
+                {'<p style="margin:2px 0 0 0;">' + descripcion + '</p>' if descripcion else ''}
+            </div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -510,11 +807,11 @@ def crear_paginacion_ui(count: int, page_size: int, key: str) -> tuple[int, int]
     with col_nav:
         b1, b2, b3, b4, b5 = st.columns([1, 1, 3, 1, 1])
         with b1:
-            if st.button("⏮", key=f"btn_first_{key}", disabled=current <= 1, use_container_width=True, help="Primera página"):
+            if st.button("⏮", key=f"btn_first_{key}", disabled=current <= 1, width='stretch', help="Primera página"):
                 st.session_state[st_key] = 1
                 st.rerun()
         with b2:
-            if st.button("◀", key=f"btn_prev_{key}", disabled=current <= 1, use_container_width=True, help="Anterior"):
+            if st.button("◀", key=f"btn_prev_{key}", disabled=current <= 1, width='stretch', help="Anterior"):
                 st.session_state[st_key] -= 1
                 st.rerun()
         with b3:
@@ -524,59 +821,35 @@ def crear_paginacion_ui(count: int, page_size: int, key: str) -> tuple[int, int]
                 </div>
             """, unsafe_allow_html=True)
         with b4:
-            if st.button("▶", key=f"btn_next_{key}", disabled=current >= total_pages, use_container_width=True, help="Siguiente"):
+            if st.button("▶", key=f"btn_next_{key}", disabled=current >= total_pages, width='stretch', help="Siguiente"):
                 st.session_state[st_key] += 1
                 st.rerun()
         with b5:
-            if st.button("⏭", key=f"btn_last_{key}", disabled=current >= total_pages, use_container_width=True, help="Última página"):
+            if st.button("⏭", key=f"btn_last_{key}", disabled=current >= total_pages, width='stretch', help="Última página"):
                 st.session_state[st_key] = total_pages
                 st.rerun()
 
     return start_idx, end_idx
 
 
-# ── Generador de HTML de tabla (núcleo compartido) ────────────────────────────
+# ── Generador de vista interactiva (nativa) ──────────────────────────────────
 
-def _generar_html_tabla(df, columnas_check=None, columnas_ocultas=None) -> str:
-    """Genera HTML de tabla premium a partir de un DataFrame (slice ya cortado)."""
-    if columnas_ocultas:
-        df = df.drop(columns=[c for c in columnas_ocultas if c in df.columns], errors='ignore')
-
-    cols = list(df.columns)
-    header_html = "".join(f"<th>{c}</th>" for c in cols)
-
-    rows_html = ""
-    for i, (_, row) in enumerate(df.iterrows()):
-        row_class = "zebra-even" if i % 2 == 0 else "zebra-odd"
-        cells = ""
-        for col in cols:
-            val = row[col]
-            if columnas_check and col in columnas_check:
-                checked = "checked" if val else ""
-                cells += f'<td><input type="checkbox" {checked} disabled /></td>'
-            else:
-                display_val = "" if val is None else str(val)
-                cells += f"<td>{display_val}</td>"
-        rows_html += f'<tr class="{row_class}">{cells}</tr>'
-
-    return f"""
-    <div class="tabla-premium-wrapper">
-        <table class="tabla-premium">
-            <thead><tr>{header_html}</tr></thead>
-            <tbody>{rows_html}</tbody>
-        </table>
-    </div>
-    """
-
+def _configurar_columnas_dataframe(cols: list, columnas_check: list | None) -> dict:
+    """Configura las columnas de casillas de verificación si se proveen."""
+    config = {}
+    if columnas_check:
+        for c in columnas_check:
+            if c in cols:
+                config[c] = st.column_config.CheckboxColumn(c, disabled=True)
+    return config
 
 def renderizar_tabla_premium(df, key: str, page_size: int = 15,
                               columnas_check: list = None,
                               columnas_ocultas: list = None):
     """
-    Tabla HTML premium con paginación LOCAL (datos en memoria).
-    Para tablas grandes, usar seccion_tabla_sql_paginada() de componentes.py.
+    Tabla interactiva nativa con paginación LOCAL externa.
     """
-    if df.empty:
+    if df is None or df.empty:
         st.info("No hay datos para mostrar.")
         return
 
@@ -587,23 +860,33 @@ def renderizar_tabla_premium(df, key: str, page_size: int = 15,
     start, end = crear_paginacion_ui(count, page_size, key)
     df_slice = df.iloc[start:end]
 
-    st.markdown(
-        _generar_html_tabla(df_slice, columnas_check=columnas_check),
-        unsafe_allow_html=True,
+    config = _configurar_columnas_dataframe(df_slice.columns, columnas_check)
+
+    st.dataframe(
+        df_slice,
+        width='stretch',
+        hide_index=True,
+        column_config=config,
     )
 
 
 def renderizar_tabla_premium_raw(df, columnas_check=None, columnas_ocultas=None):
     """
-    Tabla HTML premium SIN paginación propia.
-    Diseñada para usarse con seccion_tabla_sql_paginada() donde
-    los datos ya vienen cortados desde SQL Server.
+    Tabla interactiva nativa SIN paginación propia.
+    (Diseñada para SQL Server paginado).
     """
-    if df.empty:
+    if df is None or df.empty:
         st.info("No hay datos para mostrar.")
         return
 
-    st.markdown(
-        _generar_html_tabla(df, columnas_check=columnas_check, columnas_ocultas=columnas_ocultas),
-        unsafe_allow_html=True,
+    if columnas_ocultas:
+        df = df.drop(columns=[c for c in columnas_ocultas if c in df.columns], errors='ignore')
+
+    config = _configurar_columnas_dataframe(df.columns, columnas_check)
+
+    st.dataframe(
+        df,
+        width='stretch',
+        hide_index=True,
+        column_config=config,
     )

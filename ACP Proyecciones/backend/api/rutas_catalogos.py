@@ -38,7 +38,7 @@ def _construir_respuesta_paginada(resultado: dict, schema_fila) -> RespuestaPagi
 )
 def obtener_variedades(
     pagina: int = Query(default=1, ge=1),
-    tamano: int = Query(default=20, ge=1, le=100),
+    tamano: int = Query(default=20, ge=1, le=10000),
 ) -> RespuestaPaginadaCatalogo:
     resultado = listar_variedades(pagina=pagina, tamano=tamano)
     return _construir_respuesta_paginada(resultado, RespuestaVariedad)
@@ -51,7 +51,7 @@ def obtener_variedades(
 )
 def obtener_geografia(
     pagina: int = Query(default=1, ge=1),
-    tamano: int = Query(default=20, ge=1, le=100),
+    tamano: int = Query(default=20, ge=1, le=10000),
 ) -> RespuestaPaginadaCatalogo:
     resultado = listar_geografia(pagina=pagina, tamano=tamano)
     return _construir_respuesta_paginada(resultado, RespuestaGeografia)
@@ -64,7 +64,7 @@ def obtener_geografia(
 )
 def obtener_personal(
     pagina: int = Query(default=1, ge=1),
-    tamano: int = Query(default=20, ge=1, le=100),
+    tamano: int = Query(default=20, ge=1, le=10000),
 ) -> RespuestaPaginadaCatalogo:
     resultado = listar_personal(pagina=pagina, tamano=tamano)
     return _construir_respuesta_paginada(resultado, RespuestaPersonal)

@@ -10,19 +10,13 @@ FKs obligatorias: ID_Tiempo, ID_Personal, ID_Actividad_Operativa, ID_Geografia
 import pandas as pd
 from sqlalchemy.engine import Engine
 from sqlalchemy import text
+
 from utils.contexto_transaccional import ContextoTransaccionalETL
-from utils.fechas    import procesar_fecha, obtener_id_tiempo
-from utils.texto     import normalizar_modulo, es_test_block
-from utils.dni       import procesar_dni
-from mdm.lookup      import (
-    resolver_geografia,
-    obtener_id_personal,
-    obtener_id_actividad,
-)
-from silver.facts._helpers_fact_comunes import (
-    finalizar_resumen_fact as _finalizar_resumen_fact,
-    motivo_cuarentena_geografia as _motivo_cuarentena_geografia,
-)
+from utils.fechas import obtener_id_tiempo
+from mdm.lookup import obtener_id_actividad
+from silver.facts._base_processor import BaseFactProcessor
+from silver.facts._helpers_fact_comunes import finalizar_resumen_fact as _finalizar_resumen_fact
+
 
 TABLA_ORIGEN  = 'Bronce.Consolidado_Tareos'
 TABLA_DESTINO = 'Silver.Fact_Tareo'
@@ -55,110 +49,54 @@ def _es_fila_no_operativa(fila) -> bool:
     return fecha_raw.upper() in tokens_fecha_descartar or supervisor_raw in tokens_supervisor_descartar
 
 
-def cargar_fact_tareo(engine: Engine) -> dict:
-    """
-    Lee Bronce.Consolidado_Tareos y carga Silver.Fact_Tareo.
-    """
-    resumen = {'insertados': 0, 'rechazados': 0, 'cuarentena': []}
+class ProcesadorTareo(BaseFactProcessor):
+    def __init__(self, engine: Engine):
+        super().__init__(engine, TABLA_ORIGEN, TABLA_DESTINO)
+        self.columnas_clave_unica = ['ID_Geografia', 'ID_Tiempo', 'ID_Personal', 'ID_Actividad_Operativa']
+        self.ids_descartados: list[int] = []
 
-    df = _leer_bronce(engine)
-    if df.empty:
-        return _finalizar_resumen_fact(resumen)
-    resumen['leidos'] = len(df)
-
-    ids_leidos = []
-    ids_insertados = []
-    ids_rechazados = []
-    ids_descartados = []
-
-    with ContextoTransaccionalETL(engine) as contexto:
-        conexion = contexto._conexion_activa()
+    def _construir_payload(self, df: pd.DataFrame) -> list[dict]:
+        payload = []
         for _, fila in df.iterrows():
             id_origen = None
             try:
                 id_origen = int(fila['ID_Tareo'])
-                ids_leidos.append(id_origen)
             except (ValueError, TypeError):
                 pass
 
             if _es_fila_no_operativa(fila):
                 if id_origen is not None:
-                    ids_descartados.append(id_origen)
+                    self.ids_descartados.append(id_origen)
                 continue
 
-            # ── Fecha ─────────────────────────────────────────
-            fecha, fecha_valida = procesar_fecha(
-                fila.get('Fecha_Raw'),
-                dominio='tareo',
-            )
-            if not fecha_valida:
-                resumen['rechazados'] += 1
-                if id_origen is not None:
-                    ids_rechazados.append(id_origen)
-                resumen['cuarentena'].append({
-                    'columna': 'Fecha_Raw',
-                    'valor': fila.get('Fecha_Raw'),
-                    'motivo': 'Fecha invalida o fuera de campana',
-                    'severidad': 'ALTO',
-                    'id_registro_origen': id_origen,
-                })
+            fecha = self._validar_y_resolver_fecha(id_origen, fila.get('Fecha_Raw'), 'tareo')
+            if fecha is None:
                 continue
 
-            id_tiempo = obtener_id_tiempo(fecha)
-
-            # ── Geografía ─────────────────────────────────────
-            modulo_raw = fila.get('Modulo_Raw')
-            modulo     = None if es_test_block(modulo_raw) else normalizar_modulo(modulo_raw)
-            resultado_geo = resolver_geografia(
+            resultado_geo = self._validar_y_resolver_geografia(
+                id_origen,
                 fila.get('Fundo_Raw'),
-                None,
-                modulo,
-                engine,
+                fila.get('Modulo_Raw'),
             )
-            id_geo = resultado_geo.get('id_geografia')
-            if not id_geo:
-                resumen['rechazados'] += 1
-                if id_origen is not None:
-                    ids_rechazados.append(id_origen)
-                resumen['cuarentena'].append({
-                    'columna': 'Modulo_Raw',
-                    'valor': f"Fundo={fila.get('Fundo_Raw')} | Modulo={fila.get('Modulo_Raw')}",
-                    'motivo': _motivo_cuarentena_geografia(resultado_geo),
-                    'tipo_regla': 'MDM',
-                    'severidad': 'ALTO',
-                    'id_registro_origen': id_origen,
-                })
+            if resultado_geo is None:
                 continue
 
-            # ── Personal operario ─────────────────────────────
-            dni_operario, _ = procesar_dni(fila.get('DNIResponsable_Raw'))
-            id_personal     = obtener_id_personal(dni_operario, engine)
+            id_personal = self._validar_y_resolver_personal(fila.get('DNIResponsable_Raw'))
 
-            # ── Personal supervisor ───────────────────────────
-            dni_supervisor, _ = procesar_dni(fila.get('IDPersonalGeneral_Raw'))
-            id_supervisor     = obtener_id_personal(dni_supervisor, engine)
-            # Supervisor -1 no tiene sentido — usar NULL
+            id_supervisor = self._validar_y_resolver_personal(fila.get('IDPersonalGeneral_Raw'))
             if id_supervisor == -1:
                 id_supervisor = None
 
-            # ── Actividad ─────────────────────────────────────
-            id_actividad = obtener_id_actividad(
-                fila.get('Labor_Raw'), engine
-            )
+            id_actividad = obtener_id_actividad(fila.get('Labor_Raw'), self.engine)
             if not id_actividad:
-                resumen['rechazados'] += 1
-                if id_origen is not None:
-                    ids_rechazados.append(id_origen)
-                resumen['cuarentena'].append({
-                    'columna':   'Labor_Raw',
-                    'valor':     fila.get('Labor_Raw'),
-                    'motivo':    'Actividad no reconocida en Dim_Actividad_Operativa',
-                    'severidad': 'ALTO',
-                    'id_registro_origen': id_origen,
-                })
+                self.registrar_rechazo(
+                    id_origen,
+                    columna='Labor_Raw',
+                    valor=fila.get('Labor_Raw'),
+                    motivo='Actividad no reconocida en Dim_Actividad_Operativa',
+                )
                 continue
 
-            # ── Horas trabajadas ──────────────────────────────
             try:
                 horas = float(str(fila.get('HorasTrabajadas_Raw', 0)).replace(',', '.'))
             except (ValueError, TypeError):
@@ -166,42 +104,37 @@ def cargar_fact_tareo(engine: Engine) -> dict:
 
             planilla = str(fila.get('IDPlanilla_Raw', '')) or None
 
-            # ── INSERT ───────────────
-            conexion.execute(text("""
-                INSERT INTO Silver.Fact_Tareo (
-                    ID_Geografia, ID_Tiempo, ID_Personal,
-                    ID_Actividad_Operativa, ID_Personal_Supervisor,
-                    Horas_Trabajadas, ID_Planilla, Es_Observado_SAP,
-                    Fecha_Evento, Fecha_Sistema
-                ) VALUES (
-                    :id_geo, :id_tiempo, :id_personal,
-                    :id_actividad, :id_supervisor,
-                    :horas, :planilla, 0,
-                    :fecha_evento, SYSDATETIME()
-                )
-            """), {
-                'id_geo':        id_geo,
-                'id_tiempo':     id_tiempo,
-                'id_personal':   id_personal,
-                'id_actividad':  id_actividad,
-                'id_supervisor': id_supervisor,
-                'horas':         horas,
-                'planilla':      planilla,
-                'fecha_evento':  fecha,
-            })
-
             if id_origen is not None:
-                ids_insertados.append(id_origen)
-            resumen['insertados'] += 1
+                self.ids_procesados.append(id_origen)
+            payload.append({
+                'ID_Geografia':           resultado_geo['id_geografia'],
+                'ID_Tiempo':              obtener_id_tiempo(fecha),
+                'ID_Personal':            id_personal,
+                'ID_Actividad_Operativa': id_actividad,
+                'ID_Personal_Supervisor': id_supervisor,
+                'Horas_Trabajadas':       horas,
+                'ID_Planilla':            planilla,
+                'Es_Observado_SAP':       0,
+                'Fecha_Evento':           fecha,
+                'id_origen_rastreo':      id_origen,
+            })
+        return payload
 
-        if ids_insertados:
-            contexto.marcar_estado_carga(TABLA_ORIGEN, 'ID_Tareo', ids_insertados)
-        if ids_rechazados:
-            contexto.marcar_estado_carga(TABLA_ORIGEN, 'ID_Tareo', ids_rechazados, estado='RECHAZADO')
-        if ids_descartados:
-            contexto.marcar_estado_carga(TABLA_ORIGEN, 'ID_Tareo', ids_descartados, estado='DESCARTADO')
 
-        if resumen['cuarentena']:
-            contexto.enviar_cuarentena(TABLA_ORIGEN, resumen['cuarentena'])
+def cargar_fact_tareo(engine: Engine) -> dict:
+    proc = ProcesadorTareo(engine)
 
-    return _finalizar_resumen_fact(resumen)
+    df = _leer_bronce(engine)
+    if df.empty:
+        return _finalizar_resumen_fact(proc.resumen)
+    proc.resumen['leidos'] = len(df)
+
+    with ContextoTransaccionalETL(engine) as contexto:
+        payload = proc._construir_payload(df)
+        proc._ejecutar_insercion_masiva_segura(contexto, payload, '#Temp_Tareo')
+
+        # Marcar DESCARTADO para filas no operativas (encabezados, totales, etc.)
+        if proc.ids_descartados:
+            contexto.marcar_estado_carga(TABLA_ORIGEN, 'ID_Tareo', proc.ids_descartados, estado='DESCARTADO')
+
+        return proc.finalizar_proceso(contexto)

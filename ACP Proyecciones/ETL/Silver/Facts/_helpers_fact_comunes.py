@@ -6,31 +6,26 @@ from collections.abc import MutableSet
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
+# Aliases de backcompat — implementaciones viven en utils.tipos
+from utils.tipos import (
+    a_entero as a_entero_nulo,
+    a_entero_no_negativo,
+    texto_nulo,
+    obtener_valor_raw,
+)
 
-def a_entero_nulo(valor) -> int | None:
-    try:
-        if valor is None:
-            return None
-        texto = str(valor).strip()
-        if texto in ("", "None", "nan"):
-            return None
-        return int(float(texto))
-    except (ValueError, TypeError):
-        return None
-
-
-def a_entero_no_negativo(valor) -> int | None:
-    numero = a_entero_nulo(valor)
-    if numero is None or numero < 0:
-        return None
-    return numero
-
-
-def texto_nulo(valor) -> str | None:
-    if valor is None:
-        return None
-    texto = str(valor).strip()
-    return texto if texto and texto.lower() not in ("none", "nan") else None
+__all__ = [
+    "a_entero_nulo",
+    "a_entero_no_negativo",
+    "texto_nulo",
+    "obtener_valor_raw",
+    "motivo_cuarentena_geografia",
+    "registrar_rechazo",
+    "finalizar_resumen_fact",
+    "obtener_columnas_tabla",
+    "validar_layout_migrado",
+    "parsear_valores_raw",
+]
 
 
 def motivo_cuarentena_geografia(resultado_geo: dict) -> str:
@@ -61,6 +56,7 @@ def registrar_rechazo(
     tipo_regla: str = 'DQ',
     severidad: str = 'ALTO',
 ) -> None:
+    # DEPRECADO: usar self.registrar_rechazo() en clases que hereden BaseFactProcessor.
     resumen['rechazados'] = int(resumen.get('rechazados', 0) or 0) + 1
     if id_origen is not None:
         if isinstance(ids_rechazados, MutableSet) or hasattr(ids_rechazados, 'add'):
@@ -78,6 +74,7 @@ def registrar_rechazo(
 
 
 def finalizar_resumen_fact(resumen: dict) -> dict:
+    # DEPRECADO: usar proc.finalizar_proceso(contexto) en clases que hereden BaseFactProcessor.
     from utils.metricas import normalizar_resultado_fact
 
     return normalizar_resultado_fact(resumen)

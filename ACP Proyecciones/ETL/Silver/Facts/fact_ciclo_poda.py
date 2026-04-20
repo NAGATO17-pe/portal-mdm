@@ -5,7 +5,7 @@ Carga Silver.Fact_Ciclo_Poda desde:
   - Bronce.Evaluacion_Calidad_Poda
   - Bronce.Ciclos_Fenologicos
 
-Grain: Fecha + Geo + DNI
+Grain: Fecha + Geo + Variedad
 """
 
 import pandas as pd
@@ -13,27 +13,17 @@ from sqlalchemy.engine import Engine
 from sqlalchemy import text
 
 from utils.contexto_transaccional import ContextoTransaccionalETL
-from utils.fechas    import procesar_fecha, obtener_id_tiempo
-from utils.texto     import normalizar_modulo, es_test_block, titulo
-from mdm.lookup      import resolver_geografia, obtener_id_variedad
+from utils.fechas import obtener_id_tiempo
+from utils.texto import titulo
 from mdm.homologador import homologar_columna
-from silver.facts._helpers_fact_comunes import (
-    finalizar_resumen_fact as _finalizar_resumen_fact,
-    motivo_cuarentena_geografia as _motivo_cuarentena_geografia,
-    registrar_rechazo as _registrar_rechazo,
-)
+from silver.facts._base_processor import BaseFactProcessor
+from silver.facts._helpers_fact_comunes import finalizar_resumen_fact as _finalizar_resumen_fact
+from utils.tipos import a_decimal as _a_decimal
 
 
-TABLA_PODA      = 'Bronce.Evaluacion_Calidad_Poda'
-TABLA_CICLOS    = 'Bronce.Ciclos_Fenologicos'
-TABLA_DESTINO   = 'Silver.Fact_Ciclo_Poda'
-
-
-def _a_decimal(valor) -> float | None:
-    try:
-        return float(str(valor).replace(',', '.'))
-    except (ValueError, TypeError):
-        return None
+TABLA_PODA    = 'Bronce.Evaluacion_Calidad_Poda'
+TABLA_CICLOS  = 'Bronce.Ciclos_Fenologicos'
+TABLA_DESTINO = 'Silver.Fact_Ciclo_Poda'
 
 
 def _leer_bronce_poda(engine: Engine) -> pd.DataFrame:
@@ -53,126 +43,78 @@ def _leer_bronce_poda(engine: Engine) -> pd.DataFrame:
         return pd.DataFrame(resultado.fetchall(), columns=resultado.keys())
 
 
-def _insertar(conexion, campos: dict) -> None:
-    conexion.execute(text("""
-        INSERT INTO Silver.Fact_Ciclo_Poda (
-            ID_Geografia, ID_Tiempo, ID_Variedad,
-            Tipo_Evaluacion,
-            Promedio_Tallos_Planta, Promedio_Longitud_Tallo,
-            Promedio_Diametro_Tallo, Promedio_Ramilla_Planta,
-            Promedio_Tocones_Planta, Promedio_Cortes_Defectuosos,
-            Promedio_Altura_Poda,
-            Fecha_Evento, Fecha_Sistema, Estado_DQ
-        ) VALUES (
-            :id_geo, :id_tiempo, :id_variedad,
-            :tipo_eval,
-            :tallos, :longitud,
-            :diametro, :ramilla,
-            :tocones, :cortes,
-            :altura,
-            :fecha_evento, SYSDATETIME(), 'OK'
-        )
-    """), campos)
+class ProcesadorCicloPoda(BaseFactProcessor):
+    def __init__(self, engine: Engine):
+        super().__init__(engine, TABLA_PODA, TABLA_DESTINO, columna_id='ID_Evaluacion_Poda')
+        # Grain: Geo + Tiempo + Variedad + Tipo_Evaluacion
+        self.columnas_clave_unica = ['ID_Geografia', 'ID_Tiempo', 'ID_Variedad', 'Tipo_Evaluacion']
+
+    def _construir_payload(self, df: pd.DataFrame) -> list[dict]:
+        payload = []
+        for _, fila in df.iterrows():
+            id_origen = int(fila['ID_Evaluacion_Poda'])
+
+            fecha = self._validar_y_resolver_fecha(id_origen, fila.get('Fecha_Raw'), 'ciclo_poda')
+            if fecha is None:
+                continue
+
+            resultado_geo = self._validar_y_resolver_geografia(
+                id_origen,
+                fila.get('Fundo_Raw'),
+                fila.get('Modulo_Raw'),
+                turno=fila.get('Turno_Raw'),
+                valvula=fila.get('Valvula_Raw'),
+            )
+            if resultado_geo is None:
+                continue
+
+            id_var = self._validar_y_resolver_variedad(
+                id_origen,
+                fila.get('Variedad_Canonica'),
+                fila.get('Variedad_Raw'),
+            )
+            if id_var is None:
+                continue
+
+            self.ids_procesados.append(id_origen)
+            payload.append({
+                'ID_Geografia':              resultado_geo['id_geografia'],
+                'ID_Tiempo':                 obtener_id_tiempo(fecha),
+                'ID_Variedad':               id_var,
+                'Tipo_Evaluacion':           titulo(fila.get('Tipo_Evaluacion_Raw')) or 'SIN_TIPO',
+                'Promedio_Tallos_Planta':    _a_decimal(fila.get('TallosPlanta_Raw')),
+                'Promedio_Longitud_Tallo':   _a_decimal(fila.get('LongitudTallo_Raw')),
+                'Promedio_Diametro_Tallo':   _a_decimal(fila.get('DiametroTallo_Raw')),
+                'Promedio_Ramilla_Planta':   _a_decimal(fila.get('RamillaPlanta_Raw')),
+                'Promedio_Tocones_Planta':   _a_decimal(fila.get('ToconesPlanta_Raw')),
+                'Promedio_Cortes_Defectuosos': _a_decimal(fila.get('CortesDefectuosos_Raw')),
+                'Promedio_Altura_Poda':      _a_decimal(fila.get('AlturaPoda_Raw')),
+                'Fecha_Evento':              fecha,
+                'Estado_DQ':                 'OK',
+                'id_origen_rastreo':         id_origen,
+            })
+        return payload
 
 
 def cargar_fact_ciclo_poda(engine: Engine) -> dict:
-    resumen = {'insertados': 0, 'rechazados': 0, 'cuarentena': []}
+    proc = ProcesadorCicloPoda(engine)
 
-    # ── Evaluacion Calidad Poda ───────────────────────────────
     df_poda = _leer_bronce_poda(engine)
     if df_poda.empty:
-        return _finalizar_resumen_fact(resumen)
-    resumen['leidos'] = len(df_poda)
-    df_poda, cuar_var = homologar_columna(
-        df_poda, 'Variedad_Raw', 'Variedad_Canonica', TABLA_PODA, engine,
-        columna_id_origen='ID_Evaluacion_Poda'
-    )
-    resumen['cuarentena'].extend(cuar_var)
+        return _finalizar_resumen_fact(proc.resumen)
+    proc.resumen['leidos'] = len(df_poda)
 
-    ids_poda = []
-    ids_rechazados = []
     with ContextoTransaccionalETL(engine) as contexto:
         conexion = contexto._conexion_activa()
-        for _, fila in df_poda.iterrows():
-            id_origen = int(fila['ID_Evaluacion_Poda'])
-            fecha, valida = procesar_fecha(
-                fila.get('Fecha_Raw'),
-                dominio='ciclo_poda',
-            )
-            if not valida:
-                _registrar_rechazo(
-                    resumen,
-                    ids_rechazados,
-                    id_origen,
-                    columna='Fecha_Raw',
-                    valor=fila.get('Fecha_Raw'),
-                    motivo='Fecha invalida o fuera de campana',
-                )
-                continue
+        df_poda, cuar_var = homologar_columna(
+            df_poda, 'Variedad_Raw', 'Variedad_Canonica', TABLA_PODA, conexion,
+            columna_id_origen='ID_Evaluacion_Poda'
+        )
+        df_poda = proc.pre_limpiar_duplicados_batch(df_poda, ['Modulo_Raw', 'Fecha_Raw', 'Variedad_Raw', 'Tipo_Evaluacion_Raw'])
+        
+        proc.resumen['cuarentena'].extend(cuar_var)
 
-            modulo = None if es_test_block(fila.get('Modulo_Raw')) else normalizar_modulo(fila.get('Modulo_Raw'))
-            resultado_geo = resolver_geografia(
-                fila.get('Fundo_Raw'),
-                None,
-                modulo,
-                engine,
-                turno=fila.get('Turno_Raw'),
-                valvula=fila.get('Valvula_Raw'),
-                cama=None,
-            )
-            id_geo = resultado_geo.get('id_geografia')
-            id_var = obtener_id_variedad(fila.get('Variedad_Canonica'), engine)
+        payload = proc._construir_payload(df_poda)
+        proc._ejecutar_insercion_masiva_segura(contexto, payload, '#Temp_CicloPoda')
 
-            if not id_geo:
-                _registrar_rechazo(
-                    resumen,
-                    ids_rechazados,
-                    id_origen,
-                    columna='Modulo_Raw',
-                    valor=(
-                        f"Fundo={fila.get('Fundo_Raw')} | Modulo={fila.get('Modulo_Raw')} | "
-                        f"Turno={fila.get('Turno_Raw')} | Valvula={fila.get('Valvula_Raw')}"
-                    ),
-                    motivo=_motivo_cuarentena_geografia(resultado_geo),
-                    tipo_regla='MDM',
-                )
-                continue
-
-            if not id_var:
-                _registrar_rechazo(
-                    resumen,
-                    ids_rechazados,
-                    id_origen,
-                    columna='Variedad_Raw',
-                    valor=fila.get('Variedad_Raw'),
-                    motivo='Variedad sin match en Dim_Variedad',
-                    tipo_regla='MDM',
-                )
-                continue
-
-            _insertar(conexion, {
-                'id_geo':      id_geo,
-                'id_tiempo':   obtener_id_tiempo(fecha),
-                'id_variedad': id_var,
-                'tipo_eval':   titulo(fila.get('Tipo_Evaluacion_Raw')),
-                'tallos':      _a_decimal(fila.get('TallosPlanta_Raw')),
-                'longitud':    _a_decimal(fila.get('LongitudTallo_Raw')),
-                'diametro':    _a_decimal(fila.get('DiametroTallo_Raw')),
-                'ramilla':     _a_decimal(fila.get('RamillaPlanta_Raw')),
-                'tocones':     _a_decimal(fila.get('ToconesPlanta_Raw')),
-                'cortes':      _a_decimal(fila.get('CortesDefectuosos_Raw')),
-                'altura':      _a_decimal(fila.get('AlturaPoda_Raw')),
-                'fecha_evento':fecha,
-            })
-            ids_poda.append(id_origen)
-            resumen['insertados'] += 1
-
-        if ids_poda:
-            contexto.marcar_estado_carga(TABLA_PODA, 'ID_Evaluacion_Poda', ids_poda)
-        if ids_rechazados:
-            contexto.marcar_estado_carga(TABLA_PODA, 'ID_Evaluacion_Poda', ids_rechazados, estado='RECHAZADO')
-
-        if resumen['cuarentena']:
-            contexto.enviar_cuarentena(TABLA_PODA, resumen['cuarentena'])
-
-    return _finalizar_resumen_fact(resumen)
+        return proc.finalizar_proceso(contexto)

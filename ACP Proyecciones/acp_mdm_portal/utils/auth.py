@@ -15,7 +15,6 @@ import streamlit as st
 _AVATARES_ROL: dict[str, str] = {
     "admin": "ADM",
     "analista_mdm": "MDM",
-    "editor": "MDM",
     "operador_etl": "ETL",
     "viewer": "USR",
 }
@@ -23,7 +22,6 @@ _AVATARES_ROL: dict[str, str] = {
 _PERMISOS: dict[str, set[str]] = {
     "admin": {"leer", "escribir", "configurar", "ejecutar_etl", "admin"},
     "analista_mdm": {"leer", "escribir"},
-    "editor": {"leer", "escribir"},
     "operador_etl": {"leer", "ejecutar_etl"},
     "viewer": {"leer"},
 }
@@ -98,53 +96,69 @@ section[data-testid="stSidebar"], header[data-testid="stHeader"], footer {
     display: none !important;
 }
 .stApp {
-    background: linear-gradient(135deg, #F4F7F5 0%, #E9F0EC 100%) !important;
+    background:
+        radial-gradient(ellipse at 20% 10%, rgba(27,107,90,0.06) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 85%, rgba(212,145,94,0.05) 0%, transparent 50%),
+        linear-gradient(170deg, #FAFBFC 0%, #F1F5F4 40%, #F5F3F0 100%) !important;
 }
 div[data-testid="stForm"] {
-    max-width: 380px;
-    margin: 10vh auto 0 auto;
-    padding: 28px 28px 24px 28px;
-    border-radius: 18px;
-    background: rgba(255, 255, 255, 0.9);
-    border: 1px solid rgba(30, 107, 53, 0.12);
-    box-shadow: 0 20px 40px rgba(30, 107, 53, 0.12);
+    max-width: 400px;
+    margin: 8vh auto 0 auto;
+    padding: 32px 30px 28px 30px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.78);
+    backdrop-filter: blur(20px) saturate(1.3);
+    -webkit-backdrop-filter: blur(20px) saturate(1.3);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow: 0 16px 48px rgba(27, 107, 90, 0.10), 0 2px 8px rgba(0,0,0,0.04);
+    animation: loginSlideIn 0.5s ease-out;
+}
+@keyframes loginSlideIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 .login-logo {
     text-align: center;
-    margin-bottom: 18px;
+    margin-bottom: 20px;
 }
 .login-logo h2 {
-    color: #1E6B35;
+    font-family: 'Outfit', 'Inter', sans-serif;
+    color: #1B6B5A;
     margin: 0;
-    font-size: 1.4rem;
+    font-size: 1.35rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
 }
 .login-logo p {
-    color: #667085;
+    color: #64748B;
     margin: 6px 0 0 0;
-    font-size: 0.82rem;
+    font-size: 0.8rem;
+    letter-spacing: 0.2px;
 }
 .login-label {
-    color: #344054;
-    font-size: 0.76rem;
+    color: #374151;
+    font-size: 0.72rem;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
-    margin: 8px 0 4px 0;
+    letter-spacing: 0.06em;
+    margin: 10px 0 4px 0;
 }
 .login-error {
-    background: #FEF3F2;
-    border: 1px solid #F04438;
+    background: rgba(254, 243, 242, 0.9);
+    border: 1px solid #FECACA;
     color: #B42318;
-    border-radius: 8px;
-    padding: 10px 12px;
-    margin-bottom: 12px;
-    font-size: 0.85rem;
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    font-size: 0.84rem;
+    font-weight: 500;
 }
 .login-footer-out {
     text-align: center;
-    color: #667085;
-    font-size: 0.78rem;
-    margin-top: 18px;
+    color: #94A3B8;
+    font-size: 0.76rem;
+    margin-top: 20px;
+    letter-spacing: 0.2px;
 }
 </style>
 """
@@ -188,7 +202,7 @@ def _render_login() -> bool:
             label_visibility="collapsed",
         )
 
-        submit = st.form_submit_button("Iniciar sesion", type="primary", use_container_width=True)
+        submit = st.form_submit_button("Iniciar sesion", type="primary", width='stretch')
         if submit:
             user = _validar_credenciales(username, password)
             if user:

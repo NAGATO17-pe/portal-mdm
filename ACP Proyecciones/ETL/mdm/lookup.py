@@ -224,11 +224,8 @@ def _geo_token(valor) -> str | None:
     if texto in ('', 'None', 'nan'):
         return None
 
-    if re.fullmatch(r'[+-]?\d+', texto):
-        return str(int(texto))
-
-    if re.fullmatch(r'[+-]?\d+\.0+', texto):
-        return str(int(texto.split('.', 1)[0]))
+    if re.fullmatch(r'[+-]?\d+\.*0*', texto):
+        return str(int(float(texto)))
 
     return str(texto).lower()
 
@@ -283,9 +280,9 @@ def _cargar_dim_geografia(engine: Engine) -> pd.DataFrame:
 
 
 def _es_modulo_especial(modulo_token: str | None) -> bool:
-    if modulo_token is None:
-        return False
-    return re.fullmatch(r'[+-]?\d+(?:\.\d+)?', modulo_token) is None
+    # Un modulo es especial solo si es nulo o una cadena vacia.
+    # Nombres como 'Test Block' o 'VIVERO' se permiten si existen en Dim_Geografia.
+    return modulo_token is None or str(modulo_token).strip() == ''
 
 
 def _resolver_id_unico(coincidencias: pd.DataFrame) -> int | None:

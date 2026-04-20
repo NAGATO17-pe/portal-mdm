@@ -32,6 +32,8 @@ from api.rutas_etl import enrutador_etl
 from api.rutas_cuarentena import enrutador_cuarentena
 from api.rutas_catalogos import enrutador_catalogos
 from api.rutas_auditoria import enrutador_auditoria
+from api.rutas_config import enrutador_config
+from api.rutas_reinyeccion import enrutador_reinyeccion
 
 # ── Documentación Scalar (opcional) ───────────────────────────────────────────
 try:
@@ -108,10 +110,12 @@ aplicacion.include_router(enrutador_health)      # /health, /health/live, /healt
 # Autenticación (sin versionar, estable por diseño)
 aplicacion.include_router(enrutador_auth)          # /auth/login, /auth/me, /auth/usuarios
 # Dominio — todos bajo /api con versionado /v1 en el propio router
-aplicacion.include_router(enrutador_etl,        prefix="/api")
-aplicacion.include_router(enrutador_cuarentena, prefix="/api")
-aplicacion.include_router(enrutador_catalogos,  prefix="/api")
-aplicacion.include_router(enrutador_auditoria,  prefix="/api")
+aplicacion.include_router(enrutador_etl,          prefix="/api")
+aplicacion.include_router(enrutador_cuarentena,   prefix="/api")
+aplicacion.include_router(enrutador_catalogos,    prefix="/api")
+aplicacion.include_router(enrutador_auditoria,    prefix="/api")
+aplicacion.include_router(enrutador_config,       prefix="/api")
+aplicacion.include_router(enrutador_reinyeccion,  prefix="/api")  # Herramienta Re-inyección MDM
 
 # ── Documentación Scalar (opcional) ───────────────────────────────────────────
 if get_scalar_api_reference is not None:

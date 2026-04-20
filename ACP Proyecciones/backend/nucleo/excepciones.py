@@ -57,13 +57,15 @@ def _ahora_iso() -> str:
 
 
 def _cuerpo_error(codigo: int, mensaje: str, request_id: str) -> dict:
-    return {
-        "error":      True,
-        "codigo":     codigo,
-        "mensaje":    mensaje,
-        "request_id": request_id,
-        "timestamp":  _ahora_iso(),
-    }
+    from nucleo.api_response import StandardResponse
+    return StandardResponse.fail(
+        error_msg=mensaje,
+        metadata={
+            "codigo_http": codigo,
+            "request_id": request_id,
+            "timestamp": _ahora_iso()
+        }
+    ).model_dump()
 
 
 # ── Manejadores globales ──────────────────────────────────────────────────────
