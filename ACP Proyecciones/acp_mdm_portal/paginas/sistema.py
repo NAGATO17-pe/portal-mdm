@@ -19,6 +19,7 @@ Funcionalidades:
 
 from __future__ import annotations
 
+import html
 from datetime import datetime
 from typing import Any
 
@@ -105,6 +106,7 @@ def _render_tarjeta_subsistema(cfg: dict, datos: dict) -> None:
     lat    = bd.get("latencia_ms", "")
     lat_txt = f"<span style='color:#64748B;font-size:0.75rem;'> · {lat} ms</span>" if lat else ""
 
+    estado_safe = html.escape(str(estado).upper())
     st.markdown(f"""
     <div style="
         background:{bg};
@@ -128,7 +130,7 @@ def _render_tarjeta_subsistema(cfg: dict, datos: dict) -> None:
             border-radius:20px; padding:2px 10px;
             font-size:0.75rem; font-weight:700;
             margin-bottom:8px;
-        ">{str(estado).upper()}{lat_txt}</div>
+        ">{estado_safe}{lat_txt}</div>
         <p style="margin:0;font-size:0.78rem;color:#64748B;line-height:1.4;">
             {cfg['desc']}
         </p>
@@ -199,6 +201,16 @@ def _render_panel_bd(datos_full: dict) -> None:
     color  = "#10B981" if conectado else "#EF4444"
     icono  = "✅"       if conectado else "❌"
 
+    base_safe    = html.escape(str(base))
+    version_safe = html.escape(str(version))
+    latencia_txt = "—" if latencia == "—" else html.escape(f"{latencia} ms")
+    error_html   = (
+        f'<div style="margin-top:12px;font-size:0.8rem;color:#DC2626;'
+        f'background:#FEF2F2;border-radius:6px;padding:8px 12px;">'
+        f'{html.escape(str(error_bd))}</div>'
+        if error_bd else ""
+    )
+
     st.markdown(f"""
     <div style="
         background:#FFFFFF;border:1px solid #E5E7EB;
@@ -217,22 +229,22 @@ def _render_panel_bd(datos_full: dict) -> None:
                             letter-spacing:0.7px;font-weight:700;">Base</div>
                 <div style="font-size:0.88rem;font-weight:600;color:#1F2937;
                             margin-top:3px;overflow:hidden;text-overflow:ellipsis;
-                            white-space:nowrap;">{base}</div>
+                            white-space:nowrap;">{base_safe}</div>
             </div>
             <div style="background:#F8FAFC;border-radius:8px;padding:10px 12px;">
                 <div style="font-size:0.65rem;color:#64748B;text-transform:uppercase;
                             letter-spacing:0.7px;font-weight:700;">Versión</div>
-                <div style="font-size:0.88rem;font-weight:600;color:#1F2937;margin-top:3px;">{version}</div>
+                <div style="font-size:0.88rem;font-weight:600;color:#1F2937;margin-top:3px;">{version_safe}</div>
             </div>
             <div style="background:#F8FAFC;border-radius:8px;padding:10px 12px;">
                 <div style="font-size:0.65rem;color:#64748B;text-transform:uppercase;
                             letter-spacing:0.7px;font-weight:700;">Latencia</div>
                 <div style="font-size:0.88rem;font-weight:600;color:{color};margin-top:3px;">
-                    {"—" if latencia == "—" else f"{latencia} ms"}
+                    {latencia_txt}
                 </div>
             </div>
         </div>
-        {"" if not error_bd else f'<div style=\"margin-top:12px;font-size:0.8rem;color:#DC2626;background:#FEF2F2;border-radius:6px;padding:8px 12px;\">{error_bd}</div>'}
+        {error_html}
     </div>
     """, unsafe_allow_html=True)
 
@@ -255,12 +267,13 @@ def _render_panel_control(datos_control: dict) -> None:
     if resumen and isinstance(resumen, dict):
         items = []
         for k, v in list(resumen.items())[:6]:
-            etiqueta = str(k).replace("_", " ").capitalize()
+            etiqueta = html.escape(str(k).replace("_", " ").capitalize())
+            valor    = html.escape(str(v))
             items.append(
                 f"<div style='background:#F8FAFC;border-radius:6px;padding:8px 12px;'>"
                 f"<div style='font-size:0.65rem;color:#64748B;font-weight:700;"
                 f"text-transform:uppercase;letter-spacing:0.6px;'>{etiqueta}</div>"
-                f"<div style='font-size:0.9rem;font-weight:600;color:#1F2937;margin-top:2px;'>{v}</div>"
+                f"<div style='font-size:0.9rem;font-weight:600;color:#1F2937;margin-top:2px;'>{valor}</div>"
                 f"</div>"
             )
         resumen_html = (
@@ -269,6 +282,7 @@ def _render_panel_control(datos_control: dict) -> None:
             "</div>"
         )
 
+    estado_cp_safe = html.escape(estado_cp.upper())
     st.markdown(f"""
     <div style="
         background:#FFFFFF;border:1px solid #E5E7EB;
@@ -281,7 +295,7 @@ def _render_panel_control(datos_control: dict) -> None:
             <div style="margin-left:auto;
                 background:{color}22;color:{color};border:1px solid {color}44;
                 border-radius:20px;padding:2px 10px;font-size:0.75rem;font-weight:700;">
-                {estado_cp.upper()}
+                {estado_cp_safe}
             </div>
         </div>
         {resumen_html}
@@ -443,9 +457,9 @@ def render() -> None:
     _render_historial()
 
     # ── 6. Info de versión ─────────────────────────────────────────────────────
-    version   = datos_full.get("version",  "—")
-    entorno   = datos_full.get("entorno",  "—")
-    servicio  = datos_full.get("servicio", "—")
+    version   = html.escape(str(datos_full.get("version",  "—")))
+    entorno   = html.escape(str(datos_full.get("entorno",  "—")).upper())
+    servicio  = html.escape(str(datos_full.get("servicio", "—")))
 
     st.markdown(f"""
     <div style="
@@ -456,7 +470,7 @@ def render() -> None:
     ">
         <span>🏷️ Servicio: <b style="color:#64748B;">{servicio}</b></span>
         <span>📦 Versión: <b style="color:#64748B;">{version}</b></span>
-        <span>🌍 Entorno: <b style="color:#64748B;">{str(entorno).upper()}</b></span>
+        <span>🌍 Entorno: <b style="color:#64748B;">{entorno}</b></span>
         <span style="margin-left:auto;">ACP Equipo de Proyecciones · 2026</span>
     </div>
     """, unsafe_allow_html=True)

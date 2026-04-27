@@ -16,12 +16,14 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
+from nucleo.auth import require_rol
 from nucleo.conexion import verificar_conexion
 from nucleo.settings import settings
-from repositorios.repo_control import obtener_estado_lock, obtener_resumen_control_plane
+from repositorios.repo_corridas import obtener_resumen_control_plane
+from repositorios.repo_locks import obtener_estado_lock
 
 enrutador_health = APIRouter(tags=["Sistema"])
 
@@ -91,7 +93,11 @@ def readiness() -> JSONResponse:
     )
 
 
-@enrutador_health.get("/health/ready/control", summary="Readiness del control-plane ETL")
+@enrutador_health.get(
+    "/health/ready/control",
+    summary="Readiness del control-plane ETL",
+    dependencies=[Depends(require_rol("viewer"))],
+)
 def readiness_control() -> JSONResponse:
     """
     Verifica que la BD responda y que el esquema Control.* sea accesible.
@@ -157,7 +163,11 @@ def readiness_runner() -> JSONResponse:
     )
 
 
-@enrutador_health.get("/health/lock", summary="Estado actual del lock del runner")
+@enrutador_health.get(
+    "/health/lock",
+    summary="Estado actual del lock del runner",
+    dependencies=[Depends(require_rol("viewer"))],
+)
 def estado_lock() -> JSONResponse:
     """
     Expone el estado del lock del runner para diagnóstico operativo.

@@ -11,6 +11,7 @@ import pandas as pd
 from sqlalchemy.engine import Engine
 from sqlalchemy import text
 
+from config.parametros import TOKENS_FECHA_NO_OPERATIVA, TOKENS_SUPERVISOR_NO_OPERATIVO
 from utils.contexto_transaccional import ContextoTransaccionalETL
 from utils.fechas import obtener_id_tiempo
 from mdm.lookup import obtener_id_actividad
@@ -44,9 +45,7 @@ def _leer_bronce(engine: Engine) -> pd.DataFrame:
 def _es_fila_no_operativa(fila) -> bool:
     fecha_raw = str(fila.get('Fecha_Raw') or '').strip()
     supervisor_raw = str(fila.get('IDPersonalGeneral_Raw') or '').strip().upper()
-    tokens_fecha_descartar = {'', 'NONE', 'PERSONAS', 'HORAS'}
-    tokens_supervisor_descartar = {'AREA:', 'FECHA:', 'TURNO:', 'DIA:', 'DÍA:', 'NOCHE:', 'TOTAL'}
-    return fecha_raw.upper() in tokens_fecha_descartar or supervisor_raw in tokens_supervisor_descartar
+    return fecha_raw.upper() in TOKENS_FECHA_NO_OPERATIVA or supervisor_raw in TOKENS_SUPERVISOR_NO_OPERATIVO
 
 
 class ProcesadorTareo(BaseFactProcessor):

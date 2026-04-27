@@ -6,16 +6,21 @@ Cache en memoria — sin consultas por fila.
 Surrogate -1 garantizado para Personal sin DNI.
 """
 
+import threading
+
 import pandas as pd
 from sqlalchemy.engine import Engine
 from sqlalchemy import text
+import logging
 import re
-
 from utils.texto import normalizar_componente_geografico
+
+_log = logging.getLogger("ETL_Pipeline")
 
 
 _cache: dict[str, pd.DataFrame] = {}
 _cache_mapas: dict[str, dict] = {}
+_cache_lock = threading.Lock()
 
 _ALIASES_CINTA = {
     'amarillo': 'amarilla',
@@ -26,20 +31,22 @@ _ALIASES_CINTA = {
 
 def _cargar_dim(engine: Engine, tabla: str,
                 col_id: str, col_clave: str) -> pd.DataFrame:
-    if tabla not in _cache:
-        with engine.connect() as conexion:
-            resultado = conexion.execute(
-                text(f'SELECT {col_id}, {col_clave} FROM {tabla}')
-            )
-            _cache[tabla] = pd.DataFrame(
-                resultado.fetchall(), columns=[col_id, col_clave]
-            )
-    return _cache[tabla]
+    with _cache_lock:
+        if tabla not in _cache:
+            with engine.connect() as conexion:
+                resultado = conexion.execute(
+                    text(f'SELECT {col_id}, {col_clave} FROM {tabla}')
+                )
+                _cache[tabla] = pd.DataFrame(
+                    resultado.fetchall(), columns=[col_id, col_clave]
+                )
+        return _cache[tabla]
 
 
 def limpiar_cache() -> None:
-    _cache.clear()
-    _cache_mapas.clear()
+    with _cache_lock:
+        _cache.clear()
+        _cache_mapas.clear()
 
 
 def _normalizar_texto(valor) -> str | None:
@@ -54,13 +61,23 @@ def _normalizar_texto(valor) -> str | None:
     return texto.lower()
 
 
+def _normalizar_componente(valor) -> str:
+    if valor is None:
+        return 'NONE'
+    texto = str(valor).strip().upper()
+    if texto in ('', 'NAN', 'NULL', 'SIN_FUNDO', 'SIN_SECTOR', 'SIN_MODULO', 'SIN_TURNO', 'SIN_VALVULA', 'SIN_CAMA'):
+        return 'NONE'
+    return texto.lower()
+
+
 def _obtener_mapa_dim(engine: Engine,
                       tabla: str,
                       col_id: str,
                       col_clave: str) -> dict[str, int]:
     clave_cache = f'mapa::{tabla}::{col_id}::{col_clave}'
-    if clave_cache in _cache_mapas:
-        return _cache_mapas[clave_cache]
+    with _cache_lock:
+        if clave_cache in _cache_mapas:
+            return _cache_mapas[clave_cache]
 
     dim = _cargar_dim(engine, tabla, col_id, col_clave)
     mapa: dict[str, int] = {}
@@ -73,7 +90,8 @@ def _obtener_mapa_dim(engine: Engine,
         except (ValueError, TypeError):
             continue
 
-    _cache_mapas[clave_cache] = mapa
+    with _cache_lock:
+        _cache_mapas[clave_cache] = mapa
     return mapa
 
 
@@ -87,22 +105,24 @@ def obtener_id_tiempo(fecha_yyyymmdd: int | None,
         return None
 
     clave_cache = 'mapa::Silver.Dim_Tiempo::ID_Tiempo'
-    if clave_cache not in _cache_mapas:
-        with engine.connect() as conexion:
-            resultado = conexion.execute(text("""
-                SELECT ID_Tiempo
-                FROM Silver.Dim_Tiempo
-            """))
-            mapa = {}
-            for fila in resultado.fetchall():
-                try:
-                    id_tiempo = int(fila[0])
-                    mapa[str(id_tiempo)] = id_tiempo
-                except (ValueError, TypeError):
-                    continue
-            _cache_mapas[clave_cache] = mapa
+    with _cache_lock:
+        if clave_cache not in _cache_mapas:
+            with engine.connect() as conexion:
+                resultado = conexion.execute(text("""
+                    SELECT ID_Tiempo
+                    FROM Silver.Dim_Tiempo
+                """))
+                mapa = {}
+                for fila in resultado.fetchall():
+                    try:
+                        id_tiempo = int(fila[0])
+                        mapa[str(id_tiempo)] = id_tiempo
+                    except (ValueError, TypeError):
+                        continue
+                _cache_mapas[clave_cache] = mapa
 
-    mapa = _cache_mapas[clave_cache]
+    with _cache_lock:
+        mapa = _cache_mapas[clave_cache]
     return mapa.get(clave)
 
 
@@ -143,7 +163,7 @@ def _obtener_id_geografia_dim_basica(fundo: str | None,
         with engine.connect() as conexion:
             resultado = conexion.execute(text("""
                 SELECT ID_Geografia, Fundo, Sector, Modulo
-                FROM Silver.Dim_Geografia
+                FROM Silver.vDim_Geografia
                 WHERE Es_Vigente = 1
             """))
             _cache[clave_cache] = pd.DataFrame(
@@ -221,11 +241,14 @@ def _geo_token(valor) -> str | None:
         return None
 
     texto = normalizar_componente_geografico(str(valor))
-    if texto in ('', 'None', 'nan'):
+    if not texto or texto.lower() in ('', 'none', 'nan'):
         return None
 
-    if re.fullmatch(r'[+-]?\d+\.*0*', texto):
-        return str(int(float(texto)))
+    try:
+        if re.fullmatch(r'[+-]?\d+\.*0*', texto):
+            return str(int(float(texto)))
+    except:
+        pass
 
     return str(texto).lower()
 
@@ -234,244 +257,235 @@ def _descomponer_modulo_submodulo_token(modulo_token: str | None) -> tuple[str |
     if modulo_token is None:
         return None, None
 
+    # Caso 9.1, 9.2, etc.
     coincidencia = re.fullmatch(r'([+-]?\d+)\.(\d+)', modulo_token)
     if coincidencia:
         return coincidencia.group(1), str(int(coincidencia.group(2)))
 
     return modulo_token, None
 
-def _cargar_dim_geografia(engine: Engine) -> pd.DataFrame:
+def _cargar_reglas_mdm(engine: Engine) -> tuple[pd.DataFrame, pd.DataFrame]:
+    with _cache_lock:
+        if 'MDM.Regla_Modulo_Raw' not in _cache:
+            with engine.connect() as conexion:
+                # Reglas simples
+                try:
+                    res = conexion.execute(text("SELECT Modulo_Raw, Modulo_Int, SubModulo_Int, Es_Test_Block FROM MDM.Regla_Modulo_Raw WHERE Es_Activa = 1"))
+                    _cache['MDM.Regla_Modulo_Raw'] = pd.DataFrame(res.fetchall(), columns=['Modulo_Raw', 'Modulo_Int', 'SubModulo_Int', 'Es_Test_Block'])
+                except:
+                    _cache['MDM.Regla_Modulo_Raw'] = pd.DataFrame(columns=['Modulo_Raw', 'Modulo_Int', 'SubModulo_Int', 'Es_Test_Block'])
+
+                # Reglas por rango de turno
+                try:
+                    res = conexion.execute(text("SELECT Modulo_Raw_Base, Turno_Desde, Turno_Hasta, Modulo_Int, SubModulo_Int, Es_Test_Block FROM MDM.Regla_Modulo_Turno_SubModulo WHERE Es_Activa = 1"))
+                    _cache['MDM.Regla_Modulo_Turno_SubModulo'] = pd.DataFrame(res.fetchall(), columns=['Modulo_Raw_Base', 'Turno_Desde', 'Turno_Hasta', 'Modulo_Int', 'SubModulo_Int', 'Es_Test_Block'])
+                except:
+                    _cache['MDM.Regla_Modulo_Turno_SubModulo'] = pd.DataFrame(columns=['Modulo_Raw_Base', 'Turno_Desde', 'Turno_Hasta', 'Modulo_Int', 'SubModulo_Int', 'Es_Test_Block'])
+    
+        return _cache['MDM.Regla_Modulo_Raw'], _cache['MDM.Regla_Modulo_Turno_SubModulo']
+
+def _cargar_geografia(engine: Engine) -> pd.DataFrame:
     clave_cache = 'Silver.Dim_Geografia'
-    if clave_cache in _cache:
+    with _cache_lock:
+        if clave_cache not in _cache:
+            with engine.connect() as conexion:
+                resultado = conexion.execute(text("""
+                    SELECT
+                        ID_Geografia, ID_Fundo_Catalogo, ID_Sector_Catalogo,
+                        ID_Modulo_Catalogo, ID_Turno_Catalogo, ID_Valvula_Catalogo,
+                        ID_Cama_Catalogo, Es_Test_Block
+                    FROM Silver.Dim_Geografia
+                    WHERE Es_Vigente = 1
+                """))
+                _cache[clave_cache] = pd.DataFrame(
+                    resultado.fetchall(), 
+                    columns=[
+                        'ID_Geografia', 'ID_Fundo_Catalogo', 'ID_Sector_Catalogo',
+                        'ID_Modulo_Catalogo', 'ID_Turno_Catalogo', 'ID_Valvula_Catalogo',
+                        'ID_Cama_Catalogo', 'Es_Test_Block'
+                    ]
+                )
         return _cache[clave_cache]
 
-    with engine.connect() as conexion:
-        resultado = conexion.execute(text("""
-            SELECT
-                ID_Geografia,
-                Fundo,
-                Sector,
-                Modulo,
-                SubModulo,
-                Turno,
-                Valvula,
-                Cama,
-                Es_Test_Block
-            FROM Silver.Dim_Geografia
-            WHERE Es_Vigente = 1
-        """))
-        dim = pd.DataFrame(
-            resultado.fetchall(),
-            columns=[
-                'ID_Geografia', 'Fundo', 'Sector', 'Modulo',
-                'SubModulo', 'Turno', 'Valvula', 'Cama', 'Es_Test_Block'
-            ]
-        )
+def _obtener_id_catalogo(engine: Engine, tabla: str, col_id: str, col_nombre: str, valor: str | None) -> int:
+    """
+    Lookup en catalogo independiente. Retorna ID o 0 (Sentinel) si no se resuelve.
+    """
+    if valor is None:
+        return 0
+    
+    # Normalizacion especifica para catalogos
+    clave = _normalizar_componente(valor)
+    if clave == 'none':
+        return 0
+    
+    mapa = _obtener_mapa_dim(engine, tabla, col_id, col_nombre)
+    return mapa.get(clave, 0)
 
-    dim['Fundo_token'] = dim['Fundo'].map(_geo_token)
-    dim['Sector_token'] = dim['Sector'].map(_geo_token)
-    dim['Modulo_token'] = dim['Modulo'].map(_geo_token)
-    dim['SubModulo_token'] = dim['SubModulo'].map(_geo_token)
-    dim['Turno_token'] = dim['Turno'].map(_geo_token)
-    dim['Valvula_token'] = dim['Valvula'].map(_geo_token)
-    dim['Cama_token'] = dim['Cama'].map(_geo_token)
-    _cache[clave_cache] = dim
-    return dim
+def _resolver_id_geografia_desde_catalogos(engine: Engine, 
+                                           id_fundo: int, id_sector: int, id_modulo: int,
+                                           id_turno: int, id_valvula: int, id_cama: int) -> dict | None:
+    df_geo = _cargar_geografia(engine)
+    
+    # Busqueda base: Modulo, Turno, Valvula (el grano minimo operativo)
+    # Importante: id_modulo aqui es el ID_Modulo_Catalogo (resolucion canonica)
+    # POST-CONSOLIDACION: La Cama vive en Bridge_Geografia_Cama, NO en Dim_Geografia.
+    # La dimension es unica a nivel de Valvula (ID_Cama_Catalogo siempre = 0).
+    mascara = (
+        (df_geo['ID_Modulo_Catalogo'] == id_modulo) &
+        (df_geo['ID_Turno_Catalogo'] == id_turno) &
+        (df_geo['ID_Valvula_Catalogo'] == id_valvula)
+    )
+    
+    # Si se proporcionaron Fundo o Sector, filtramos por ellos
+    if id_fundo > 0:
+        mascara &= (df_geo['ID_Fundo_Catalogo'] == id_fundo)
+    if id_sector > 0:
+        mascara &= (df_geo['ID_Sector_Catalogo'] == id_sector)
+    
+    coincidencias = df_geo[mascara]
+    
+    if coincidencias.empty:
+        return None
+    
+    if len(coincidencias) > 1:
+        return {
+            'id_geografia': None,
+            'estado': 'PENDIENTE_GEOGRAFIA_AMBIGUA',
+            'detalle': f'Mas de una combinacion para M_ID={id_modulo} T_ID={id_turno} V_ID={id_valvula}.'
+        }
+    
+    fila = coincidencias.iloc[0]
+    return {
+        'id_geografia': int(fila['ID_Geografia']),
+        'id_modulo_catalogo': int(fila['ID_Modulo_Catalogo']),
+        'es_test_block': int(fila['Es_Test_Block']),
+        'estado': 'RESUELTA_CATALOGOS',
+        'detalle': 'Resuelta corroborando catalogos independientes.'
+    }
+
+def _crear_combinacion_geografia(engine: Engine, id_f, id_s, id_m, id_t, id_v, id_c, tb=0) -> int:
+    """
+    Crea una nueva combinacion en Silver.Dim_Geografia (Auto-Create).
+    """
+    with engine.begin() as conn:
+        res = conn.execute(text("""
+            INSERT INTO Silver.Dim_Geografia (
+                ID_Fundo_Catalogo, ID_Sector_Catalogo, ID_Modulo_Catalogo,
+                ID_Turno_Catalogo, ID_Valvula_Catalogo, ID_Cama_Catalogo,
+                Es_Test_Block, Nivel_Granularidad, Fecha_Inicio_Vigencia, Es_Vigente
+            )
+            OUTPUT INSERTED.ID_Geografia
+            VALUES (:f, :s, :m, :t, :v, :c, :tb, 'AUTO_ETL', GETDATE(), 1)
+        """), {"f": id_f, "s": id_s, "m": id_m, "t": id_t, "v": id_v, "c": id_c, "tb": tb})
+        new_id = res.scalar()
+        # Limpiar cache para que la proxima vez lo encuentre
+        with _cache_lock:
+            if 'Silver.Dim_Geografia' in _cache:
+                del _cache['Silver.Dim_Geografia']
+        return new_id
+
+
+
+def _resolver_id_modulo_catalogo_con_reglas(engine: Engine, modulo_raw: str | None, turno_token: str | None) -> tuple[int, int]:
+    """
+    Resuelve ID_Modulo_Catalogo y Es_Test_Block usando las reglas de MDM.
+    Retorna (id_modulo, es_test_block).
+    """
+    if modulo_raw is None:
+        return 0, 0
+    
+    reglas_raw, reglas_turno = _cargar_reglas_mdm(engine)
+    
+    # 1. Regla Simple (Exacta)
+    match_raw = reglas_raw[reglas_raw['Modulo_Raw'].str.upper() == modulo_raw.upper()]
+    if not match_raw.empty:
+        # Resolvemos el Modulo_Int en el catalogo
+        id_mod = _resolver_id_modulo_catalogo(engine, str(match_raw.iloc[0]['Modulo_Int']), str(match_raw.iloc[0]['SubModulo_Int']))
+        return id_mod, int(match_raw.iloc[0]['Es_Test_Block'])
+    
+    # 2. Regla por Turno
+    if turno_token and turno_token.isdigit():
+        t = int(turno_token)
+        match_t = reglas_turno[
+            (reglas_turno['Modulo_Raw_Base'].str.upper() == modulo_raw.upper()) &
+            (reglas_turno['Turno_Desde'] <= t) &
+            (reglas_turno['Turno_Hasta'] >= t)
+        ]
+        if not match_t.empty:
+            id_mod = _resolver_id_modulo_catalogo(engine, str(match_t.iloc[0]['Modulo_Int']), str(match_t.iloc[0]['SubModulo_Int']))
+            return id_mod, int(match_t.iloc[0]['Es_Test_Block'])
+
+    # 3. Fallback: Modulo directo si es numerico
+    if modulo_raw.isdigit():
+        id_mod = _resolver_id_modulo_catalogo(engine, modulo_raw, None)
+        return id_mod, 0
+
+    return 0, 0
+
+def _resolver_id_modulo_catalogo(engine: Engine, modulo_base: str | None, submodulo: str | None) -> int:
+    """
+    Resuelve ID_Modulo_Catalogo buscando match exacto en Modulo y SubModulo.
+    """
+    if modulo_base is None:
+        return 0
+    
+    # Cargamos el catalogo de modulos completo (es pequeño)
+    clave_cache = 'mapa::Silver.Dim_Modulo_Catalogo::full'
+    with _cache_lock:
+        if clave_cache not in _cache_mapas:
+            with engine.connect() as conexion:
+                resultado = conexion.execute(text("""
+                    SELECT ID_Modulo_Catalogo, Modulo, SubModulo 
+                    FROM Silver.Dim_Modulo_Catalogo
+                """))
+                df = pd.DataFrame(resultado.fetchall(), columns=['ID', 'Mod', 'Sub'])
+                df['Mod_token'] = df['Mod'].map(_geo_token)
+                df['Sub_token'] = df['Sub'].map(_geo_token)
+                _cache_mapas[clave_cache] = df
+    
+    df = _cache_mapas[clave_cache]
+    
+    # Busqueda: Modulo exacto y Submodulo exacto
+    modulo_base_token = _geo_token(modulo_base)
+    # Submodulo es opcional, si es 0 o None se trata como base
+    sub_raw = str(submodulo) if submodulo and str(submodulo).lower() not in ('none', 'nan', '0') else None
+    submodulo_token = _geo_token(sub_raw)
+
+    if submodulo_token:
+        mascara = (df['Mod_token'] == modulo_base_token) & (df['Sub_token'] == submodulo_token)
+    else:
+        # Si no hay submodulo en la regla, buscamos registros sin submodulo (NaN o '0')
+        mascara = (df['Mod_token'] == modulo_base_token) & (df['Sub_token'].isna() | (df['Sub_token'] == '0'))
+    
+    coincidencias = df[mascara]
+    if not coincidencias.empty:
+        return int(coincidencias.iloc[0]['ID'])
+    
+    return 0
 
 
 def _es_modulo_especial(modulo_token: str | None) -> bool:
-    # Un modulo es especial solo si es nulo o una cadena vacia.
-    # Nombres como 'Test Block' o 'VIVERO' se permiten si existen en Dim_Geografia.
     return modulo_token is None or str(modulo_token).strip() == ''
 
-
-def _resolver_id_unico(coincidencias: pd.DataFrame) -> int | None:
-    if len(coincidencias) != 1:
-        return None
-    return int(coincidencias.iloc[0]['ID_Geografia'])
-
-
-def _resolver_geografia_sp(fundo: str | None,
-                           sector: str | None,
-                           modulo,
-                           engine: Engine,
-                           turno=None,
-                           valvula=None,
-                           cama=None) -> dict | None:
+def registrar_aprendizaje_geografia(engine: Engine, 
+                                     fundo: str | None, sector: str | None, modulo: str | None, 
+                                     turno: str | None, valvula: str | None, cama: str | None):
     """
-    Resolver oficial por Stored Procedure.
-    Nota: fundo/sector se ignoran en el SP actual porque el grano operativo
-    para resolver es Modulo+Turno+Valvula (+Cama opcional).
+    Registra una combinacion desconocida en MDM para que el sistema 'aprenda'.
+    No duplica registros si ya estan en MDM esperando validacion.
     """
-    clave_busqueda = (
-        _geo_token(fundo),
-        _geo_token(sector),
-        _geo_token(modulo),
-        _geo_token(turno),
-        _geo_token(valvula),
-        _geo_token(cama),
-        'SP',
-    )
-    mapa_geo = _cache_mapas.setdefault('geo_resolucion_sp', {})
-    if clave_busqueda in mapa_geo:
-        return mapa_geo[clave_busqueda]
-
-    modulo_raw = normalizar_componente_geografico(None if modulo is None else str(modulo))
-    turno_raw = normalizar_componente_geografico(None if turno is None else str(turno))
-    valvula_raw = normalizar_componente_geografico(None if valvula is None else str(valvula))
-    cama_raw = normalizar_componente_geografico(None if cama is None else str(cama))
-
-    try:
-        with engine.connect() as conexion:
-            fila = conexion.execute(text("""
-                EXEC Silver.sp_Resolver_Geografia_Cama
-                    @Modulo_Raw = :modulo_raw,
-                    @Turno_Raw = :turno_raw,
-                    @Valvula_Raw = :valvula_raw,
-                    @Cama_Raw = :cama_raw
-            """), {
-                'modulo_raw': modulo_raw,
-                'turno_raw': turno_raw,
-                'valvula_raw': valvula_raw,
-                'cama_raw': cama_raw,
-            }).fetchone()
-    except Exception:
-        return None
-
-    if not fila:
-        return None
-
-    resultado = {
-        'id_geografia': fila.ID_Geografia,
-        'id_cama_catalogo': fila.ID_Cama_Catalogo,
-        'estado': fila.Estado_Resolucion,
-        'detalle': fila.Detalle,
-    }
-    mapa_geo[clave_busqueda] = resultado
-    return resultado
-
-
-def _resolver_geografia_legacy(fundo: str | None,
-                               sector: str | None,
-                               modulo,
-                               engine: Engine,
-                               turno=None,
-                               valvula=None,
-                               cama=None) -> dict:
-    if not fundo and not sector and modulo is None and turno is None and valvula is None and cama is None:
-        return {
-            'id_geografia': None,
-            'estado': 'SIN_DATOS_GEOGRAFIA',
-            'detalle': 'No se recibieron componentes geograficos para resolver ID_Geografia.',
-        }
-
-    fundo_token = _geo_token(fundo)
-    sector_token = _geo_token(sector)
-    modulo_token = _geo_token(modulo)
-    modulo_base_token, submodulo_token = _descomponer_modulo_submodulo_token(modulo_token)
-    turno_token = _geo_token(turno)
-    valvula_token = _geo_token(valvula)
-    cama_token = _geo_token(cama)
-
-    clave_busqueda = (
-        fundo_token, sector_token, modulo_token,
-        turno_token, valvula_token, cama_token,
-    )
-    mapa_geo = _cache_mapas.setdefault('geo_resolucion', {})
-    if clave_busqueda in mapa_geo:
-        return mapa_geo[clave_busqueda]
-
-    if _es_modulo_especial(modulo_token):
-        resultado = {
-            'id_geografia': None,
-            'estado': 'PENDIENTE_CASO_ESPECIAL',
-            'detalle': 'Modulo especial requiere catalogacion y regla MDM antes de resolver ID_Geografia.',
-        }
-        mapa_geo[clave_busqueda] = resultado
-        return resultado
-
-    dim = _cargar_dim_geografia(engine)
-    mascara_base = pd.Series(True, index=dim.index)
-
-    if fundo_token is not None:
-        mascara_base &= dim['Fundo_token'] == fundo_token
-
-    if sector_token is not None:
-        mascara_base &= dim['Sector_token'] == sector_token
-
-    if modulo_base_token is not None:
-        mascara_base &= dim['Modulo_token'] == modulo_base_token
-
-    if submodulo_token is not None:
-        mascara_base &= dim['SubModulo_token'] == submodulo_token
-
-    if turno_token is not None:
-        mascara_base &= dim['Turno_token'] == turno_token
-
-    if valvula_token is not None:
-        mascara_base &= dim['Valvula_token'] == valvula_token
-
-    requiere_revision_cama = (
-        cama_token == '0'
-        or (cama_token is None and (turno_token is not None or valvula_token is not None))
-    )
-
-    if cama_token not in (None, '0'):
-        coincidencias = dim[mascara_base & (dim['Cama_token'] == cama_token)]
-        id_geografia = _resolver_id_unico(coincidencias)
-        if id_geografia is not None:
-            resultado = {
-                'id_geografia': id_geografia,
-                'estado': 'RESUELTA_DIM_GEOGRAFIA',
-                'detalle': 'Coincidencia exacta en Silver.Dim_Geografia.',
-            }
-        elif len(coincidencias) > 1:
-            resultado = {
-                'id_geografia': None,
-                'estado': 'PENDIENTE_DIM_DUPLICADA',
-                'detalle': 'La combinacion geografica tiene mas de un registro vigente en Silver.Dim_Geografia.',
-            }
-        else:
-            resultado = {
-                'id_geografia': None,
-                'estado': 'PENDIENTE_GEOGRAFIA_NO_EXISTE',
-                'detalle': 'La combinacion geografica no existe en Silver.Dim_Geografia.',
-            }
-        mapa_geo[clave_busqueda] = resultado
-        return resultado
-
-    coincidencias_genericas = dim[
-        mascara_base & dim['Cama_token'].isin([None, '0'])
-    ]
-    id_generico = _resolver_id_unico(coincidencias_genericas)
-    if id_generico is not None:
-        resultado = {
-            'id_geografia': id_generico,
-            'estado': 'RESUELTA_DIM_GEOGRAFIA',
-            'detalle': 'Coincidencia exacta a nivel generico en Silver.Dim_Geografia.',
-        }
-    elif len(coincidencias_genericas) > 1:
-        resultado = {
-            'id_geografia': None,
-            'estado': 'PENDIENTE_DIM_DUPLICADA',
-            'detalle': 'La clave generica de geografia tiene mas de un registro vigente en Silver.Dim_Geografia.',
-        }
-    elif requiere_revision_cama:
-        resultado = {
-            'id_geografia': None,
-            'estado': 'PENDIENTE_CAMA_GENERICA',
-            'detalle': 'La geografia a nivel valvula o cama generica no existe en Silver.Dim_Geografia.',
-        }
-    else:
-        resultado = {
-            'id_geografia': None,
-            'estado': 'PENDIENTE_GEOGRAFIA_NO_EXISTE',
-            'detalle': 'La combinacion geografica no existe en Silver.Dim_Geografia.',
-        }
-
-    mapa_geo[clave_busqueda] = resultado
-    return resultado
-
+    with engine.begin() as conn:
+        conn.execute(text("""
+            IF NOT EXISTS (
+                SELECT 1 FROM MDM.Catalogo_Geografia 
+                WHERE ISNULL(Fundo,'') = ISNULL(:f,'') AND ISNULL(Sector,'') = ISNULL(:s,'')
+                  AND ISNULL(Modulo,'') = ISNULL(:m,'') AND ISNULL(Turno,'') = ISNULL(:t,'')
+                  AND ISNULL(Valvula,'') = ISNULL(:v,'') AND ISNULL(Cama,'') = ISNULL(:c,'')
+            )
+            INSERT INTO MDM.Catalogo_Geografia (Fundo, Sector, Modulo, Turno, Valvula, Cama, Es_Activa, Fecha_Creacion)
+            VALUES (:f, :s, :m, :t, :v, :c, 0, GETDATE())
+        """), {"f": fundo, "s": sector, "m": modulo, "t": turno, "v": valvula, "c": cama})
 
 def resolver_geografia(fundo: str | None,
                        sector: str | None,
@@ -481,54 +495,71 @@ def resolver_geografia(fundo: str | None,
                        valvula=None,
                        cama=None) -> dict:
     """
-    Resolver principal de geografia.
-    1) Intenta resolver por SP (fuente oficial de reglas).
-    2) Si el SP no existe o falla, usa fallback legacy en Python.
+    Resolver principal de geografia usando CATALOGOS INDEPENDIENTES.
     """
+    fundo_token = _geo_token(fundo)
+    sector_token = _geo_token(sector)
+    modulo_token = _geo_token(modulo)
     turno_token = _geo_token(turno)
     valvula_token = _geo_token(valvula)
     cama_token = _geo_token(cama)
-    granularidad_operativa = any(token is not None for token in (turno_token, valvula_token, cama_token))
 
-    resultado_sp = _resolver_geografia_sp(
-        fundo,
-        sector,
-        modulo,
-        engine,
-        turno=turno,
-        valvula=valvula,
-        cama=cama,
+    clave_busqueda = (
+        fundo_token, sector_token, modulo_token,
+        turno_token, valvula_token, cama_token,
     )
-    if resultado_sp is not None:
-        # Si el SP resolvio ID, siempre se respeta como fuente oficial.
-        if resultado_sp.get('id_geografia') is not None:
-            return resultado_sp
-        # Si hay granularidad operativa (turno/valvula/cama), no se hace fallback
-        # para no saltarse la validacion operativa del resolvedor oficial.
-        if granularidad_operativa:
-            return resultado_sp
-        # Para facts que solo tienen modulo (sin turno/valvula/cama), el SP puede
-        # devolver no resuelto por diseno; en ese caso aplicamos fallback legacy.
-        return _resolver_geografia_legacy(
-            fundo,
-            sector,
-            modulo,
-            engine,
-            turno=turno,
-            valvula=valvula,
-            cama=cama,
-        )
+    with _cache_lock:
+        mapa_geo = _cache_mapas.setdefault('geo_resolucion_catalogos', {})
+        if clave_busqueda in mapa_geo:
+            return mapa_geo[clave_busqueda]
 
-    return _resolver_geografia_legacy(
-        fundo,
-        sector,
-        modulo,
-        engine,
-        turno=turno,
-        valvula=valvula,
-        cama=cama,
-    )
 
+    # 1. Aplicar Reglas de MDM para resolver Modulo Canonico
+    id_modulo, es_test_block = _resolver_id_modulo_catalogo_con_reglas(engine, modulo_token, turno_token)
+    
+    
+    # 2. Resolver IDs de Catalogos para el resto de componentes
+    id_fundo = _obtener_id_catalogo(engine, 'Silver.Dim_Fundo_Catalogo', 'ID_Fundo_Catalogo', 'Fundo', fundo_token)
+    id_sector = _obtener_id_catalogo(engine, 'Silver.Dim_Sector_Catalogo', 'ID_Sector_Catalogo', 'Sector', sector_token)
+    id_turno = _obtener_id_catalogo(engine, 'Silver.Dim_Turno_Catalogo', 'ID_Turno_Catalogo', 'Turno', turno_token)
+    id_valvula = _obtener_id_catalogo(engine, 'Silver.Dim_Valvula_Catalogo', 'ID_Valvula_Catalogo', 'Valvula', valvula_token)
+    id_cama = _obtener_id_catalogo(engine, 'Silver.Dim_Cama_Catalogo', 'ID_Cama_Catalogo', 'Cama_Normalizada', cama_token)
+
+    # 3. Intentar resolver combinacion en Dim_Geografia
+    resultado = _resolver_id_geografia_desde_catalogos(engine, id_fundo, id_sector, id_modulo, id_turno, id_valvula, id_cama)
+    
+    if resultado:
+        with _cache_lock:
+            mapa_geo[clave_busqueda] = resultado
+        return resultado
+
+    # 4. Auto-Create si todos los componentes existen en catalogos
+    # Se permite Fundo/Sector = 0 (Sentinel) para facts que no traen esa info
+    if id_modulo > 0 and id_fundo >= 0 and id_sector >= 0:
+        # POST-CONSOLIDACION: Auto-crear siempre con Cama=0 (las camas van al Bridge)
+        new_id = _crear_combinacion_geografia(engine, id_fundo, id_sector, id_modulo, id_turno, id_valvula, 0, es_test_block)
+        resultado = {
+            'id_geografia': new_id,
+            'id_modulo_catalogo': id_modulo,
+            'es_test_block': es_test_block,
+            'estado': 'RESUELTA_AUTO_CREATE',
+            'detalle': 'Combinacion nueva creada automaticamente (Componentes validos).'
+        }
+        with _cache_lock:
+            mapa_geo[clave_busqueda] = resultado
+        return resultado
+
+    # 5. Fallback/Aprendizaje: Si algun componente falta
+    registrar_aprendizaje_geografia(engine, fundo_token, sector_token, modulo_token, turno_token, valvula_token, cama_token)
+    
+    resultado = {
+        'id_geografia': None,
+        'estado': 'PENDIENTE_GEOGRAFIA_NO_EXISTE',
+        'detalle': f'Geografia incompleta o nueva en catalogos. Enviada a MDM (F_ID={id_fundo} S_ID={id_sector} M_ID={id_modulo})'
+    }
+    with _cache_lock:
+        mapa_geo[clave_busqueda] = resultado
+    return resultado
 
 def obtener_id_geografia(fundo: str | None,
                          sector: str | None,
@@ -537,17 +568,55 @@ def obtener_id_geografia(fundo: str | None,
                          turno=None,
                          valvula=None,
                          cama=None) -> int | None:
-    """
-    Wrapper temporal de compatibilidad.
-    El codigo nuevo debe consumir resolver_geografia(...) para no perder estado ni detalle.
-    """
-    resultado = resolver_geografia(
-        fundo,
-        sector,
-        modulo,
-        engine,
-        turno=turno,
-        valvula=valvula,
-        cama=cama,
-    )
+    resultado = resolver_geografia(fundo, sector, modulo, engine, turno, valvula, cama)
     return resultado.get('id_geografia')
+
+def obtener_id_campana(id_geografia: int | None,
+                       id_variedad: int | None,
+                       fecha_evento,
+                       engine: Engine) -> int | None:
+    """
+    Busca la Campana activa usando Bridge_Modulo_Campana.
+    """
+    if id_geografia is None or id_variedad is None or fecha_evento is None:
+        return None
+
+    try:
+        fecha_str = str(fecha_evento)[:10]
+    except:
+        return None
+
+    clave_cache = f'campana::{id_geografia}::{id_variedad}::{fecha_str}'
+    with _cache_lock:
+        if clave_cache in _cache_mapas:
+            return _cache_mapas[clave_cache]
+
+    # Necesitamos el ID_Modulo_Catalogo para esta geografia
+    df_geo = _cargar_geografia(engine)
+    geo_info = df_geo[df_geo['ID_Geografia'] == id_geografia]
+    if geo_info.empty:
+        return None
+    
+    id_modulo_cat = int(geo_info.iloc[0]['ID_Modulo_Catalogo'])
+
+    with engine.connect() as conexion:
+        resultado = conexion.execute(text("""
+            SELECT TOP 1 ID_Campana
+            FROM Silver.Bridge_Modulo_Campana
+            WHERE ID_Modulo_Catalogo = :mod
+              AND ID_Variedad = :var
+              AND Es_Activa = 1
+              AND :fecha >= Fecha_Inicio
+              AND (:fecha <= Fecha_Fin OR Fecha_Fin IS NULL)
+            ORDER BY Fecha_Inicio DESC
+        """), {
+            "mod": id_modulo_cat,
+            "var": int(id_variedad),
+            "fecha": fecha_str
+        }).fetchone()
+
+    id_campana = int(resultado[0]) if resultado else None
+    with _cache_lock:
+        _cache_mapas[clave_cache] = id_campana
+    return id_campana
+

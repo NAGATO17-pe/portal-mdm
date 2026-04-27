@@ -218,7 +218,7 @@ def cargar_fact_evaluacion_pesos(engine: Engine) -> dict:
             df, 'Variedad_Raw', 'Variedad_Canonica', TABLA_ORIGEN, conexion,
             columna_id_origen='ID_Evaluacion_Pesos'
         )
-        df = proc.pre_limpiar_duplicados_batch(df, ['Modulo_Raw', 'Fecha_Raw', 'Variedad_Raw', 'DNI_Raw', 'PesoBaya_Raw'])
+        df = proc.pre_limpiar_duplicados_batch(df, ['Modulo_Raw', 'Fecha_Raw', 'Variedad_Raw', 'DNI_Raw'])
         
         proc.resumen['cuarentena'].extend(cuar_var)
 

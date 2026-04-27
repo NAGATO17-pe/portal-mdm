@@ -29,7 +29,8 @@ from typing import Literal
 from nucleo.etl_argumentos import construir_argumentos_pipeline, deserializar_comentario_etl
 from nucleo.auditoria import registrar_inicio_corrida, registrar_fin_corrida
 from nucleo.logging import obtener_logger
-import repositorios.repo_control as rc
+import repositorios.repo_corridas as r_corrida
+import repositorios.repo_locks as r_lock
 
 log = obtener_logger(__name__)
 
@@ -92,7 +93,7 @@ def _cerrar_paso_activo(
 ) -> None:
     if paso_activo is None or paso_activo.cerrado or paso_activo.id_paso < 0:
         return
-    rc.cerrar_paso(
+    r_corrida.cerrar_paso(
         paso_activo.id_paso,
         estado=estado,
         mensaje_error=mensaje_error,
@@ -102,7 +103,7 @@ def _cerrar_paso_activo(
 
 def _abrir_nuevo_paso(id_corrida: str, orden: int, nombre_paso: str) -> _PasoActivo:
     return _PasoActivo(
-        id_paso=rc.insertar_paso(id_corrida, nombre_paso, orden=orden),
+        id_paso=r_corrida.insertar_paso(id_corrida, nombre_paso, orden=orden),
         nombre_paso=nombre_paso,
         orden=orden,
     )
@@ -148,13 +149,13 @@ def ejecutar_corrida(
         log.warning("No se pudo registrar inicio en auditoría", extra={"id_corrida": id_corrida})
 
     # ── 2. Marcar corrida como EJECUTANDO ─────────────────────────────────────
-    rc.actualizar_estado_corrida(
+    r_corrida.actualizar_estado_corrida(
         id_corrida=id_corrida,
         estado="EJECUTANDO",
         pid_runner=pid,
         id_log_auditoria=id_log,
     )
-    rc.insertar_evento(id_corrida, f"[RUNNER] Inicio. PID={pid}", tipo="LOG")
+    r_corrida.insertar_evento(id_corrida, f"[RUNNER] Inicio. PID={pid}", tipo="LOG")
     paso_activo: _PasoActivo | None = None
 
     # ── 3. Lanzar subprocess ──────────────────────────────────────────────────
@@ -181,7 +182,7 @@ def ejecutar_corrida(
                 ahora = time.monotonic()
                 linea_limpia = linea.rstrip("\n")
 
-                rc.insertar_evento(id_corrida, linea_limpia, tipo="LOG")
+                r_corrida.insertar_evento(id_corrida, linea_limpia, tipo="LOG")
                 inicio_paso = _extraer_inicio_paso(linea_limpia)
                 if inicio_paso is not None:
                     orden_paso, nombre_paso = inicio_paso
@@ -198,11 +199,11 @@ def ejecutar_corrida(
 
                 # ── 5. Heartbeat y verificación de cancelación ─────────────────
                 if ahora - ultimo_heartbeat >= heartbeat_intervalo_seg:
-                    rc.actualizar_heartbeat_corrida(id_corrida, pid)
-                    rc.actualizar_heartbeat_lock()
+                    r_corrida.actualizar_heartbeat_corrida(id_corrida, pid)
+                    r_lock.actualizar_heartbeat_lock()
                     ultimo_heartbeat = ahora
 
-                    if rc.corrida_fue_cancelada(id_corrida):
+                    if r_corrida.corrida_fue_cancelada(id_corrida):
                         log.info("[RUNNER] Cancelación detectada, terminando proceso",
                                  extra={"id_corrida": id_corrida})
                         proceso.terminate()
@@ -225,7 +226,7 @@ def ejecutar_corrida(
         codigo_retorno = -9
         estado_final = "TIMEOUT"
     except Exception as exc:
-        rc.insertar_evento(id_corrida, f"[RUNNER ERROR] {exc}", tipo="ERROR")
+        r_corrida.insertar_evento(id_corrida, f"[RUNNER ERROR] {exc}", tipo="ERROR")
         log.exception("[RUNNER] Excepción al ejecutar pipeline", extra={"id_corrida": id_corrida})
         codigo_retorno = -99
 
@@ -242,7 +243,7 @@ def ejecutar_corrida(
     )
 
     # Evento de cierre
-    rc.insertar_evento(id_corrida, f"[FIN] {msg_final}", tipo="FIN")
+    r_corrida.insertar_evento(id_corrida, f"[FIN] {msg_final}", tipo="FIN")
 
     _cerrar_paso_activo(
         paso_activo,
@@ -251,7 +252,7 @@ def ejecutar_corrida(
     )
 
     # Actualizar Control.Corrida
-    rc.actualizar_estado_corrida(
+    r_corrida.actualizar_estado_corrida(
         id_corrida=id_corrida,
         estado=estado_final,
         mensaje_final=msg_final,

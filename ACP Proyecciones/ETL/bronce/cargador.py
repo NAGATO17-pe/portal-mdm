@@ -229,8 +229,8 @@ _FIRMAS_RUTA_SUGERIDA: dict[str, dict[str, Any]] = {
 }
 
 
-# Mapeo de nombres de columnas comunes del Excel a nombres estÃ¡ndar del ETL.
-# Se aplica DESPUÃ‰S de reemplazar espacios por _ y eliminar acentos.
+# Mapeo de nombres de columnas comunes del Excel a nombres estándar del ETL.
+# Se aplica DESPUÉS de reemplazar espacios por _ y eliminar acentos.
 # Clave : nombre ya sin acentos/espacios (sin _Raw)
 # Valor : nombre esperado por los scripts Silver (sin _Raw)
 _ALIAS_COLUMNAS: dict[str, str] = {
@@ -247,6 +247,10 @@ _ALIAS_COLUMNAS: dict[str, str] = {
     'FechaSubida':                'Fecha_Subida',
     'FECHASUBIDA':                'Fecha_Subida',
     'FECHAREGISTRO':              'Fecha_Registro',
+    # Timestamp del evento de campo en "Conteo frutos" (columna "Registro")
+    'Registro':                   'Fecha_Registro_Raw',
+    'REGISTRO':                   'Fecha_Registro_Raw',
+    'registro':                   'Fecha_Registro_Raw',
     # Fundo
     'Fundo':                      'Fundo',
     'fundo':                      'Fundo',
@@ -419,7 +423,7 @@ def normalizar_columnas(df: pd.DataFrame) -> pd.DataFrame:
     """
     Normaliza nombres de columnas del Excel:
     - Quita espacios / caracteres especiales
-    - Aplica alias estÃ¡ndares (Fecha de evaluaciÃ³n â†’ Fecha_Raw)
+    - Aplica alias estándares (Fecha de evaluación → Fecha_Raw)
     - Agrega sufijo _Raw si no lo tiene
     """
     columnas_nuevas = {}
@@ -437,7 +441,7 @@ def castear_todo_a_texto(df: pd.DataFrame) -> pd.DataFrame:
     """
     Convierte todas las columnas a string (vectorizado).
     None y NaN se convierten a None (NULL en SQL).
-    Bronce nunca tipifica â€” todo es NVARCHAR.
+    Bronce nunca tipifica — todo es NVARCHAR.
     """
     for col in df.columns:
         mask_nulo = df[col].isna()

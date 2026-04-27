@@ -32,7 +32,7 @@ ORDEN_DEPENDENCIAS = (
 
 CONFIG_FACTS = OrderedDict({
     "Fact_Cosecha_SAP": {
-        "orden": 8,
+        "orden": 9,
         "tabla_destino": "Silver.Fact_Cosecha_SAP",
         "fuentes_bronce": ("Bronce.Reporte_Cosecha", "Bronce.Data_SAP"),
         "dependencias": (DEPENDENCIA_DIM_GEOGRAFIA,),
@@ -41,7 +41,7 @@ CONFIG_FACTS = OrderedDict({
         "estrategia_rerun": "rebuild_fact",
     },
     "Fact_Conteo_Fenologico": {
-        "orden": 9,
+        "orden": 10,
         "tabla_destino": "Silver.Fact_Conteo_Fenologico",
         "fuentes_bronce": ("Bronce.Conteo_Fruta",),
         "dependencias": (DEPENDENCIA_DIM_PERSONAL, DEPENDENCIA_DIM_GEOGRAFIA),
@@ -50,7 +50,7 @@ CONFIG_FACTS = OrderedDict({
         "estrategia_rerun": "rebuild_fact",
     },
     "Fact_Maduracion": {
-        "orden": 10,
+        "orden": 11,
         "tabla_destino": "Silver.Fact_Maduracion",
         "fuentes_bronce": ("Bronce.Maduracion",),
         "dependencias": (DEPENDENCIA_DIM_PERSONAL, DEPENDENCIA_DIM_GEOGRAFIA),
@@ -59,7 +59,7 @@ CONFIG_FACTS = OrderedDict({
         "estrategia_rerun": "rebuild_total_fact",
     },
     "Fact_Peladas": {
-        "orden": 11,
+        "orden": 12,
         "tabla_destino": "Silver.Fact_Peladas",
         "fuentes_bronce": ("Bronce.Peladas",),
         "dependencias": (DEPENDENCIA_DIM_PERSONAL, DEPENDENCIA_DIM_GEOGRAFIA),
@@ -68,7 +68,7 @@ CONFIG_FACTS = OrderedDict({
         "estrategia_rerun": "rebuild_fact",
     },
     "Fact_Telemetria_Clima": {
-        "orden": 12,
+        "orden": 13,
         "tabla_destino": "Silver.Fact_Telemetria_Clima",
         "fuentes_bronce": ("Bronce.Reporte_Clima", "Bronce.Variables_Meteorologicas"),
         "dependencias": (),
@@ -77,7 +77,7 @@ CONFIG_FACTS = OrderedDict({
         "estrategia_rerun": "rebuild_fact",
     },
     "Fact_Evaluacion_Pesos": {
-        "orden": 13,
+        "orden": 14,
         "tabla_destino": "Silver.Fact_Evaluacion_Pesos",
         "fuentes_bronce": ("Bronce.Evaluacion_Pesos",),
         "dependencias": (
@@ -91,7 +91,7 @@ CONFIG_FACTS = OrderedDict({
         "estrategia_rerun": "rebuild_fact",
     },
     "Fact_Tareo": {
-        "orden": 14,
+        "orden": 15,
         "tabla_destino": "Silver.Fact_Tareo",
         "fuentes_bronce": ("Bronce.Consolidado_Tareos",),
         "dependencias": (DEPENDENCIA_DIM_PERSONAL, DEPENDENCIA_DIM_GEOGRAFIA),
@@ -100,7 +100,7 @@ CONFIG_FACTS = OrderedDict({
         "estrategia_rerun": "rebuild_fact",
     },
     "Fact_Fisiologia": {
-        "orden": 15,
+        "orden": 16,
         "tabla_destino": "Silver.Fact_Fisiologia",
         "fuentes_bronce": ("Bronce.Fisiologia",),
         "dependencias": (DEPENDENCIA_DIM_GEOGRAFIA,),
@@ -109,7 +109,7 @@ CONFIG_FACTS = OrderedDict({
         "estrategia_rerun": "rebuild_fact",
     },
     "Fact_Evaluacion_Vegetativa": {
-        "orden": 16,
+        "orden": 17,
         "tabla_destino": "Silver.Fact_Evaluacion_Vegetativa",
         "fuentes_bronce": ("Bronce.Evaluacion_Vegetativa",),
         "dependencias": (
@@ -123,7 +123,7 @@ CONFIG_FACTS = OrderedDict({
         "estrategia_rerun": "rebuild_fact",
     },
     "Fact_Induccion_Floral": {
-        "orden": 17,
+        "orden": 18,
         "tabla_destino": "Silver.Fact_Induccion_Floral",
         "fuentes_bronce": ("Bronce.Induccion_Floral",),
         "dependencias": (DEPENDENCIA_DIM_PERSONAL, DEPENDENCIA_DIM_GEOGRAFIA),
@@ -132,7 +132,7 @@ CONFIG_FACTS = OrderedDict({
         "estrategia_rerun": "rebuild_fact",
     },
     "Fact_Tasa_Crecimiento_Brotes": {
-        "orden": 18,
+        "orden": 19,
         "tabla_destino": "Silver.Fact_Tasa_Crecimiento_Brotes",
         "fuentes_bronce": ("Bronce.Tasa_Crecimiento_Brotes",),
         "dependencias": (DEPENDENCIA_DIM_PERSONAL, DEPENDENCIA_DIM_GEOGRAFIA),
@@ -141,7 +141,7 @@ CONFIG_FACTS = OrderedDict({
         "estrategia_rerun": "rebuild_fact",
     },
     "Fact_Sanidad_Activo": {
-        "orden": 19,
+        "orden": 20,
         "tabla_destino": "Silver.Fact_Sanidad_Activo",
         "fuentes_bronce": ("Bronce.Seguimiento_Errores",),
         "dependencias": (DEPENDENCIA_DIM_GEOGRAFIA,),
@@ -150,7 +150,7 @@ CONFIG_FACTS = OrderedDict({
         "estrategia_rerun": "rebuild_fact",
     },
     "Fact_Ciclo_Poda": {
-        "orden": 20,
+        "orden": 21,
         "tabla_destino": "Silver.Fact_Ciclo_Poda",
         "fuentes_bronce": ("Bronce.Evaluacion_Calidad_Poda", "Bronce.Ciclos_Fenologicos"),
         "dependencias": (DEPENDENCIA_DIM_GEOGRAFIA,),

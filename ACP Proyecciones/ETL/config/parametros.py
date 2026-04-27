@@ -136,3 +136,18 @@ def limpiar_cache() -> None:
     """
     global _cache_parametros
     _cache_parametros = {}
+
+
+# ── Tokens de detección de filas no operativas en formularios de campo ──────
+# Frágiles ante cambios en el Excel; centralizar aquí facilita el ajuste sin
+# tocar la lógica de cada fact.
+
+# Valores en la columna Fecha_Raw que indican una fila de encabezado/subtotal.
+TOKENS_FECHA_NO_OPERATIVA: frozenset[str] = frozenset({
+    '', 'NONE', 'PERSONAS', 'HORAS',
+})
+
+# Valores en la columna de supervisor/personal que indican fila administrativa.
+TOKENS_SUPERVISOR_NO_OPERATIVO: frozenset[str] = frozenset({
+    'AREA:', 'FECHA:', 'TURNO:', 'DIA:', 'DÍA:', 'NOCHE:', 'TOTAL',
+})

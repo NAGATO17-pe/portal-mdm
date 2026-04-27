@@ -23,6 +23,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 
+from nucleo.rate_limit import verificar_rate_limit
 from nucleo.auth import (
     UsuarioActual,
     hash_clave,
@@ -47,6 +48,10 @@ enrutador_auth = APIRouter(prefix="/auth", tags=["Autenticación"])
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+def _rate_limit_login(request: Request) -> None:
+    verificar_rate_limit(request, max_intentos=5, ventana_segundos=60)
+
+
 # ── Login ──────────────────────────────────────────────────────────────────────
 
 @enrutador_auth.post(
@@ -61,6 +66,7 @@ enrutador_auth = APIRouter(prefix="/auth", tags=["Autenticación"])
 async def login(
     request: Request,
     form: Annotated[OAuth2PasswordRequestForm, Depends()],
+    _: None = Depends(_rate_limit_login),
 ) -> TokenRespuesta:
     """
     Acepta tanto form-data (OAuth2 estándar) como JSON.

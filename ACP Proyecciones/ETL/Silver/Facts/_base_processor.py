@@ -54,7 +54,8 @@ class BaseFactProcessor:
             'insertados': 0,
             'rechazados': 0,
             'cuarentena': [],
-            'rechazados_ids': [] # Nueva estructura para reporte de calidad refinado
+            'rechazados_ids': [], # Nueva estructura para reporte de calidad refinado
+            'resueltos_por_tiebreaker': 0,  # Duplicados intra-batch resueltos por timestamp
         }
         
         # Cache interna para lookups frecuentes
@@ -86,6 +87,8 @@ class BaseFactProcessor:
             'id': id_origen,
             'es_duplicado_externo': False
         })
+        if id_origen is not None:
+            self.ids_rechazados.append(id_origen)
         self.resumen['cuarentena'].append({
             'columna': columna,
             'valor': str(valor) if valor is not None else 'NULL',
@@ -154,7 +157,7 @@ class BaseFactProcessor:
         from mdm.lookup import resolver_geografia
         from silver.facts._helpers_fact_comunes import motivo_cuarentena_geografia
 
-        modulo = None if es_test_block(modulo_raw) else normalizar_modulo(modulo_raw)
+        modulo = normalizar_modulo(modulo_raw)
         cache_key = (str(fundo), str(modulo), str(turno), str(valvula), str(cama))
 
         if cache_key in self._cache_geografia:
@@ -292,26 +295,60 @@ class BaseFactProcessor:
 
     def _limpiar_duplicados_internos(self, lista_dicts: list[dict]) -> list[dict]:
         """
-        Detecta y rechaza registros que están duplicados dentro del mismo batch (Excel).
-        Retorna la lista de diccionarios limpios (únicos).
+        Detecta duplicados dentro del mismo batch (Excel).
+
+        Si self.columna_tiebreaker_timestamp está definida, aplica la política
+        "último timestamp gana": entre filas con la misma clave se conserva la
+        de mayor timestamp; los descartados NO van a Cuarentena (son re-mediciones
+        legítimas, no errores de datos).
+
+        Sin tiebreaker (comportamiento original): se conserva el primero visto y
+        el duplicado se registra como DUPLICADO_INTERNO severidad MEDIO.
         """
         if not self.columnas_clave_unica:
             return lista_dicts
 
+        tiebreaker = getattr(self, 'columna_tiebreaker_timestamp', None)
+
+        if tiebreaker:
+            # Agrupar por clave; quedarse con el de mayor timestamp
+            EPOCH = __import__('datetime').datetime(1900, 1, 1)
+            mejor: dict[tuple, dict] = {}
+            resueltos_por_tiebreaker = 0
+            for row in lista_dicts:
+                clave = tuple(row.get(c) for c in self.columnas_clave_unica)
+                ts = row.get(tiebreaker) or EPOCH
+                if clave not in mejor:
+                    mejor[clave] = row
+                else:
+                    ts_actual = mejor[clave].get(tiebreaker) or EPOCH
+                    if ts > ts_actual:
+                        mejor[clave] = row
+                        resueltos_por_tiebreaker += 1
+                    else:
+                        resueltos_por_tiebreaker += 1
+            if resueltos_por_tiebreaker:
+                self.resumen['resueltos_por_tiebreaker'] = (
+                    self.resumen.get('resueltos_por_tiebreaker', 0) + resueltos_por_tiebreaker
+                )
+                _log.info(
+                    f"[{self.tabla_destino}] Dedup intra-batch por tiebreaker "
+                    f"'{tiebreaker}': {resueltos_por_tiebreaker} descartado(s), "
+                    f"queda la medición más reciente."
+                )
+            return list(mejor.values())
+
+        # Comportamiento original sin tiebreaker
         vistos = set()
         lista_limpia = []
 
         for row in lista_dicts:
-            # Construimos la tupla clave para este row
             clave = tuple(row.get(c) for c in self.columnas_clave_unica)
-            
-            # Verificamos si ya esta clave ya fue procesada en este batch
+
             if clave in vistos:
                 id_origen = row.get("id_origen_rastreo")
                 if id_origen is not None:
-                    # Construimos un string resumen de los valores que fallan para que el usuario sepa qué registro es
                     valor_resumen = " | ".join([str(v) for v in clave])
-                    
                     self.registrar_rechazo(
                         id_origen=id_origen,
                         columna=",".join(self.columnas_clave_unica),
@@ -321,8 +358,6 @@ class BaseFactProcessor:
                         severidad='MEDIO',
                         fila=row
                     )
-                    
-                    # Removemos de procesados si estaba allí
                     if id_origen in self.ids_procesados:
                         self.ids_procesados.remove(id_origen)
             else:
@@ -375,6 +410,15 @@ class BaseFactProcessor:
         if not lista_dicts:
             return
 
+        # 0. Inyección automática de ID_Campana (Nueva Arquitectura)
+        from mdm.lookup import obtener_id_campana
+        for row in lista_dicts:
+            if 'ID_Campana' not in row:
+                id_geo = row.get('ID_Geografia')
+                id_var = row.get('ID_Variedad')
+                fecha = row.get('Fecha_Evento') or row.get('Fecha') or row.get('Fecha_Cosecha')
+                row['ID_Campana'] = obtener_id_campana(id_geo, id_var, fecha, self.engine)
+
         # 1. Deduplicación interna en memoria (para evitar IntegrityError en el INSERT final)
         lista_dicts_limpia = self._limpiar_duplicados_internos(lista_dicts)
         
@@ -404,45 +448,84 @@ class BaseFactProcessor:
                 f"[{self.tabla_destino}] columnas_clave_unica no tiene interseccion con el payload. "
                 f"Clave definida: {self.columnas_clave_unica} | Columnas en payload: {todas_cols}"
             )
-        clausula_on = " AND ".join([f"tmp.[{c}] = dest.[{c}]" for c in columnas_fisicas_key])
-        
-        sql_duplicados = text(f"""
-            SELECT tmp.[id_origen_rastreo]
-            FROM {nombre_temp} tmp
-            INNER JOIN {self.tabla_destino} dest ON {clausula_on}
-        """)
-        duplicados = conexion.execute(sql_duplicados).fetchall()
-        ids_duplicados = {int(d[0]) for d in duplicados if d[0] is not None}
+        clausula_on_tmp = " AND ".join([f"tmp.[{c}] = dest.[{c}]" for c in columnas_fisicas_key])
+        clausula_on_src = " AND ".join([f"src.[{c}] = dest.[{c}]" for c in columnas_fisicas_key])
 
-        for id_dup in ids_duplicados:
-            # Marcamos como duplicado externo para que el reporte de CALIDAD lo ignore
-            if 'rechazados_ids' not in self.resumen:
-                self.resumen['rechazados_ids'] = []
-                
-            self.resumen['rechazados_ids'].append({
-                'id': id_dup,
-                'es_duplicado_externo': True
-            })
-            if id_dup in self.ids_procesados:
-                self.ids_procesados.remove(id_dup)
+        # Columnas físicas para INSERT/UPDATE (excluir auxiliares internas y de rastreo)
+        columnas_dest = [c for c in todas_cols if c != 'id_origen_rastreo' and not c.endswith('_Virtual') and not c.startswith('_')]
 
-        # 6. INSERT solo los nuevos via WHERE NOT EXISTS
-        # Filtramos 'Punto_Virtual' y otras columnas no fisicas del insert final
-        columnas_dest = [c for c in todas_cols if c != 'id_origen_rastreo' and not c.endswith('_Virtual')]
-        col_select = ", ".join([f"tmp.[{c}]" for c in columnas_dest])
-        col_insert = ", ".join([f"[{c}]" for c in columnas_dest])
+        tiebreaker = getattr(self, 'columna_tiebreaker_timestamp', None)
 
-        sql_insert = text(f"""
-            INSERT INTO {self.tabla_destino} ({col_insert})
-            SELECT {col_select}
-            FROM {nombre_temp} tmp
-            WHERE NOT EXISTS (
-                SELECT 1 FROM {self.tabla_destino} dest
-                WHERE {clausula_on}
+        if tiebreaker and tiebreaker in todas_cols:
+            # 6-TB. MERGE "último timestamp gana"
+            # Las filas nuevas se insertan; las existentes se actualizan solo si el
+            # timestamp entrante es estrictamente mayor al ya almacenado.
+            col_update = ", ".join(
+                [f"dest.[{c}] = src.[{c}]" for c in columnas_dest if c not in columnas_fisicas_key]
             )
-        """)
-        resultado = conexion.execute(sql_insert)
-        self.resumen['insertados'] += resultado.rowcount
+            col_insert_list = ", ".join([f"[{c}]" for c in columnas_dest])
+            col_values_list = ", ".join([f"src.[{c}]" for c in columnas_dest])
+
+            # El tiebreaker es una columna interna del batch (ej. _fecha_registro_dt)
+            # que puede no existir en la tabla destino. Comparamos contra Fecha_Sistema
+            # del destino como fallback seguro para decidir cuál registro es más reciente.
+            sql_merge = text(f"""
+                MERGE {self.tabla_destino} AS dest
+                USING {nombre_temp} AS src
+                ON ({clausula_on_src})
+                WHEN MATCHED AND ISNULL(src.[{tiebreaker}], '19000101') > ISNULL(dest.[Fecha_Sistema], '19000101')
+                    THEN UPDATE SET {col_update}
+                WHEN NOT MATCHED BY TARGET
+                    THEN INSERT ({col_insert_list}) VALUES ({col_values_list})
+                OUTPUT $action;
+            """)
+            filas_accion = conexion.execute(sql_merge).fetchall()
+            n_insert = sum(1 for r in filas_accion if r[0] == 'INSERT')
+            n_update = sum(1 for r in filas_accion if r[0] == 'UPDATE')
+            self.resumen['insertados'] += n_insert
+            self.resumen.setdefault('actualizados_por_tiebreaker', 0)
+            self.resumen['actualizados_por_tiebreaker'] += n_update
+            if n_update:
+                _log.info(
+                    f"[{self.tabla_destino}] MERGE tiebreaker: {n_insert} INSERT, "
+                    f"{n_update} UPDATE (timestamp más reciente ganó)."
+                )
+        else:
+            # 5-orig. Detectar duplicados externos y marcarlos
+            sql_duplicados = text(f"""
+                SELECT tmp.[id_origen_rastreo]
+                FROM {nombre_temp} tmp
+                INNER JOIN {self.tabla_destino} dest ON {clausula_on_tmp}
+            """)
+            duplicados = conexion.execute(sql_duplicados).fetchall()
+            ids_duplicados = {int(d[0]) for d in duplicados if d[0] is not None}
+
+            for id_dup in ids_duplicados:
+                if 'rechazados_ids' not in self.resumen:
+                    self.resumen['rechazados_ids'] = []
+                self.resumen['rechazados_ids'].append({
+                    'id': id_dup,
+                    'es_duplicado_externo': True
+                })
+                if id_dup in self.ids_procesados:
+                    self.ids_procesados.remove(id_dup)
+                self.ids_rechazados.append(id_dup)
+
+            # 6-orig. INSERT solo los nuevos via WHERE NOT EXISTS
+            col_select = ", ".join([f"tmp.[{c}]" for c in columnas_dest])
+            col_insert = ", ".join([f"[{c}]" for c in columnas_dest])
+
+            sql_insert = text(f"""
+                INSERT INTO {self.tabla_destino} ({col_insert})
+                SELECT {col_select}
+                FROM {nombre_temp} tmp
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM {self.tabla_destino} dest
+                    WHERE {clausula_on_tmp}
+                )
+            """)
+            resultado = conexion.execute(sql_insert)
+            self.resumen['insertados'] += resultado.rowcount
 
         # 7. Limpieza
         conexion.execute(text(f"IF OBJECT_ID('tempdb..{nombre_temp}') IS NOT NULL DROP TABLE {nombre_temp}"))
@@ -485,4 +568,5 @@ class BaseFactProcessor:
             'Nuevos_Casos_Cuarentena': unique_ids_rechazados,
             'Bloqueo_Integridad': bloqueo,
             'Dependencias_Incumplidas': [],
+            'resueltos_por_tiebreaker': self.resumen.get('resueltos_por_tiebreaker', 0),
         }

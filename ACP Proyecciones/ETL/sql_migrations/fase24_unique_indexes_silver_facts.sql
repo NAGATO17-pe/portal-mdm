@@ -82,13 +82,13 @@ GO
 
 -- =============================================================================
 -- 4. Silver.Fact_Evaluacion_Vegetativa
---    Grano: ID_Geografia + ID_Tiempo + ID_Variedad + ID_Personal
+--    Grano: ID_Geografia + ID_Tiempo + ID_Variedad + ID_Personal + Tipo_Evaluacion
 -- =============================================================================
 DELETE FROM Silver.Fact_Evaluacion_Vegetativa
 WHERE ID_Evaluacion_Veg NOT IN (
     SELECT MIN(ID_Evaluacion_Veg)
     FROM Silver.Fact_Evaluacion_Vegetativa
-    GROUP BY ID_Geografia, ID_Tiempo, ID_Variedad, ID_Personal
+    GROUP BY ID_Geografia, ID_Tiempo, ID_Variedad, ID_Personal, Tipo_Evaluacion
 );
 GO
 
@@ -98,7 +98,7 @@ IF NOT EXISTS (
       AND object_id = OBJECT_ID('Silver.Fact_Evaluacion_Vegetativa')
 )
 CREATE UNIQUE NONCLUSTERED INDEX UX_Fact_EvalVeg_Grain
-    ON Silver.Fact_Evaluacion_Vegetativa (ID_Geografia, ID_Tiempo, ID_Variedad, ID_Personal);
+    ON Silver.Fact_Evaluacion_Vegetativa (ID_Geografia, ID_Tiempo, ID_Variedad, ID_Personal, Tipo_Evaluacion);
 GO
 
 -- =============================================================================

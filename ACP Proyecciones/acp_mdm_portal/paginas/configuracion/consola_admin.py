@@ -94,6 +94,13 @@ def render():
 
     # ── Ejecución Común ────────────────────────────────────────────────────────
     if query_a_ejecutar:
+        query_strip = query_a_ejecutar.strip().upper()
+        # Blacklist de seguridad basica
+        palabras_prohibidas = ["DROP", "DELETE", "TRUNCATE", "UPDATE", "INSERT", "ALTER", "CREATE"]
+        if any(p in query_strip for p in palabras_prohibidas):
+             st.error("⚠️ Operación no permitida. Esta consola es de SOLO LECTURA por seguridad.")
+             st.stop()
+
         if not query_a_ejecutar.strip():
             st.warning("⚠️ La consulta está vacía. Escribe algo válido para ejecutar.")
         else:

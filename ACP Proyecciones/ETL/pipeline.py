@@ -26,6 +26,7 @@ from mdm.lookup import limpiar_cache as limpiar_lookup
 
 from silver.dims.dim_personal import cargar_dim_personal
 from silver.dims.dim_geografia import cargar_dim_geografia
+from silver.dims.dim_geografia_v2 import cargar_dim_geografia_v2
 
 from silver.facts.fact_cosecha_sap import cargar_fact_cosecha_sap
 from silver.facts.fact_conteo_fenologico import cargar_fact_conteo_fenologico
@@ -59,15 +60,9 @@ from utils.ejecucion import (
 from utils.metricas import formatear_resumen_fact, normalizar_resultado_fact
 
 
-import json
 import logging
-from datetime import datetime, timezone
-
-
-import json
-import logging
-from datetime import datetime, timezone
 import sys
+from datetime import datetime
 from pathlib import Path
 
 class PrettyConsoleFormatter(logging.Formatter):
@@ -130,26 +125,20 @@ def _imprimir(msg: str = ""):
 
 
 
-def _delegar_funcion(nombre_funcion: str):
-    def _wrapper(*args, **kwargs):
-        return globals()[nombre_funcion](*args, **kwargs)
-    return _wrapper
-
-
 CATALOGO_FACTS = construir_catalogo_facts({
-    'Fact_Cosecha_SAP': _delegar_funcion('cargar_fact_cosecha_sap'),
-    'Fact_Conteo_Fenologico': _delegar_funcion('cargar_fact_conteo_fenologico'),
-    'Fact_Maduracion': _delegar_funcion('cargar_fact_maduracion'),
-    'Fact_Peladas': _delegar_funcion('cargar_fact_peladas'),
-    'Fact_Telemetria_Clima': _delegar_funcion('cargar_fact_telemetria_clima'),
-    'Fact_Evaluacion_Pesos': _delegar_funcion('cargar_fact_evaluacion_pesos'),
-    'Fact_Tareo': _delegar_funcion('cargar_fact_tareo'),
-    'Fact_Fisiologia': _delegar_funcion('cargar_fact_fisiologia'),
-    'Fact_Evaluacion_Vegetativa': _delegar_funcion('cargar_fact_evaluacion_vegetativa'),
-    'Fact_Induccion_Floral': _delegar_funcion('cargar_fact_induccion_floral'),
-    'Fact_Tasa_Crecimiento_Brotes': _delegar_funcion('cargar_fact_tasa_crecimiento_brotes'),
-    'Fact_Sanidad_Activo': _delegar_funcion('cargar_fact_sanidad_activo'),
-    'Fact_Ciclo_Poda': _delegar_funcion('cargar_fact_ciclo_poda'),
+    'Fact_Cosecha_SAP':           cargar_fact_cosecha_sap,
+    'Fact_Conteo_Fenologico':     cargar_fact_conteo_fenologico,
+    'Fact_Maduracion':            cargar_fact_maduracion,
+    'Fact_Peladas':               cargar_fact_peladas,
+    'Fact_Telemetria_Clima':      cargar_fact_telemetria_clima,
+    'Fact_Evaluacion_Pesos':      cargar_fact_evaluacion_pesos,
+    'Fact_Tareo':                 cargar_fact_tareo,
+    'Fact_Fisiologia':            cargar_fact_fisiologia,
+    'Fact_Evaluacion_Vegetativa': cargar_fact_evaluacion_vegetativa,
+    'Fact_Induccion_Floral':      cargar_fact_induccion_floral,
+    'Fact_Tasa_Crecimiento_Brotes': cargar_fact_tasa_crecimiento_brotes,
+    'Fact_Sanidad_Activo':        cargar_fact_sanidad_activo,
+    'Fact_Ciclo_Poda':            cargar_fact_ciclo_poda,
 })
 
 
@@ -416,12 +405,10 @@ def _ejecutar_dependencia_reproceso(
         return
 
     if dependencia == DEPENDENCIA_DIM_GEOGRAFIA:
-        r = cargar_dim_geografia(engine)
-        resumen['Dim_Geografia vigentes'] = r.get('vigentes', 0)
-        resumen['Dim_Geografia operativos'] = r.get('operativos', 0)
-        resumen['Dim_Geografia test_block'] = r.get('test_block', 0)
-        resumen['Dim_Geografia sin cama explicita'] = r.get('sin_cama_explicita', 0)
-        resumen['Dim_Geografia duplicados'] = r.get('duplicados', 0)
+        r = cargar_dim_geografia_v2(engine)
+        resumen['Dim_Geografia insertados'] = r.get('insertados', 0)
+        resumen['Dim_Geografia cerrados'] = r.get('cerrados', 0)
+        resumen['Dim_Geografia sin_cambios'] = r.get('sin_cambios', 0)
         return
 
     if dependencia == DEPENDENCIA_SP_CAMA_SYNC:
@@ -500,6 +487,8 @@ def _ejecutar_fact(nombre: str, tabla_destino: str, funcion, engine, resumen: di
         resumen[f'{nombre} leidos'] = r.get('leidos', 0)
         resumen[f'{nombre} rechazados'] = r.get('rechazados', 0)
         resumen[f'{nombre} rechazo pct'] = f"{r.get('tasa_rechazo_pct', 0.0)}%"
+        if r.get('resueltos_por_tiebreaker', 0) > 0:
+            resumen[f'{nombre} resueltos_por_tiebreaker'] = r.get('resueltos_por_tiebreaker', 0)
         for indice, item in enumerate(r.get('motivos_principales', []), start=1):
             resumen[f'{nombre} motivo {indice}'] = f"{item['motivo']} ({item['cantidad']})"
         registrar_fin(id_log, {
@@ -606,7 +595,7 @@ def ejecutar_reproceso_facts(
         else:
             _paso(paso_actual, total, 'Refrescando Marts Gold impactados...')
             try:
-                resumen_marts = refrescar_marts_seleccionados(engine, plan['marts'], resumen_etl=resumen)
+                resumen_marts = refrescar_marts_seleccionados(engine, plan['marts'], resumen_etl=resumen, facts_bloqueantes=frozenset(config_operativa['facts_bloqueantes_gold']))
                 for mart, valor in resumen_marts.items():
                     resumen[mart] = valor if isinstance(valor, int) else valor
             except Exception as error:
@@ -627,7 +616,7 @@ def ejecutar_reproceso_facts(
 def ejecutar() -> None:
     inicio = _encabezado()
     engine = obtener_engine()
-    total = 22
+    total = 23
     resumen = {}
     errores_pipeline: list[str] = []
     facts_con_error: list[str] = []
@@ -640,12 +629,20 @@ def ejecutar() -> None:
     resumen['Servidor SQL'] = contexto_sql.get('servidor')
     resumen['Base SQL'] = contexto_sql.get('base_datos')
 
-    _paso(2, total, 'Limpiando cache...')
+    _paso(2, total, 'Verificando esquema de objetos criticos en DB...')
+    try:
+        from utils.verificacion_esquema import verificar_objetos_criticos
+        verificar_objetos_criticos(engine)
+    except RuntimeError as _e_esquema:
+        _imprimir(str(_e_esquema))
+        sys.exit(1)
+
+    _paso(3, total, 'Limpiando cache...')
     limpiar_lookup()
     limpiar_params()
     config_operativa = _cargar_configuracion_operativa()
 
-    _paso(3, total, 'Cargando archivos Excel a Bronce...')
+    _paso(4, total, 'Cargando archivos Excel a Bronce...')
     resultados_bronce = ejecutar_carga_bronce()
     resumen['Bronce archivos'] = len(resultados_bronce)
     resumen['Bronce filas'] = sum(r['filas'] for r in resultados_bronce)
@@ -663,20 +660,18 @@ def ejecutar() -> None:
         _resumen_final(inicio, resumen)
         sys.exit(1)
 
-    _paso(4, total, 'Cargando Dim_Personal (SCD1)...')
+    _paso(5, total, 'Cargando Dim_Personal (SCD1)...')
     r = cargar_dim_personal(engine)
     resumen['Dim_Personal insertados'] = r['insertados']
     resumen['Dim_Personal actualizados'] = r['actualizados']
 
-    _paso(5, total, 'Validando Dim_Geografia...')
-    r = cargar_dim_geografia(engine)
-    resumen['Dim_Geografia vigentes'] = r.get('vigentes', 0)
-    resumen['Dim_Geografia operativos'] = r.get('operativos', 0)
-    resumen['Dim_Geografia test_block'] = r.get('test_block', 0)
-    resumen['Dim_Geografia sin cama explicita'] = r.get('sin_cama_explicita', 0)
-    resumen['Dim_Geografia duplicados'] = r.get('duplicados', 0)
+    _paso(6, total, 'Sincronizando Dim_Geografia (arquitectura catálogos)...')
+    r = cargar_dim_geografia_v2(engine)
+    resumen['Dim_Geografia insertados'] = r.get('insertados', 0)
+    resumen['Dim_Geografia cerrados'] = r.get('cerrados', 0)
+    resumen['Dim_Geografia sin_cambios'] = r.get('sin_cambios', 0)
 
-    _paso(6, total, 'Sincronizando catalogo/bridge de cama via SP...')
+    _paso(7, total, 'Sincronizando catalogo/bridge de cama via SP...')
     try:
         if tablas_bronce_ok & set(config_operativa['tablas_bronce_sp_cama']):
             bridge_antes = _contar_bridge_geografia_cama(engine)
@@ -710,7 +705,7 @@ def ejecutar() -> None:
         resumen['SP_Cama_Upsert ERROR'] = str(error)
         sys.exit(1)
 
-    _paso(7, total, 'Validando calidad de cama via SP...')
+    _paso(8, total, 'Validando calidad de cama via SP...')
     try:
         r = _ejecutar_sp_validar_camas(
             engine,
@@ -742,12 +737,12 @@ def ejecutar() -> None:
             facts_con_error.append(nombre)
 
     if _gold_debe_bloquearse(facts_con_error, config_operativa['facts_bloqueantes_gold']):
-        _paso(21, total, 'Omitiendo Marts Gold por errores previos...')
+        _paso(22, total, 'Omitiendo Marts Gold por errores previos...')
         resumen['Gold estado'] = 'OMITIDO_POR_ERROR_EN_FACTS'
     else:
-        _paso(21, total, 'Refrescando Marts Gold...')
+        _paso(22, total, 'Refrescando Marts Gold...')
         try:
-            resumen_marts = refrescar_todos_los_marts(engine, resumen_etl=resumen)
+            resumen_marts = refrescar_todos_los_marts(engine, resumen_etl=resumen, facts_bloqueantes=frozenset(config_operativa['facts_bloqueantes_gold']))
             for mart, valor in resumen_marts.items():
                 resumen[mart] = valor if isinstance(valor, int) else valor
         except Exception as error:
@@ -756,7 +751,7 @@ def ejecutar() -> None:
             resumen['Gold ERROR'] = str(error)
             errores_pipeline.append(mensaje_error)
 
-    _paso(22, total, 'Finalizando...')
+    _paso(23, total, 'Finalizando...')
     if errores_pipeline:
         _registrar_errores_resumen(resumen, errores_pipeline)
     _resumen_final(inicio, resumen)

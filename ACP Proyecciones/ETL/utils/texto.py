@@ -138,7 +138,7 @@ def normalizar_modulo(valor: str | None) -> str | None:
     valor_limpio = normalizar_espacio(valor).upper()
 
     if 'TEST' in valor_limpio or 'BLOCK' in valor_limpio:
-        return None  # Señal para Es_Test_Block = 1
+        return valor_limpio  # Ya no retornamos None, permitimos que MDM resuelva el alias
 
     return normalizar_componente_geografico(valor_limpio)
 

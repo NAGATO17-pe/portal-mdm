@@ -1,4 +1,4 @@
-﻿"""
+"""
 fact_evaluacion_vegetativa.py
 ==============================
 Carga Silver.Fact_Evaluacion_Vegetativa desde Bronce.Evaluacion_Vegetativa.
@@ -157,14 +157,14 @@ class ProcesadorEvaluacionVegetativa(BaseFactProcessor):
         for _, fila in df.iterrows():
             id_origen = _a_entero_nulo(fila.get('ID_Registro_Origen'))
 
-            fecha = self._validar_y_resolver_fecha(id_origen or 0, fila.get('Fecha_Raw'), 'evaluacion_vegetativa')
+            fecha = self._validar_y_resolver_fecha(id_origen, fila.get('Fecha_Raw'), 'evaluacion_vegetativa')
             if fecha is None:
                 if id_origen is None:
                     self._claves_rechazadas.append(self._firma_fila(fila))
                 continue
 
             resultado_geo = self._validar_y_resolver_geografia(
-                id_origen or 0,
+                id_origen,
                 None,
                 fila.get('Modulo_Raw'),
                 turno=fila.get('Turno_Raw'),
@@ -176,7 +176,7 @@ class ProcesadorEvaluacionVegetativa(BaseFactProcessor):
                     self._claves_rechazadas.append(self._firma_fila(fila))
                 continue
 
-            id_var = self._validar_y_resolver_variedad(id_origen or 0, fila.get('Variedad_Canonica'), fila.get('Descripcion_Raw'))
+            id_var = self._validar_y_resolver_variedad(id_origen, fila.get('Variedad_Canonica'), fila.get('Descripcion_Raw'))
             if id_var is None:
                 if id_origen is None:
                     self._claves_rechazadas.append(self._firma_fila(fila))

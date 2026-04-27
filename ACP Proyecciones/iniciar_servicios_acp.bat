@@ -48,7 +48,7 @@ if not errorlevel 1 (
     echo  [~] Backend ya corriendo - se omite
 ) else (
     echo  [1/3] Iniciando Backend FastAPI en puerto 8000...
-    start "ACP: Backend API" cmd /k "title ACP: Backend API && cd /d "%BACKEND%" && "%VENV%\uvicorn.exe" main:aplicacion --host 0.0.0.0 --port 8000"
+    start "ACP: Backend API" cmd /k "title ACP: Backend API && cd /d "%BACKEND%" && "%VENV%\uvicorn.exe" main:aplicacion --host 0.0.0.0 --port 8000 >> "%LOG_BACK%" 2>&1"
     timeout /t 3 /nobreak > nul
     echo       OK ^> http://localhost:8000
 )
@@ -59,7 +59,7 @@ if not errorlevel 1 (
     echo  [~] Runner ETL ya corriendo - se omite
 ) else (
     echo  [2/3] Iniciando Runner ETL daemon...
-    start "ACP: Runner ETL" cmd /k "title ACP: Runner ETL && cd /d "%BACKEND%" && "%VENV%\python.exe" -m runner.runner"
+    start "ACP: Runner ETL" cmd /k "title ACP: Runner ETL && cd /d "%BACKEND%" && "%VENV%\python.exe" -m runner.runner >> "%LOG_RUN%" 2>&1"
     timeout /t 2 /nobreak > nul
     echo       OK ^> Runner escuchando cola
 )
@@ -131,7 +131,6 @@ if exist "%LOG_RUN%" (
 )
 echo.
 goto MENU
-
 
 :FIN
 exit

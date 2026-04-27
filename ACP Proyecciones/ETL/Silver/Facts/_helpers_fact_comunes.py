@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import re
 from collections.abc import MutableSet
+from typing import TYPE_CHECKING
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 # Aliases de backcompat — implementaciones viven en utils.tipos
 from utils.tipos import (
@@ -23,6 +27,8 @@ __all__ = [
     "registrar_rechazo",
     "finalizar_resumen_fact",
     "obtener_columnas_tabla",
+    "columna_sql_dinamica",
+    "leer_bronce_dinamico",
     "validar_layout_migrado",
     "parsear_valores_raw",
 ]
@@ -30,19 +36,22 @@ __all__ = [
 
 def motivo_cuarentena_geografia(resultado_geo: dict) -> str:
     estado = resultado_geo.get("estado")
+    detalle = resultado_geo.get("detalle")
+    complemento = f" Detalle: {detalle}" if detalle else ""
+
     if estado in ("TEST_BLOCK_NO_MAPEADO", "TEST_BLOCK_AMBIGUO"):
-        return "Test block (VI) sin mapeo unico en Dim_Geografia."
+        return f"Test block (VI) sin mapeo unico en Dim_Geografia.{complemento}"
     if estado in ("PENDIENTE_CASO_ESPECIAL", "CASO_ESPECIAL_MODULO"):
-        return "Geografia especial requiere catalogacion o regla en MDM_Geografia."
+        return f"Geografia especial requiere catalogacion o regla en MDM_Geografia.{complemento}"
     if estado in ("PENDIENTE_CAMA_GENERICA", "CAMA_NO_RELACION"):
-        return "Cama no relacionada a la geografia operativa."
+        return f"Cama no relacionada a la geografia operativa.{complemento}"
     if estado in ("PENDIENTE_DIM_DUPLICADA", "GEOGRAFIA_AMBIGUA"):
-        return "La clave geografica tiene mas de un registro vigente en Silver.Dim_Geografia."
+        return f"La clave geografica tiene mas de un registro vigente en Silver.Dim_Geografia.{complemento}"
     if estado == "CAMA_NO_VALIDA":
-        return "Cama fuera de rango operativo permitido."
+        return f"Cama fuera de rango operativo permitido.{complemento}"
     if estado == "CAMA_NO_CATALOGO":
-        return "Cama valida pero no registrada en el catalogo operativo."
-    return "Geografia no encontrada en Silver.Dim_Geografia."
+        return f"Cama valida pero no registrada en el catalogo operativo.{complemento}"
+    return f"Geografia no encontrada en Silver.Dim_Geografia.{complemento}"
 
 
 def registrar_rechazo(
@@ -95,6 +104,47 @@ def obtener_columnas_tabla(engine: Engine, tabla_completa: str) -> set[str]:
             {"esquema": esquema, "tabla": tabla},
         )
         return {str(fila[0]) for fila in resultado.fetchall()}
+
+
+def columna_sql_dinamica(columnas_disponibles: set[str], nombre_columna: str) -> str:
+    """
+    Retorna el nombre de columna si existe en la tabla, o un CAST(NULL) con alias
+    si aún no fue migrada. Permite SELECT defensivo sin romper en layouts parciales.
+    """
+    if nombre_columna in columnas_disponibles:
+        return nombre_columna
+    return f"CAST(NULL AS NVARCHAR(MAX)) AS {nombre_columna}"
+
+
+def leer_bronce_dinamico(
+    engine: Engine,
+    tabla: str,
+    columna_id: str,
+    columnas_opcionales: list[str],
+    *,
+    filtro_estado: bool = True,
+) -> "pd.DataFrame":
+    """
+    Lee una tabla Bronce con SELECT defensivo: columnas fijas + columnas opcionales
+    que se sustituyen por NULL si aún no existen (layouts en migración parcial).
+
+    Args:
+        tabla: nombre completo 'Esquema.Tabla'
+        columna_id: columna PK, siempre incluida sin fallback
+        columnas_opcionales: columnas _Raw deseadas (pueden no existir todavía)
+        filtro_estado: si True, agrega WHERE Estado_Carga = 'CARGADO'
+    """
+    import pandas as pd
+
+    disponibles = obtener_columnas_tabla(engine, tabla)
+    select_cols = [columna_id] + [
+        columna_sql_dinamica(disponibles, col) for col in columnas_opcionales
+    ]
+    where = "WHERE Estado_Carga = 'CARGADO'" if filtro_estado and 'Estado_Carga' in disponibles else ""
+    sql = f"SELECT {', '.join(select_cols)} FROM {tabla} {where}"
+    with engine.connect() as conexion:
+        resultado = conexion.execute(text(sql))
+        return pd.DataFrame(resultado.fetchall(), columns=resultado.keys())
 
 
 def validar_layout_migrado(

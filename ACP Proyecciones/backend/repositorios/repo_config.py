@@ -83,3 +83,21 @@ def listar_parametros(pagina: int = 1, tamano: int = 20) -> dict:
     except SQLAlchemyError:
         log.exception("Error al listar parámetros del pipeline")
         raise ErrorBaseDatos()
+def actualizar_parametro(nombre: str, valor: str, modificado_por: str) -> bool:
+    try:
+        with obtener_engine().begin() as con:
+            rows = con.execute(text("""
+                UPDATE Config.Parametros_Pipeline
+                SET Valor = :valor,
+                    Fecha_Modificacion = GETDATE(),
+                    Modificado_Por = :usuario
+                WHERE Nombre_Parametro = :nombre
+            """), {
+                "valor": valor,
+                "usuario": modificado_por,
+                "nombre": nombre
+            }).rowcount
+            return rows > 0
+    except SQLAlchemyError:
+        log.exception("Error al actualizar parámetro", extra={"nombre": nombre})
+        raise ErrorBaseDatos()

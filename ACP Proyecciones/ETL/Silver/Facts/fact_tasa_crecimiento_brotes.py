@@ -133,7 +133,7 @@ class ProcesadorTasaCrecimientoBrotes(BaseFactProcessor):
         # Grain: Geo + Tiempo + Variedad + Tipo_Evaluacion + Tipo_Tallo + Ensayo + Medida + Codigo_Origen
         self.columnas_clave_unica = [
             'ID_Geografia', 'ID_Tiempo', 'ID_Variedad',
-            'Tipo_Evaluacion', 'Tipo_Tallo', 'Codigo_Ensayo', 'Codigo_Origen'
+            'Tipo_Evaluacion', 'Tipo_Tallo', 'Codigo_Ensayo', 'Codigo_Origen', 'Medida_Crecimiento'
         ]
         self._columna_id = columna_id
         # Cache para fecha_poda_aux (dominio historico, sin rechazo)

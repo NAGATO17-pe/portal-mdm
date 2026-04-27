@@ -51,7 +51,10 @@ TABLA_ORIGEN = 'Bronce.Maduracion'
 TABLA_DESTINO = 'Silver.Fact_Maduracion'
 TAM_LOTE_PROGRESO = 5000
 
-MAPA_ESTADO_CICLO = {
+# Fallback en caso de que MDM.Diccionario_Homologacion no tenga entradas para estado ciclo.
+# Fuente de verdad: MDM.Diccionario_Homologacion WHERE Tabla_Origen='Bronce.Maduracion'
+#                  AND Campo_Origen='DESCRIPCIONESTADOCICLO_Raw'
+_MAPA_ESTADO_CICLO_FALLBACK: dict[str, str] = {
     'BOTON FLORAL': 'Boton Floral',
     'BOTON': 'Boton Floral',
     'FLOR': 'Flor',
@@ -71,6 +74,8 @@ MAPA_ESTADO_CICLO = {
     'PINTONA': 'Crema',
     'COSECHABLE': 'Cosechable',
 }
+
+MAPA_ESTADO_CICLO = _MAPA_ESTADO_CICLO_FALLBACK
 
 MAPA_ESTADO_POR_ID = {
     0: 'Boton Floral',
@@ -166,13 +171,13 @@ def _normalizar_estado_crudo(valor: str | None) -> str | None:
     return texto or None
 
 
-def _resolver_estado_canonico(payload: dict[str, str]) -> str | None:
+def _resolver_estado_canonico(payload: dict[str, str], mapa_estado: dict[str, str]) -> str | None:
     descripcion = _extraer_texto(
         _obtener_valor(payload, 'DESCRIPCIONESTADOCICLO_Raw', 'DESCRIPCION_ESTADO_CICLO_Raw')
     )
     descripcion_normalizada = _normalizar_estado_crudo(descripcion)
-    if descripcion_normalizada and descripcion_normalizada in MAPA_ESTADO_CICLO:
-        return MAPA_ESTADO_CICLO[descripcion_normalizada]
+    if descripcion_normalizada and descripcion_normalizada in mapa_estado:
+        return mapa_estado[descripcion_normalizada]
 
     id_estado = _extraer_entero(_obtener_valor(payload, 'IDESTADOCICLO_Raw', 'ID_ESTADO_CICLO_Raw'))
     if id_estado is None:
@@ -180,10 +185,33 @@ def _resolver_estado_canonico(payload: dict[str, str]) -> str | None:
     return MAPA_ESTADO_POR_ID.get(id_estado)
 
 
+def _cargar_mapa_estado_desde_db(engine: Engine) -> dict[str, str]:
+    """
+    Lee alias de estado fenológico desde MDM.Diccionario_Homologacion.
+    Si no hay entradas aprobadas, retorna el fallback hardcodeado.
+    """
+    try:
+        with engine.connect() as conexion:
+            resultado = conexion.execute(text("""
+                SELECT Texto_Crudo, Valor_Canonico
+                FROM MDM.Diccionario_Homologacion
+                WHERE Tabla_Origen  = 'Bronce.Maduracion'
+                  AND Campo_Origen  = 'DESCRIPCIONESTADOCICLO_Raw'
+                  AND Aprobado_Por IS NOT NULL
+                  AND Aprobado_Por != 'PENDIENTE'
+            """)).fetchall()
+        if resultado:
+            return {str(fila[0]).strip().upper(): str(fila[1]).strip() for fila in resultado}
+    except Exception:
+        pass
+    return dict(_MAPA_ESTADO_CICLO_FALLBACK)
+
+
 class ProcesadorMaduracion(BaseFactProcessor):
     def __init__(self, engine: Engine):
         super().__init__(engine, TABLA_ORIGEN, TABLA_DESTINO)
         self.columnas_clave_unica = ['ID_Geografia', 'ID_Tiempo', 'ID_Variedad', 'ID_Cinta', 'ID_Organo']
+        self.columna_tiebreaker_timestamp = '_fecha_registro_dt'
 
 
 def cargar_fact_maduracion(engine: Engine) -> dict:
@@ -196,6 +224,7 @@ def cargar_fact_maduracion(engine: Engine) -> dict:
 
     diccionario_variedades = cargar_diccionario(engine, TABLA_ORIGEN)
     catalogo_variedades = cargar_catalogo_variedades(engine)
+    mapa_estado_ciclo = _cargar_mapa_estado_desde_db(engine)
     cache_variedades: dict[str, tuple[str | None, str]] = {}
     tabla_soporta_estado_carga = _tabla_maduracion_tiene_estado_carga(engine)
     
@@ -233,13 +262,13 @@ def cargar_fact_maduracion(engine: Engine) -> dict:
                 procesador.registrar_rechazo(id_origen, 'ORGANO_Raw', organo_raw if organo_raw is not None else fila_dict.get('Valores_Raw'), 'ID_Organo invalido o ausente en maduracion')
                 continue
 
-            estado_canonico = _resolver_estado_canonico(payload)
+            estado_canonico = _resolver_estado_canonico(payload, mapa_estado_ciclo)
             id_estado = obtener_id_estado_fenologico(estado_canonico, engine)
             if not id_estado:
                 procesador.registrar_rechazo(id_origen, 'DESCRIPCIONESTADOCICLO_Raw', _obtener_valor(payload, 'DESCRIPCIONESTADOCICLO_Raw', 'IDESTADOCICLO_Raw'), 'Estado fenologico no reconocido en maduracion')
                 continue
 
-            modulo = None if es_test_block(modulo_raw) else normalizar_modulo(modulo_raw)
+            modulo = normalizar_modulo(modulo_raw)
             clave_geo = (
                 None if modulo is None else str(modulo).strip(),
                 None if turno_raw is None else str(turno_raw).strip(),
@@ -301,6 +330,7 @@ def cargar_fact_maduracion(engine: Engine) -> dict:
                 procesador.registrar_rechazo(id_origen, 'FECHA_Raw', fecha_raw, 'Fecha sin match en Dim_Tiempo')
                 continue
 
+            fecha_registro_raw = _obtener_valor(payload, 'FECHAREGISTRO_Raw', 'Fecha_Registro_Raw') or str(fecha)
             payload_inserts.append({
                 "id_origen_rastreo": id_origen,
                 "ID_Personal": id_personal,
@@ -314,36 +344,12 @@ def cargar_fact_maduracion(engine: Engine) -> dict:
                 "Fecha_Evento": fecha,
                 "Fecha_Sistema": pd.Timestamp.now(),
                 "Estado_DQ": "OK",
-                "_fecha_registro": _obtener_valor(payload, 'FECHAREGISTRO_Raw', 'Fecha_Registro_Raw') or str(fecha)
+                "_fecha_registro_dt": pd.to_datetime(fecha_registro_raw, errors='coerce'),
             })
 
         if payload_inserts:
-            # --- DEDUPLICACIÓN FORENSE ("Latest Wins") ---
-            # Si hay mediciones duplicadas el mismo día para el mismo órgano, nos quedamos con la más reciente.
-            df_dedupe = pd.DataFrame(payload_inserts)
-            
-            # Definimos la clave natural de negocio
-            columnas_clave = ['ID_Geografia', 'ID_Tiempo', 'ID_Variedad', 'ID_Cinta', 'ID_Organo']
-            
-            # Convertimos _fecha_registro a datetime para comparar
-            df_dedupe['_fecha_registro_dt'] = pd.to_datetime(df_dedupe['_fecha_registro'], errors='coerce')
-            
-            # Ordenamos por clave y fecha registro descendente
-            df_dedupe = df_dedupe.sort_values(by=columnas_clave + ['_fecha_registro_dt'], ascending=[True]*5 + [False])
-            
-            # Quitamos los que sobran
-            df_final = df_dedupe.drop_duplicates(subset=columnas_clave, keep='first')
-            
-            # Limpiamos columnas auxiliares
-            final_payload = df_final.drop(columns=['_fecha_registro', '_fecha_registro_dt']).to_dict('records')
-            
-            # Sincronizamos los IDs procesados para marcar estado_carga correctamente
-            procesador.ids_procesados = [int(r['id_origen_rastreo']) for r in final_payload]
-            
-            _log.info(f"Deduplicación Forense: {len(payload_inserts) - len(final_payload)} registros técnicos/redundantes filtrados silenciosamente.")
-            
-            procesador._ejecutar_insercion_masiva_segura(contexto, final_payload, "#Temp_Fact_Maduracion")
-            
-        procesador.finalizar_proceso(contexto)
+            procesador._ejecutar_insercion_masiva_segura(contexto, payload_inserts, "#Temp_Fact_Maduracion")
+
+        return procesador.finalizar_proceso(contexto)
 
     return _finalizar_resumen_fact(procesador.resumen)

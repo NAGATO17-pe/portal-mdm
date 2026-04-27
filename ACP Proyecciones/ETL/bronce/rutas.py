@@ -60,6 +60,7 @@ ALIAS_ARCHIVOS: dict[str, str] = {
     'evaluacion_pesos':               'evaluacion_pesos',
     'evaluacion_vegetativa':          'evaluacion_vegetativa',
     'vegetativa_arandano':            'evaluacion_vegetativa',
+    'tasa_crecimiento':               'tasa_crecimiento_brotes',
 }
 
 

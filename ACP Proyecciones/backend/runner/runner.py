@@ -38,7 +38,9 @@ if str(_DIR_BACKEND) not in sys.path:
 
 from nucleo.logging import configurar_logging, obtener_logger
 from nucleo.settings import settings
-import repositorios.repo_control as rc
+import repositorios.repo_corridas as r_corrida
+import repositorios.repo_locks as r_lock
+import repositorios.repo_comandos as r_cmd
 from runner.ejecutor import ejecutar_corrida
 
 configurar_logging()
@@ -76,17 +78,17 @@ def _procesar_comando(cmd: dict) -> None:
     })
 
     # ── Lock de concurrencia ──────────────────────────────────────────────────
-    if not rc.adquirir_lock(id_corrida, timeout_lock_seg=_LOCK_TTL_SEG):
-        bloqueo = rc.lock_activo()
+    if not r_lock.adquirir_lock(id_corrida, timeout_lock_seg=_LOCK_TTL_SEG):
+        bloqueo = r_lock.lock_activo()
         log.warning("[RUNNER] No se pudo adquirir lock — otra corrida en ejecución",
                     extra={"bloqueo": bloqueo})
-        rc.marcar_comando(id_comando, "ERROR_COLA", "Lock ocupado por otra corrida.")
-        rc.actualizar_estado_corrida(id_corrida, "ERROR",
+        r_cmd.marcar_comando(id_comando, "ERROR_COLA", "Lock ocupado por otra corrida.")
+        r_corrida.actualizar_estado_corrida(id_corrida, "ERROR",
                                      "No se pudo adquirir lock de ejecución.")
         return
 
     try:
-        rc.marcar_comando(id_comando, "PROCESANDO")
+        r_cmd.marcar_comando(id_comando, "PROCESANDO")
         estado = ejecutar_corrida(
             id_corrida=id_corrida,
             iniciado_por=iniciado_por,
@@ -94,13 +96,13 @@ def _procesar_comando(cmd: dict) -> None:
             timeout_segundos=timeout,
         )
     finally:
-        rc.liberar_lock(id_corrida)
+        r_lock.liberar_lock(id_corrida)
 
-    rc.marcar_comando(id_comando, "PROCESADO")
+    r_cmd.marcar_comando(id_comando, "PROCESADO")
 
     # ── Retry automático ──────────────────────────────────────────────────────
     if estado == "ERROR" and max_ret > 0:
-        corrida = rc.obtener_corrida(id_corrida)
+        corrida = r_corrida.obtener_corrida(id_corrida)
         intento_actual = corrida.get("intento_numero", 1) if corrida else 1
         if intento_actual <= max_ret:
             log.info("[RUNNER] Encolando reintento",
@@ -108,14 +110,14 @@ def _procesar_comando(cmd: dict) -> None:
             nuevo_id = f"{id_corrida}-r{intento_actual + 1}"
             comentario_reintento = (corrida or {}).get("comentario") or comentario
             try:
-                rc.insertar_corrida(
+                r_corrida.insertar_corrida(
                     id_corrida=nuevo_id,
                     iniciado_por=iniciado_por,
                     comentario=comentario_reintento,
                     max_reintentos=max_ret,
                     timeout_segundos=timeout,
                 )
-                rc.encolar_comando(
+                r_cmd.encolar_comando(
                     id_corrida=nuevo_id,
                     iniciado_por=iniciado_por,
                     tipo_comando="REINTENTAR",
@@ -137,7 +139,7 @@ def _ciclo_principal() -> None:
             _STOP_FILE.unlink(missing_ok=True)
             break
 
-        cmd = rc.tomar_comando_pendiente()
+        cmd = r_cmd.tomar_comando_pendiente()
         if cmd is None:
             time.sleep(_POLL_SEG)
             continue
@@ -147,7 +149,7 @@ def _ciclo_principal() -> None:
         except Exception:
             log.exception("[RUNNER] Error inesperado procesando comando",
                           extra={"cmd": cmd})
-            rc.marcar_comando(
+            r_cmd.marcar_comando(
                 int(cmd.get("ID_Comando", -1)),
                 "ERROR_COLA",
                 "Excepción inesperada en el runner.",

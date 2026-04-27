@@ -15,7 +15,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy import text
 
 from utils.contexto_transaccional import ContextoTransaccionalETL
-from utils.fechas import obtener_id_tiempo
+from utils.fechas import obtener_id_tiempo, parsear_fecha
 from mdm.lookup import obtener_id_estado_fenologico
 from mdm.homologador import homologar_columna
 from silver.facts._base_processor import BaseFactProcessor
@@ -105,7 +105,8 @@ def _leer_bronce(engine: Engine) -> pd.DataFrame:
                 Estado_Raw,
                 Cantidad_Organos_Raw,
                 Tipo_Evaluacion_Raw,
-                Valores_Raw
+                Valores_Raw,
+                Fecha_Registro_Raw
             FROM {TABLA_ORIGEN}
             WHERE Estado_Carga = 'CARGADO'
         """))
@@ -140,6 +141,7 @@ class ProcesadorConteoFenologico(BaseFactProcessor):
     def __init__(self, engine: Engine):
         super().__init__(engine, TABLA_ORIGEN, TABLA_DESTINO, columna_id='ID_Conteo_Fruta')
         self.columnas_clave_unica = ['ID_Geografia', 'ID_Tiempo', 'ID_Variedad', 'ID_Estado_Fenologico', 'Punto']
+        self.columna_tiebreaker_timestamp = 'Fecha_Registro'
 
     def _construir_payload(self, df: pd.DataFrame) -> list[dict]:
         payload = []
@@ -193,6 +195,8 @@ class ProcesadorConteoFenologico(BaseFactProcessor):
                 valores_dict = _parsear_valores_raw(fila.get('Valores_Raw'))
                 punto_val = str(valores_dict.get('Punto_Raw') or valores_dict.get('Punto') or '0').strip()
 
+                fecha_registro = parsear_fecha(fila.get('Fecha_Registro_Raw'))
+
                 payload.append({
                     'ID_Geografia':        resultado_geo['id_geografia'],
                     'ID_Tiempo':           obtener_id_tiempo(fecha),
@@ -202,6 +206,7 @@ class ProcesadorConteoFenologico(BaseFactProcessor):
                     'Cantidad_Organos':    cantidad,
                     'Punto':               punto_val,
                     'Fecha_Evento':        fecha,
+                    'Fecha_Registro':      fecha_registro,
                     'Estado_DQ':           'OK',
                     'id_origen_rastreo':   id_origen,
                 })

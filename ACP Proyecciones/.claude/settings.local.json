@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"D:/Proyecto2026/ACP_DWH/ACP Proyecciones\" diff HEAD -- \"ACP Proyecciones/ETL/mdm/lookup.py\")",
+      "Bash(git -C \"D:/Proyecto2026/ACP_DWH/ACP Proyecciones\" diff HEAD -- \"ACP Proyecciones/ETL/pipeline.py\")",
+      "Bash(git -C \"D:/Proyecto2026/ACP_DWH/ACP Proyecciones\" diff HEAD -- \"ETL/mdm/lookup.py\")",
+      "Bash(git -C \"D:/Proyecto2026/ACP_DWH/ACP Proyecciones\" diff HEAD -- \"ETL/pipeline.py\")",
+      "Bash(git -C \"D:/Proyecto2026/ACP_DWH/ACP Proyecciones\" diff HEAD -- \"ETL/Gold/marts.py\")",
+      "Bash(git -C \"D:/Proyecto2026/ACP_DWH/ACP Proyecciones\" diff HEAD -- \"ETL/Silver/Facts/_base_processor.py\" \"ETL/Silver/Facts/_helpers_fact_comunes.py\")",
+      "Bash(git -C \"D:/Proyecto2026/ACP_DWH/ACP Proyecciones\" diff HEAD -- \"backend/runner/runner.py\" \"backend/servicios/servicio_etl.py\" \"backend/runner/ejecutor.py\")",
+      "Bash(git -C \"D:/Proyecto2026/ACP_DWH/ACP Proyecciones\" diff HEAD -- \"ETL/Silver/Facts/fact_maduracion.py\")"
+    ]
+  },
+  "spinnerTipsEnabled": true
+}

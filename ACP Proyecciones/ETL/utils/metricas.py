@@ -14,10 +14,11 @@ def normalizar_resultado_fact(resultado: dict | None) -> dict:
     Homologa el payload devuelto por cada fact para reporte y auditoria.
     """
     resultado = resultado or {}
-    insertados = int(resultado.get('insertados', 0) or 0)
-    rechazados = int(resultado.get('rechazados', 0) or 0)
+    # Soporta formato moderno (BaseFactProcessor) y formato legacy (_helpers_fact_comunes)
+    insertados = int(resultado.get('insertados') or resultado.get('Filas_Insertadas', 0) or 0)
+    rechazados = int(resultado.get('rechazados') or resultado.get('Nuevos_Casos_Cuarentena', 0) or 0)
     cuarentena = list(resultado.get('cuarentena', []) or [])
-    leidos = int(resultado.get('leidos', insertados + rechazados) or 0)
+    leidos = int(resultado.get('leidos') or resultado.get('Filas_Leidas_Bronce', insertados + rechazados) or 0)
     if leidos < insertados + rechazados:
         leidos = insertados + rechazados
 
@@ -32,6 +33,7 @@ def normalizar_resultado_fact(resultado: dict | None) -> dict:
     ]
 
     tasa_rechazo_pct = round((rechazados / leidos) * 100.0, 2) if leidos > 0 else 0.0
+    resueltos_tiebreaker = int(resultado.get('resueltos_por_tiebreaker', 0) or 0)
 
     return {
         **resultado,
@@ -42,6 +44,7 @@ def normalizar_resultado_fact(resultado: dict | None) -> dict:
         'cuarentena_total': len(cuarentena),
         'motivos_principales': top_motivos,
         'tasa_rechazo_pct': tasa_rechazo_pct,
+        'resueltos_por_tiebreaker': resueltos_tiebreaker,
     }
 
 
@@ -58,6 +61,10 @@ def formatear_resumen_fact(resultado: dict) -> list[str]:
             f"{resultado['tasa_rechazo_pct']}% rechazo"
         )
     ]
+
+    resueltos_tb = resultado.get('resueltos_por_tiebreaker', 0)
+    if resueltos_tb > 0:
+        lineas.append(f"          resueltos_por_tiebreaker: {resueltos_tb}")
 
     for item in resultado.get('motivos_principales', []):
         lineas.append(f"          motivo: {item['motivo']} ({item['cantidad']})")

@@ -6,7 +6,18 @@ from typing import Any
 import requests
 import streamlit as st
 
-URL_BACKEND = "http://127.0.0.1:8000"
+import os
+
+def _obtener_url_backend() -> str:
+    # 1. Prioridad: st.secrets (configuración de streamlit)
+    # 2. Prioridad: os.getenv (variables de entorno)
+    # 3. Fallback: localhost
+    try:
+        return st.secrets.get("BACKEND_URL") or os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
+    except Exception:
+        return os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
+
+URL_BACKEND = _obtener_url_backend()
 URL_BASE = f"{URL_BACKEND}/api/v1"
 TIMEOUT_API_SEG = (5, 30)
 

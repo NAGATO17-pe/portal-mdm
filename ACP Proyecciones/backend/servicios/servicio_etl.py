@@ -19,7 +19,8 @@ import uuid
 from datetime import datetime
 from typing import AsyncGenerator
 
-import repositorios.repo_control as rc
+import repositorios.repo_corridas as r_corrida
+import repositorios.repo_comandos as r_cmd
 from nucleo.etl_catalogo import listar_facts_disponibles
 from nucleo.etl_argumentos import enriquecer_corrida_con_parametros, serializar_comentario_etl
 from nucleo.excepciones import ErrorValidacion
@@ -62,7 +63,7 @@ async def iniciar_corrida(
 
     # 1. Crear registro maestro
     await asyncio.to_thread(
-        rc.insertar_corrida,
+        r_corrida.insertar_corrida,
         id_corrida     = id_corrida,
         iniciado_por   = iniciado_por,
         comentario     = comentario_persistido,
@@ -72,7 +73,7 @@ async def iniciar_corrida(
 
     # 2. Encolar comando para el runner
     await asyncio.to_thread(
-        rc.encolar_comando,
+        r_cmd.encolar_comando,
         id_corrida     = id_corrida,
         iniciado_por   = iniciado_por,
         tipo_comando   = "INICIAR",
@@ -101,12 +102,12 @@ async def cancelar_corrida(id_corrida: str, solicitado_por: str) -> bool:
     Retorna True si la corrida estaba en estado cancelable.
     """
     resultado = await asyncio.to_thread(
-        rc.solicitar_cancelacion,
+        r_corrida.solicitar_cancelacion,
         id_corrida, solicitado_por
     )
     if resultado:
         await asyncio.to_thread(
-            rc.insertar_evento,
+            r_corrida.insertar_evento,
             id_corrida,
             f"[CANCELADO] Solicitado por {solicitado_por}",
             "FIN",
@@ -129,7 +130,7 @@ async def stream_eventos_corrida(id_corrida: str) -> AsyncGenerator[dict, None]:
     while tiempo_total < _POLL_TIMEOUT_TOTAL_SEG:
         # Leer eventos nuevos desde el último ID visto
         eventos = await asyncio.to_thread(
-            rc.listar_eventos,
+            r_corrida.listar_eventos,
             id_corrida,
             ultimo_id_visto,
         )
@@ -143,12 +144,12 @@ async def stream_eventos_corrida(id_corrida: str) -> AsyncGenerator[dict, None]:
             }
 
         # Verificar si la corrida terminó
-        corrida = await asyncio.to_thread(rc.obtener_corrida, id_corrida)
+        corrida = await asyncio.to_thread(r_corrida.obtener_corrida, id_corrida)
         if corrida and corrida.get("estado") in estados_terminal:
             # Emitir cualquier evento final pendiente que pudo haberse insertado
             # justo antes de que verifiquemos el estado
             eventos_finales = await asyncio.to_thread(
-                rc.listar_eventos, id_corrida, ultimo_id_visto
+                r_corrida.listar_eventos, id_corrida, ultimo_id_visto
             )
             for evento in eventos_finales:
                 ultimo_id_visto = evento["id_evento"]
@@ -169,28 +170,28 @@ async def stream_eventos_corrida(id_corrida: str) -> AsyncGenerator[dict, None]:
 
 def corrida_existe(id_corrida: str) -> bool:
     """Verificación rápida de existencia para el endpoint de stream."""
-    return rc.obtener_corrida(id_corrida) is not None
+    return r_corrida.obtener_corrida(id_corrida) is not None
 
 
 def obtener_corrida(id_corrida: str) -> dict | None:
     """Retorna el estado actual de una corrida."""
-    corrida = enriquecer_corrida_con_parametros(rc.obtener_corrida(id_corrida))
+    corrida = enriquecer_corrida_con_parametros(r_corrida.obtener_corrida(id_corrida))
     if corrida is None:
         return None
-    corrida["pasos"] = rc.listar_pasos_corrida(id_corrida)
+    corrida["pasos"] = r_corrida.listar_pasos_corrida(id_corrida)
     return corrida
 
 
 def obtener_pasos_corrida(id_corrida: str) -> list[dict]:
     """Retorna la traza persistida de pasos para una corrida."""
-    return rc.listar_pasos_corrida(id_corrida)
+    return r_corrida.listar_pasos_corrida(id_corrida)
 
 
 def listar_corridas_activas() -> list[dict]:
     """Retorna corridas PENDIENTE o EJECUTANDO."""
     return [
         enriquecer_corrida_con_parametros(corrida)
-        for corrida in rc.listar_corridas(limite=10, solo_activas=True)
+        for corrida in r_corrida.listar_corridas(limite=10, solo_activas=True)
     ]
 
 

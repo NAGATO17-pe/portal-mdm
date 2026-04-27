@@ -1,12 +1,24 @@
 """
 fact_telemetria_clima.py
 ========================
-Carga Silver.Fact_Telemetria_Clima desde:
-  - Bronce.Reporte_Clima
-  - Bronce.Variables_Meteorologicas
+Carga Silver.Fact_Telemetria_Clima desde dos fuentes independientes:
+  - Bronce.Reporte_Clima      (temp, humedad, precipitacion)
+  - Bronce.Variables_Meteorologicas (temp, humedad, VPD, radiacion)
 
-Grano: Fecha + Hora + Sector_Climatico.
+Grano: Sector_Climatico + ID_Tiempo.
 Transformacion critica: Humedad proporcion (0-1) -> porcentaje (0-100).
+
+ARQUITECTURA DE DEDUPLICACION (excepcion justificada al patron BaseFactProcessor):
+  Este fact NO usa la subclase BaseFactProcessor como orquestador principal porque
+  maneja dos fuentes Bronce con esquemas distintos que convergen en la misma tabla
+  destino. En su lugar implementa _resolver_duplicados_clima(), que aplica una
+  politica de firma de metricas:
+    - Duplicados con metricas identicas: se descarta silenciosamente el segundo.
+    - Duplicados con metricas en conflicto: se rechazan TODOS a cuarentena.
+  El BaseFactProcessor se instancia de forma auxiliar (una vez por fuente) para
+  reutilizar _ejecutar_insercion_masiva_segura() y la deduplicacion SQL final
+  (WHERE NOT EXISTS). El resumen de insertados/rechazados se gestiona manualmente
+  porque cada fuente tiene su propio ciclo de estados de carga en Bronce.
 """
 
 import re
@@ -337,7 +349,6 @@ def cargar_fact_telemetria_clima(engine: Engine) -> dict:
         ids_rechazados=ids_clima_rechazados,
         descripcion_origen='Bronce.Reporte_Clima',
     )
-    resumen['insertados'] += len(payload_clima)
 
     ids_vars_rechazados = []
     registros_vars_validos = []
@@ -418,7 +429,6 @@ def cargar_fact_telemetria_clima(engine: Engine) -> dict:
         ids_rechazados=ids_vars_rechazados,
         descripcion_origen='Bronce.Variables_Meteorologicas',
     )
-    resumen['insertados'] += len(payload_vars)
 
     with ContextoTransaccionalETL(engine) as contexto:
 
@@ -444,7 +454,7 @@ def cargar_fact_telemetria_clima(engine: Engine) -> dict:
                 ],
                 '#Temp_TelemetriaClima_Reporte',
             )
-            resumen['insertados'] = _proc_clima.resumen['insertados']
+            resumen['insertados'] += _proc_clima.resumen['insertados']
 
         if ids_clima_insertados:
             contexto.marcar_estado_carga(

@@ -2,6 +2,7 @@
 app.py — Portal MDM ACP Geographic Phenology (Enterprise)
 Punto de entrada principal. Ejecutar con: streamlit run app.py
 """
+import html
 import importlib
 
 import streamlit as st
@@ -32,6 +33,12 @@ rol_badge = {
     "viewer":       "👁️ Viewer",
 }
 
+# Escapa campos provenientes del backend antes de interpolar en HTML
+_nombre_safe  = html.escape(str(usuario.get("nombre", "")))
+_avatar_safe  = html.escape(str(usuario.get("avatar", "")))
+_rol_label    = rol_badge.get(usuario.get("rol", ""), usuario.get("rol", ""))
+_rol_safe     = html.escape(str(_rol_label))
+
 # ── Sidebar con secciones agrupadas ───────────────────────────────────────
 with st.sidebar:
     # ── Header: Logo + info de usuario ──
@@ -61,11 +68,11 @@ with st.sidebar:
                 width: 30px; height: 30px;
                 display: flex; align-items: center; justify-content: center;
                 flex-shrink: 0;
-            ">{usuario['avatar']}</div>
+            ">{_avatar_safe}</div>
             <div style="min-width:0; overflow:hidden;">
                 <div style="font-size: 0.8rem; font-weight: 600; color: #1F2937;
-                            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{usuario['nombre']}</div>
-                <div style="font-size: 0.68rem; color: #6B7280;">{rol_badge.get(usuario['rol'], usuario['rol'])}</div>
+                            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{_nombre_safe}</div>
+                <div style="font-size: 0.68rem; color: #6B7280;">{_rol_safe}</div>
             </div>
         </div>
     """, unsafe_allow_html=True)

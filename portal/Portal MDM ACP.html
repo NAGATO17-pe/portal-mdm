@@ -1,0 +1,2205 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portal MDM — Cerro Prieto ACP</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js"
+    integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L"
+    crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"
+    integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm"
+    crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"
+    integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y"
+    crossorigin="anonymous"></script>
+  <style>
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0
+    }
+
+    html,
+    body,
+    #root {
+      height: 100%;
+      overflow: hidden
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif
+    }
+
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(42, 125, 70, 0.22);
+      border-radius: 10px
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(42, 125, 70, 0.4)
+    }
+
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: rgba(42, 125, 70, 0.2) transparent
+    }
+
+    input,
+    select,
+    textarea,
+    button {
+      font-family: inherit
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+        transform: scale(1)
+      }
+
+      50% {
+        opacity: .5;
+        transform: scale(.85)
+      }
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(8px)
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0)
+      }
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateX(-10px)
+      }
+
+      to {
+        opacity: 1;
+        transform: translateX(0)
+      }
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg)
+      }
+    }
+
+    .fade-in {
+      animation: fadeIn .35s ease both
+    }
+
+    .slide-in {
+      animation: slideIn .25s ease both
+    }
+  </style>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { createContext, useContext, useState: useStateData } = React;
+
+    const ThemeCtx = createContext(null);
+    const useTheme = () => useContext(ThemeCtx);
+
+    // ── Filters Context ────────────────────────────────────────
+    const FiltersCtx = createContext(null);
+    const useFilters = () => useContext(FiltersCtx);
+    const FiltersProvider = ({ children }) => {
+      const [filters, setFilters] = useStateData({
+        fundo: 'todos', variedad: 'todas', estado: 'todos',
+        rol: 'todos', tabla: 'todas', rango: 'todo', tipo: 'todos', q: '',
+      });
+      const setFilter = (key, val) => setFilters(f => ({ ...f, [key]: val }));
+      const resetFilters = () => setFilters({ fundo: 'todos', variedad: 'todas', estado: 'todos', rol: 'todos', tabla: 'todas', rango: 'todo', tipo: 'todos', q: '' });
+      const activeCount = Object.entries(filters).filter(([k, v]) =>
+        v !== 'todos' && v !== 'todas' && v !== 'todo' && v !== '').length;
+      return <FiltersCtx.Provider value={{ filters, setFilter, resetFilters, activeCount }}>{children}</FiltersCtx.Provider>;
+    };
+
+    const THEMES = {
+      verdeGlass: {
+        id: 'verdeGlass', name: 'Verde Agro',
+        bodyBg: 'linear-gradient(140deg, #dff0e3 0%, #e6f0f8 55%, #eceef7 100%)',
+        orbs: 'radial-gradient(ellipse 60% 50% at 15% 40%, rgba(42,125,70,0.1) 0%, transparent 70%), radial-gradient(ellipse 50% 40% at 85% 20%, rgba(30,100,160,0.07) 0%, transparent 60%), radial-gradient(ellipse 40% 50% at 60% 85%, rgba(80,180,120,0.07) 0%, transparent 55%)',
+        sidebar: 'rgba(255,255,255,0.75)', sidebarBorder: 'rgba(255,255,255,0.92)',
+        topbar: 'rgba(255,255,255,0.85)', topbarBorder: 'rgba(42,125,70,0.1)',
+        card: 'rgba(255,255,255,0.72)', cardBorder: 'rgba(255,255,255,0.9)', blur: 'blur(22px)',
+        accent: '#2a7d46', accentHov: '#1f6337', accentLight: '#e8f5ec', accentText: '#1a5e32',
+        text: '#1a2e1e', textMuted: '#5a7062', textLight: '#9ab0a0',
+        warn: '#a07010', warnLight: '#fdf7e2', err: '#b83030', errLight: '#fdecea',
+        ok: '#1e8048', okLight: '#eaf7ef',
+        shadow: '0 4px 28px rgba(30,70,45,0.09), inset 0 1px 0 rgba(255,255,255,0.8)',
+        shadowHov: '0 8px 36px rgba(30,70,45,0.15)',
+        divider: 'rgba(42,125,70,0.1)', rowHov: 'rgba(42,125,70,0.04)',
+        navActive: 'rgba(42,125,70,0.12)', navActiveBorder: '#2a7d46',
+        btnPrimary: '#2a7d46', btnPrimaryText: '#fff',
+        tag: '#e8f5ec', tagText: '#1a5e32',
+      },
+      ejecutivoDark: {
+        id: 'ejecutivoDark', name: 'Ejecutivo',
+        bodyBg: 'linear-gradient(140deg, #0b1a10 0%, #0e1920 55%, #0c1220 100%)',
+        orbs: 'radial-gradient(ellipse 60% 50% at 15% 40%, rgba(42,150,80,0.12) 0%, transparent 70%), radial-gradient(ellipse 50% 40% at 85% 20%, rgba(30,80,150,0.1) 0%, transparent 60%)',
+        sidebar: 'rgba(15,38,22,0.85)', sidebarBorder: 'rgba(255,255,255,0.07)',
+        topbar: 'rgba(10,28,16,0.9)', topbarBorder: 'rgba(255,255,255,0.06)',
+        card: 'rgba(255,255,255,0.055)', cardBorder: 'rgba(255,255,255,0.1)', blur: 'blur(22px)',
+        accent: '#38c06a', accentHov: '#2da85c', accentLight: 'rgba(56,192,106,0.14)', accentText: '#5cd882',
+        text: '#dceadf', textMuted: '#7a9a82', textLight: '#3a5642',
+        warn: '#d4a843', warnLight: 'rgba(212,168,67,0.14)', err: '#e05c5c', errLight: 'rgba(224,92,92,0.14)',
+        ok: '#38c06a', okLight: 'rgba(56,192,106,0.14)',
+        shadow: '0 4px 28px rgba(0,0,0,0.32), inset 0 1px 0 rgba(255,255,255,0.06)',
+        shadowHov: '0 8px 40px rgba(0,0,0,0.44)',
+        divider: 'rgba(255,255,255,0.07)', rowHov: 'rgba(255,255,255,0.04)',
+        navActive: 'rgba(56,192,106,0.14)', navActiveBorder: '#38c06a',
+        btnPrimary: '#38c06a', btnPrimaryText: '#0b1a10',
+        tag: 'rgba(56,192,106,0.14)', tagText: '#5cd882',
+      },
+      analitico: {
+        id: 'analitico', name: 'Analítico',
+        bodyBg: '#f2f4f7', orbs: 'none',
+        sidebar: '#ffffff', sidebarBorder: '#e0e6ea',
+        topbar: '#ffffff', topbarBorder: '#e0e6ea',
+        card: '#ffffff', cardBorder: '#e0e6ea', blur: 'none',
+        accent: '#1d6e38', accentHov: '#155a2e', accentLight: '#eaf5ee', accentText: '#1d6e38',
+        text: '#1a2633', textMuted: '#5a6875', textLight: '#9baab2',
+        warn: '#8c6600', warnLight: '#fdf7e0', err: '#b02828', errLight: '#fdecea',
+        ok: '#1d7040', okLight: '#eaf5ee',
+        shadow: '0 1px 3px rgba(0,0,0,0.07)', shadowHov: '0 3px 10px rgba(0,0,0,0.1)',
+        divider: '#e0e6ea', rowHov: '#f7f9fb',
+        navActive: '#eaf5ee', navActiveBorder: '#1d6e38',
+        btnPrimary: '#1d6e38', btnPrimaryText: '#fff',
+        tag: '#eaf5ee', tagText: '#1d6e38',
+      },
+    };
+
+    const MOCK = {
+      user: { name: 'Carlos Mendoza', role: 'Data Engineer', initials: 'CM' },
+      fundos: [
+        {
+          id: 'f1', name: 'El Palomar', region: 'Lambayeque', ha: 480, camas: 5610, active: true, variedades: ['Biloxi', 'Ventura', 'Emerald'],
+          sectores: [
+            { id: 's1a', name: 'Sector A', modulos: 8, camas: 1240, variedad: 'Biloxi', ha: 120, turnos: 2, valvulas: 32 },
+            { id: 's1b', name: 'Sector B', modulos: 12, camas: 1850, variedad: 'Ventura', ha: 180, turnos: 3, valvulas: 48 },
+            { id: 's1c', name: 'Sector C', modulos: 6, camas: 980, variedad: 'Emerald', ha: 95, turnos: 2, valvulas: 24 },
+            { id: 's1d', name: 'Sector D', modulos: 10, camas: 1540, variedad: 'Biloxi', ha: 85, turnos: 2, valvulas: 40 },
+          ]
+        },
+        {
+          id: 'f2', name: 'La Victoria', region: 'Piura', ha: 320, camas: 3890, active: true, variedades: ['Springhigh', "O'Neal"],
+          sectores: [
+            { id: 's2a', name: 'Sector Norte', modulos: 9, camas: 1100, variedad: 'Springhigh', ha: 160, turnos: 2, valvulas: 36 },
+            { id: 's2b', name: 'Sector Sur', modulos: 7, camas: 890, variedad: "O'Neal", ha: 160, turnos: 2, valvulas: 28 },
+          ]
+        },
+        {
+          id: 'f3', name: 'Los Pinos', region: 'La Libertad', ha: 215, camas: 1420, active: false, variedades: ['Jewel'],
+          sectores: [
+            { id: 's3a', name: 'Sector Único', modulos: 5, camas: 720, variedad: 'Jewel', ha: 215, turnos: 1, valvulas: 20 },
+          ]
+        },
+      ],
+      duplicates: [
+        { id: 1, tipo: 'Variedad', campo: 'Nombre', v1: 'Biloxi', v2: 'BILOXI', conf: 98, estado: 'pendiente', src: 'tabla_variedades' },
+        { id: 2, tipo: 'Variedad', campo: 'Nombre', v1: "O'Neal", v2: 'ONeal', conf: 94, estado: 'pendiente', src: 'tabla_variedades' },
+        { id: 3, tipo: 'Fundo', campo: 'Nombre', v1: 'El Palomar', v2: 'Fundo El Palomar', conf: 91, estado: 'pendiente', src: 'tabla_fundos' },
+        { id: 4, tipo: 'Personal', campo: 'RUC', v1: '20450398832', v2: '20450398832', conf: 100, estado: 'revisando', src: 'tabla_personal' },
+        { id: 5, tipo: 'Variedad', campo: 'Código', v1: 'BIL-001', v2: 'BIL001', conf: 88, estado: 'pendiente', src: 'tabla_variedades' },
+        { id: 6, tipo: 'Fundo', campo: 'Coord. GPS', v1: '-6.7891,-79.841', v2: '-6.7890,-79.841', conf: 82, estado: 'pendiente', src: 'tabla_fundos' },
+        { id: 7, tipo: 'Personal', campo: 'DNI', v1: '42891034', v2: '42891034', conf: 100, estado: 'aprobado', src: 'tabla_personal' },
+      ],
+      etlRuns: [
+        { id: 'ETL-2847', fecha: '20/04 14:32', dur: '4m 12s', regs: 2847392, errs: 3, warns: 12, estado: 'ok', tabla: 'cosecha_diaria' },
+        { id: 'ETL-2846', fecha: '20/04 10:15', dur: '3m 58s', regs: 2844201, errs: 0, warns: 8, estado: 'ok', tabla: 'cosecha_diaria' },
+        { id: 'ETL-2845', fecha: '20/04 06:02', dur: '5m 31s', regs: 2840877, errs: 7, warns: 15, estado: 'warning', tabla: 'calibres' },
+        { id: 'ETL-2844', fecha: '19/04 22:00', dur: '4m 22s', regs: 2836540, errs: 0, warns: 4, estado: 'ok', tabla: 'variedades' },
+        { id: 'ETL-2843', fecha: '19/04 18:00', dur: '6m 45s', regs: 2831200, errs: 22, warns: 31, estado: 'error', tabla: 'geografia' },
+        { id: 'ETL-2842', fecha: '19/04 14:00', dur: '4m 01s', regs: 2824680, errs: 0, warns: 6, estado: 'ok', tabla: 'cosecha_diaria' },
+        { id: 'ETL-2841', fecha: '19/04 10:00', dur: '3m 44s', regs: 2820100, errs: 1, warns: 3, estado: 'ok', tabla: 'calibres' },
+        { id: 'ETL-2840', fecha: '19/04 06:00', dur: '4m 55s', regs: 2815500, errs: 0, warns: 9, estado: 'ok', tabla: 'variedades' },
+      ],
+      personal: [
+        { id: 1, nombre: 'Ana Torres', rol: 'Data Scientist', estado: 'activo', acceso: 'Hace 10 min', modulos: ['Modelos IA', 'Dashboard'], actividad: 'Alta', acc: 142 },
+        { id: 2, nombre: 'Luis Paredes', rol: 'Data Analyst', estado: 'activo', acceso: 'Hace 1h', modulos: ['Homologación', 'ETL'], actividad: 'Media', acc: 58 },
+        { id: 3, nombre: 'María Gonzales', rol: 'Data Engineer', estado: 'activo', acceso: 'Hoy 09:20', modulos: ['Pipeline', 'Geografía'], actividad: 'Alta', acc: 214 },
+        { id: 4, nombre: 'Pedro Quispe', rol: 'Gerente TI', estado: 'activo', acceso: 'Ayer 17:45', modulos: ['Dashboard'], actividad: 'Baja', acc: 12 },
+        { id: 5, nombre: 'Rosa Chávez', rol: 'Data Analyst', estado: 'inactivo', acceso: '15/04/2026', modulos: [], actividad: '—', acc: 0 },
+        { id: 6, nombre: 'Jorge Llanos', rol: 'Data Scientist', estado: 'pendiente', acceso: '—', modulos: [], actividad: '—', acc: 0 },
+      ],
+      cosecha: {
+        todos: [
+          { mes: 'Oct', real: 320, proj: 310 }, { mes: 'Nov', real: 580, proj: 560 },
+          { mes: 'Dic', real: 940, proj: 920 }, { mes: 'Ene', real: 1240, proj: 1200 },
+          { mes: 'Feb', real: 980, proj: 1050 }, { mes: 'Mar', real: 760, proj: 780 },
+          { mes: 'Abr', real: null, proj: 520 }, { mes: 'May', real: null, proj: 290 },
+        ],
+        f1: [
+          { mes: 'Oct', real: 180, proj: 175 }, { mes: 'Nov', real: 320, proj: 310 },
+          { mes: 'Dic', real: 530, proj: 520 }, { mes: 'Ene', real: 700, proj: 680 },
+          { mes: 'Feb', real: 560, proj: 590 }, { mes: 'Mar', real: 430, proj: 440 },
+          { mes: 'Abr', real: null, proj: 290 }, { mes: 'May', real: null, proj: 160 },
+        ],
+        f2: [
+          { mes: 'Oct', real: 120, proj: 115 }, { mes: 'Nov', real: 220, proj: 210 },
+          { mes: 'Dic', real: 360, proj: 350 }, { mes: 'Ene', real: 490, proj: 470 },
+          { mes: 'Feb', real: 380, proj: 410 }, { mes: 'Mar', real: 290, proj: 300 },
+          { mes: 'Abr', real: null, proj: 195 }, { mes: 'May', real: null, proj: 110 },
+        ],
+        f3: [
+          { mes: 'Oct', real: 20, proj: 20 }, { mes: 'Nov', real: 40, proj: 40 },
+          { mes: 'Dic', real: 50, proj: 50 }, { mes: 'Ene', real: 50, proj: 50 },
+          { mes: 'Feb', real: 40, proj: 50 }, { mes: 'Mar', real: 40, proj: 40 },
+          { mes: 'Abr', real: null, proj: 35 }, { mes: 'May', real: null, proj: 20 },
+        ],
+      },
+      calibres: [
+        { cal: '18mm+', pct: 12 }, { cal: '16–18mm', pct: 28 },
+        { cal: '14–16mm', pct: 35 }, { cal: '12–14mm', pct: 18 }, { cal: '<12mm', pct: 7 },
+      ],
+      health: [
+        { key: 'db', name: 'Oracle DB', status: 'ok', detail: 'Latencia 12ms', check: 'hace 30s' },
+        { key: 'etl', name: 'ETL Runner', status: 'ok', detail: 'En ejecución', check: 'hace 2m' },
+        { key: 'cosecha', name: 'Modelo Cosecha', status: 'ok', detail: 'Última ejecución 6h', check: 'hace 6h' },
+        { key: 'calibre', name: 'Modelo Calibres', status: 'warning', detail: 'Actualización pendiente', check: 'hace 18h' },
+      ],
+      reglas: [
+        { id: 'R001', nombre: 'Cama sin variedad asignada', tabla: 't_cama', tipo: 'Obligatorio', activa: true, violaciones: 3 },
+        { id: 'R002', nombre: 'Sector fuera de fundo activo', tabla: 't_sector', tipo: 'Integridad', activa: true, violaciones: 0 },
+        { id: 'R003', nombre: 'Calibre fuera de rango (8–24mm)', tabla: 't_calibre', tipo: 'Rango', activa: true, violaciones: 12 },
+        { id: 'R004', nombre: 'Cosecha sin turno asociado', tabla: 't_cosecha', tipo: 'Obligatorio', activa: false, violaciones: 0 },
+        { id: 'R005', nombre: 'Válvula sin módulo padre', tabla: 't_valvula', tipo: 'Integridad', activa: true, violaciones: 1 },
+      ],
+    };
+
+    const IPATHS = {
+      home: ["M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z", "M9 22V12h6v10"],
+      map: ["M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z", "M12 7a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"],
+      shuffle: ["M16 3h5v5", "M4 20L21 3", "M21 16v5h-5", "M15 15l6.1 6.1", "M4 4l5 5"],
+      git: ["M6 3v12", "M18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6z", "M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6z", "M18 9a9 9 0 0 1-9 9"],
+      file: ["M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z", "M14 2v6h6", "M16 13H8", "M16 17H8", "M10 9H8"],
+      shield: ["M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"],
+      users: ["M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2", "M23 21v-2a4 4 0 0 0-3-3.87", "M16 3.13a4 4 0 0 1 0 7.75", "M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"],
+      cpu: ["M18 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z", "M9 9h6v6H9z", "M12 2v2", "M12 20v2", "M2 12h2", "M20 12h2"],
+      activity: ["M22 12h-4l-3 9L9 3l-3 9H2"],
+      settings: ["M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z", "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"],
+      bell: ["M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9", "M13.73 21a2 2 0 0 1-3.46 0"],
+      search: ["M11 17a6 6 0 1 0 0-12 6 6 0 0 0 0 12z", "M21 21l-4.35-4.35"],
+      chevR: ["M9 18l6-6-6-6"], chevD: ["M6 9l6 6 6-6"],
+      checkC: ["M22 11.08V12a10 10 0 1 1-5.93-9.14", "M22 4L12 14.01l-3-3"],
+      alertC: ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z", "M12 8v4", "M12 16h.01"],
+      xC: ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z", "M15 9l-6 6", "M9 9l6 6"],
+      trendUp: ["M23 6l-9.5 9.5-5-5L1 18", "M17 6h6v6"],
+      db: ["M12 2C6.48 2 2 4.69 2 8s4.48 6 10 6 10-2.69 10-6-4.48-6-10-6z", "M2 8v4c0 3.31 4.48 6 10 6s10-2.69 10-6V8", "M2 12v4c0 3.31 4.48 6 10 6s10-2.69 10-6v-4"],
+      layers: ["M12 2L2 7l10 5 10-5-10-5z", "M2 17l10 5 10-5", "M2 12l10 5 10-5"],
+      filter: ["M22 3H2l8 9.46V19l4 2v-8.54L22 3z"],
+      plus: ["M12 5v14", "M5 12h14"],
+      logout: ["M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4", "M16 17l5-5-5-5", "M21 12H9"],
+      eye: ["M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z", "M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"],
+      bar: ["M18 20V10", "M12 20V4", "M6 20v-6"],
+      zap: ["M13 2L3 14h9l-1 8 10-12h-9l1-8z"],
+      check: ["M20 6L9 17l-5-5"], x: ["M18 6L6 18", "M6 6l12 12"],
+      edit: ["M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7", "M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"],
+      pkg: ["M16.5 9.4l-9-5.19", "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z", "M3.27 6.96L12 12.01l8.73-5.05", "M12 22.08V12"],
+      info: ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z", "M12 8h.01", "M11 12h1v4h1"],
+      refresh: ["M23 4v6h-6", "M1 20v-6h6", "M3.51 9a9 9 0 0 1 14.85-3.36L23 10", "M1 14l4.64 4.36A9 9 0 0 0 20.49 15"],
+      download: ["M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", "M7 10l5 5 5-5", "M12 15V3"],
+      award: ["M12 15a7 7 0 1 0 0-14 7 7 0 0 0 0 14z", "M8.21 13.89L7 23l5-3 5 3-1.21-9.12"],
+      globe: ["M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z", "M2 12h20", "M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"],
+      star: ["M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"],
+      xSquare: ["M15 3H9a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z", "M9 9l6 6", "M15 9l-6 6"],
+    };
+
+    const Icon = ({ name, size = 18, color, sw = 1.8, style }) => {
+      const t = useTheme();
+      const stroke = color || (t ? t.textMuted : '#888');
+      const paths = IPATHS[name] || [];
+      return (
+        <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24"
+          fill="none" stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" style={style}>
+          {paths.map((d, i) => <path key={i} d={d} />)}
+        </svg>
+      );
+    };
+
+    Object.assign(window, { ThemeCtx, useTheme, FiltersCtx, FiltersProvider, useFilters, THEMES, MOCK, IPATHS, Icon });
+
+  </script>
+  <script type="text/babel">
+    const { useState } = React;
+
+    const NAV_ANALYST = [
+      { id: 'dashboard', label: 'Dashboard', icon: 'home' },
+      { id: 'geografia', label: 'Geografía & Variedades', icon: 'map' },
+      { id: 'homologacion', label: 'Homologación', icon: 'shuffle' },
+      { id: 'pipeline', label: 'Config. Pipeline', icon: 'git' },
+      { id: 'etl', label: 'Auditoría ETL', icon: 'file' },
+      { id: 'reglas', label: 'Reglas & Restricciones', icon: 'shield' },
+      { id: 'personal', label: 'Auditoría Personal', icon: 'users' },
+      { id: 'ia', label: 'Modelos IA', icon: 'cpu' },
+      null,
+      { id: 'salud', label: 'Salud del Sistema', icon: 'activity' },
+    ];
+    const NAV_EXEC = [
+      { id: 'executive', label: 'Resumen Ejecutivo', icon: 'star' },
+      { id: 'ia', label: 'Modelos IA', icon: 'cpu' },
+      { id: 'geografia', label: 'Geografía', icon: 'map' },
+      null,
+      { id: 'salud', label: 'Salud del Sistema', icon: 'activity' },
+    ];
+
+    const Card = ({ children, style, p = '20px', className, onClick }) => {
+      const t = useTheme();
+      return (
+        <div className={className} onClick={onClick} style={{
+          background: t.card, border: `1px solid ${t.cardBorder}`,
+          backdropFilter: t.blur, WebkitBackdropFilter: t.blur,
+          borderRadius: 14, boxShadow: t.shadow, padding: p,
+          cursor: onClick ? 'pointer' : undefined, ...style,
+        }}>{children}</div>
+      );
+    };
+
+    const Badge = ({ status }) => {
+      const t = useTheme();
+      const map = {
+        ok: { bg: t.okLight, color: t.ok, label: 'OK' },
+        warning: { bg: t.warnLight, color: t.warn, label: 'Warning' },
+        error: { bg: t.errLight, color: t.err, label: 'Error' },
+        pendiente: { bg: t.warnLight, color: t.warn, label: 'Pendiente' },
+        aprobado: { bg: t.okLight, color: t.ok, label: 'Aprobado' },
+        revisando: { bg: t.accentLight, color: t.accentText, label: 'Revisando' },
+        activo: { bg: t.okLight, color: t.ok, label: 'Activo' },
+        inactivo: { bg: t.errLight, color: t.err, label: 'Inactivo' },
+        pendiente_user: { bg: t.warnLight, color: t.warn, label: 'Pendiente' },
+      };
+      const s = map[status] || map.pendiente;
+      return (
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px',
+          borderRadius: 20, fontSize: 11, fontWeight: 600, background: s.bg, color: s.color, whiteSpace: 'nowrap'
+        }}>
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%', background: s.color,
+            animation: (status === 'ok' || status === 'activo') ? 'pulse 2.5s ease infinite' : undefined
+          }} />
+          {s.label}
+        </span>
+      );
+    };
+
+    const StatusDot = ({ status }) => {
+      const t = useTheme();
+      const c = status === 'ok' ? t.ok : status === 'warning' ? t.warn : t.err;
+      return <span style={{
+        display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: c,
+        animation: status === 'ok' ? 'pulse 2.5s ease infinite' : undefined, flexShrink: 0
+      }} />;
+    };
+
+    const SectionHeader = ({ title, subtitle, action }) => {
+      const t = useTheme();
+      return (
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
+          <div>
+            <h2 style={{ fontSize: 20, fontWeight: 700, color: t.text, letterSpacing: '-0.3px' }}>{title}</h2>
+            {subtitle && <p style={{ fontSize: 13, color: t.textMuted, marginTop: 4 }}>{subtitle}</p>}
+          </div>
+          {action}
+        </div>
+      );
+    };
+
+    const Btn = ({ children, onClick, variant = 'primary', size = 'md', icon, style, disabled }) => {
+      const t = useTheme();
+      const [hov, setHov] = useState(false);
+      const pad = size === 'sm' ? '6px 14px' : '9px 20px';
+      const fs = size === 'sm' ? 12 : 13;
+      const base = variant === 'primary'
+        ? { background: hov ? t.accentHov : t.btnPrimary, color: t.btnPrimaryText, border: 'none' }
+        : { background: hov ? t.accentLight : 'transparent', color: t.accentText, border: `1px solid ${t.divider}` };
+      return (
+        <button onClick={onClick} disabled={disabled}
+          onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: pad, borderRadius: 8,
+            fontSize: fs, fontWeight: 600, cursor: disabled ? 'default' : 'pointer', transition: 'all .18s', ...base, ...style
+          }}>
+          {icon && <Icon name={icon} size={14} color={variant === 'primary' ? t.btnPrimaryText : t.accentText} />}
+          {children}
+        </button>
+      );
+    };
+
+    // ── Filter Bar ─────────────────────────────────────────────
+    const FilterBar = ({ config }) => {
+      const t = useTheme();
+      const { filters, setFilter, resetFilters, activeCount } = useFilters();
+
+      const selStyle = (active) => ({
+        padding: '5px 12px', borderRadius: 8, border: `1.5px solid ${active ? t.accent : t.divider}`,
+        background: active ? t.accentLight : 'transparent', color: active ? t.accentText : t.textMuted,
+        fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all .15s', whiteSpace: 'nowrap',
+      });
+
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+          {/* Search */}
+          {config.search && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 7, background: t.card,
+              border: `1px solid ${t.cardBorder}`, borderRadius: 8, padding: '5px 10px',
+              backdropFilter: t.blur, WebkitBackdropFilter: t.blur, minWidth: 200
+            }}>
+              <Icon name="search" size={13} color={t.textMuted} />
+              <input value={filters.q} onChange={e => setFilter('q', e.target.value)}
+                placeholder={config.searchPlaceholder || 'Buscar...'}
+                style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: 12, color: t.text, width: '100%' }} />
+              {filters.q && (
+                <button onClick={() => setFilter('q', '')} style={{ border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', padding: 0 }}>
+                  <Icon name="x" size={12} color={t.textMuted} />
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Fundo */}
+          {config.fundo && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: 11, color: t.textMuted, fontWeight: 600 }}>Fundo:</span>
+              <div style={{ display: 'flex', gap: 3 }}>
+                {[{ id: 'todos', label: 'Todos' }, ...MOCK.fundos.map(f => ({ id: f.id, label: f.name }))].map(op => (
+                  <button key={op.id} onClick={() => setFilter('fundo', op.id)} style={selStyle(filters.fundo === op.id)}>{op.label}</button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Estado */}
+          {config.estado && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: 11, color: t.textMuted, fontWeight: 600 }}>Estado:</span>
+              <div style={{ display: 'flex', gap: 3 }}>
+                {(config.estadoOpts || ['todos', 'ok', 'warning', 'error']).map(op => (
+                  <button key={op} onClick={() => setFilter('estado', op)} style={selStyle(filters.estado === op)}>
+                    {op === 'todos' ? 'Todos' : op.charAt(0).toUpperCase() + op.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tabla */}
+          {config.tabla && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: 11, color: t.textMuted, fontWeight: 600 }}>Tabla:</span>
+              <select value={filters.tabla} onChange={e => setFilter('tabla', e.target.value)}
+                style={{
+                  padding: '5px 10px', borderRadius: 8, border: `1.5px solid ${t.divider}`,
+                  background: t.card, color: t.text, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  backdropFilter: t.blur, outline: 'none'
+                }}>
+                {['todas', 'cosecha_diaria', 'calibres', 'variedades', 'geografia'].map(op => (
+                  <option key={op} value={op}>{op === 'todas' ? 'Todas las tablas' : op}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Tipo (homologacion) */}
+          {config.tipo && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: 11, color: t.textMuted, fontWeight: 600 }}>Tipo:</span>
+              <div style={{ display: 'flex', gap: 3 }}>
+                {['todos', 'Variedad', 'Fundo', 'Personal'].map(op => (
+                  <button key={op} onClick={() => setFilter('tipo', op)} style={selStyle(filters.tipo === op)}>
+                    {op === 'todos' ? 'Todos' : op}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Rol (personal) */}
+          {config.rol && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ fontSize: 11, color: t.textMuted, fontWeight: 600 }}>Rol:</span>
+              <select value={filters.rol} onChange={e => setFilter('rol', e.target.value)}
+                style={{
+                  padding: '5px 10px', borderRadius: 8, border: `1.5px solid ${t.divider}`,
+                  background: t.card, color: t.text, fontSize: 12, fontWeight: 600, cursor: 'pointer', outline: 'none'
+                }}>
+                {['todos', 'Data Scientist', 'Data Analyst', 'Data Engineer', 'Gerente TI'].map(op => (
+                  <option key={op} value={op}>{op === 'todos' ? 'Todos los roles' : op}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Clear */}
+          {activeCount > 0 && (
+            <button onClick={resetFilters}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 8,
+                border: `1px solid ${t.err}44`, background: t.errLight, color: t.err,
+                fontSize: 11, fontWeight: 600, cursor: 'pointer'
+              }}>
+              <Icon name="x" size={12} color={t.err} />
+              Limpiar ({activeCount})
+            </button>
+          )}
+
+          {/* Count */}
+          {config.resultCount !== undefined && (
+            <span style={{ fontSize: 11, color: t.textMuted, marginLeft: 'auto' }}>
+              {config.resultCount} resultado{config.resultCount !== 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+      );
+    };
+
+    const Sidebar = ({ active, setActive, collapsed, setCollapsed, portalMode }) => {
+      const t = useTheme();
+      const NAV = portalMode === 'executive' ? NAV_EXEC : NAV_ANALYST;
+      return (
+        <div style={{
+          width: collapsed ? 64 : 240, flexShrink: 0, height: '100vh', display: 'flex', flexDirection: 'column',
+          background: t.sidebar, borderRight: `1px solid ${t.sidebarBorder}`,
+          backdropFilter: t.blur, WebkitBackdropFilter: t.blur, transition: 'width .25s cubic-bezier(.4,0,.2,1)', zIndex: 10
+        }}>
+          <div style={{
+            padding: collapsed ? '20px 16px' : '20px 20px', display: 'flex', alignItems: 'center',
+            gap: 10, borderBottom: `1px solid ${t.divider}`, cursor: 'pointer', flexShrink: 0
+          }}
+            onClick={() => setCollapsed(!collapsed)}>
+            <div style={{
+              width: 32, height: 32, borderRadius: 8, background: `linear-gradient(135deg, ${t.accent}, ${t.accentHov})`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>
+              <Icon name="layers" size={16} color="#fff" sw={2} />
+            </div>
+            {!collapsed && (
+              <div style={{ overflow: 'hidden' }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: t.text, letterSpacing: '-0.2px', whiteSpace: 'nowrap' }}>Cerro Prieto</div>
+                <div style={{ fontSize: 10, color: t.textMuted, fontWeight: 500, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                  {portalMode === 'executive' ? 'Portal Ejecutivo' : 'Portal MDM'}
+                </div>
+              </div>
+            )}
+          </div>
+          <nav style={{ flex: 1, overflowY: 'auto', padding: '10px 0' }}>
+            {NAV.map((item, i) => {
+              if (!item) return <div key={i} style={{ height: 1, background: t.divider, margin: '8px 12px' }} />;
+              const isActive = active === item.id;
+              return (
+                <button key={item.id} onClick={() => setActive(item.id)}
+                  title={collapsed ? item.label : undefined}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                    padding: collapsed ? '10px 20px' : '10px 16px 10px 16px',
+                    background: isActive ? t.navActive : 'transparent', border: 'none',
+                    borderLeft: `3px solid ${isActive ? t.navActiveBorder : 'transparent'}`,
+                    cursor: 'pointer', transition: 'all .15s', textAlign: 'left',
+                    borderRadius: collapsed ? 0 : '0 8px 8px 0'
+                  }}>
+                  <Icon name={item.icon} size={17} color={isActive ? t.accent : t.textMuted} sw={isActive ? 2.2 : 1.8} />
+                  {!collapsed && (
+                    <span style={{
+                      fontSize: 13, fontWeight: isActive ? 600 : 500,
+                      color: isActive ? t.accentText : t.textMuted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                    }}>
+                      {item.label}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+          <div style={{
+            padding: '12px 16px', borderTop: `1px solid ${t.divider}`,
+            display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0
+          }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: '50%', background: t.accentLight,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              fontSize: 11, fontWeight: 700, color: t.accentText
+            }}>
+              {MOCK.user.initials}
+            </div>
+            {!collapsed && (
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: t.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{MOCK.user.name}</div>
+                <div style={{ fontSize: 11, color: t.textMuted }}>{MOCK.user.role}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    const TopBar = ({ active, notifs = 3, portalMode, onLogout }) => {
+      const t = useTheme();
+      const labels = {
+        dashboard: 'Dashboard', executive: 'Resumen Ejecutivo',
+        geografia: 'Geografía & Variedades', homologacion: 'Homologación de Datos',
+        pipeline: 'Configuración de Pipeline', etl: 'Auditoría ETL',
+        reglas: 'Reglas & Restricciones', personal: 'Auditoría de Personal',
+        ia: 'Modelos de IA', salud: 'Salud del Sistema',
+      };
+      const portalBadge = portalMode === 'executive'
+        ? { label: 'Portal Ejecutivo', color: t.warn, bg: t.warnLight }
+        : { label: 'Portal Analista', color: t.accentText, bg: t.accentLight };
+      return (
+        <div style={{
+          height: 60, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '0 24px', background: t.topbar, borderBottom: `1px solid ${t.topbarBorder}`,
+          backdropFilter: t.blur, WebkitBackdropFilter: t.blur, flexShrink: 0, zIndex: 9
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: t.text }}>{labels[active] || 'Portal MDM'}</div>
+              <div style={{ fontSize: 11, color: t.textMuted }}>Cerro Prieto ACP · {new Date().toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
+            </div>
+            <span style={{
+              padding: '3px 10px', borderRadius: 20, fontSize: 10, fontWeight: 700,
+              background: portalBadge.bg, color: portalBadge.color, letterSpacing: '0.3px'
+            }}>
+              {portalBadge.label}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 8, background: t.card,
+              border: `1px solid ${t.cardBorder}`, borderRadius: 8, padding: '6px 12px'
+            }}>
+              <Icon name="search" size={14} color={t.textMuted} />
+              <input placeholder="Buscar..." style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: 12, color: t.text, width: 140 }} />
+            </div>
+            <div style={{ position: 'relative', cursor: 'pointer' }}>
+              <Icon name="bell" size={18} color={t.textMuted} />
+              {notifs > 0 && <span style={{
+                position: 'absolute', top: -4, right: -4, width: 14, height: 14,
+                borderRadius: '50%', background: t.err, color: '#fff', fontSize: 8, fontWeight: 700,
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>{notifs}</span>}
+            </div>
+            <div style={{ width: 1, height: 24, background: t.divider }} />
+            <button onClick={onLogout} style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              padding: '4px 8px', borderRadius: 6, border: 'none', background: 'transparent',
+              cursor: 'pointer', fontSize: 11, color: t.textMuted
+            }}>
+              <Icon name="logout" size={13} color={t.textMuted} />
+              Salir
+            </button>
+          </div>
+        </div>
+      );
+    };
+
+    Object.assign(window, { Card, Badge, StatusDot, SectionHeader, Btn, FilterBar, Sidebar, TopBar });
+
+  </script>
+  <script type="text/babel">
+    const { useState } = React;
+
+    const smoothPath = (pts, tension = 0.28) => {
+      if (!pts || pts.length < 2) return '';
+      let d = `M ${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+        const cp1x = p1[0] + (p2[0] - p0[0]) * tension, cp1y = p1[1] + (p2[1] - p0[1]) * tension;
+        const cp2x = p2[0] - (p3[0] - p1[0]) * tension, cp2y = p2[1] - (p3[1] - p1[1]) * tension;
+        d += ` C ${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+      }
+      return d;
+    };
+
+    // ── Harvest Line Chart ─────────────────────────────────────
+    const HarvestChart = ({ data, compact = false }) => {
+      const t = useTheme();
+      const W = 520, H = compact ? 130 : 180;
+      const pad = { top: 20, right: 20, bottom: 30, left: 44 };
+      const cW = W - pad.left - pad.right, cH = H - pad.top - pad.bottom;
+      const maxV = Math.max(...data.flatMap(d => [d.real || 0, d.proj])) * 1.15;
+      const toX = i => pad.left + (i / (data.length - 1)) * cW;
+      const toY = v => pad.top + cH - (v / maxV) * cH;
+      const realPts = data.map((d, i) => d.real != null ? [toX(i), toY(d.real)] : null).filter(Boolean);
+      const projPts = data.map((d, i) => [toX(i), toY(d.proj)]);
+      const splitIdx = data.findIndex(d => d.real == null);
+      const areaClose = realPts.length > 1 ? ` L ${realPts[realPts.length - 1][0].toFixed(1)},${(pad.top + cH).toFixed(1)} L ${realPts[0][0].toFixed(1)},${(pad.top + cH).toFixed(1)} Z` : '';
+      return (
+        <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible' }}>
+          <defs>
+            <linearGradient id="ag" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={t.accent} stopOpacity="0.22" />
+              <stop offset="100%" stopColor={t.accent} stopOpacity="0.02" />
+            </linearGradient>
+          </defs>
+          {[0, 1, 2, 3, 4].map(i => {
+            const y = pad.top + (i / 4) * cH;
+            const v = Math.round(maxV * (1 - i / 4));
+            return <g key={i}>
+              <line x1={pad.left} y1={y} x2={pad.left + cW} y2={y} stroke={t.divider} strokeWidth={1} strokeDasharray="3,5" />
+              <text x={pad.left - 8} y={y + 4} textAnchor="end" fontSize={9} fill={t.textLight} fontFamily="DM Mono,monospace">{v > 0 ? v : ''}</text>
+            </g>;
+          })}
+          <line x1={pad.left} y1={pad.top + cH} x2={pad.left + cW} y2={pad.top + cH} stroke={t.divider} strokeWidth={1} />
+          {projPts.length > 1 && <path d={smoothPath(projPts) + ` L ${projPts[projPts.length - 1][0]},${pad.top + cH} L ${projPts[0][0]},${pad.top + cH} Z`} fill={t.accent} fillOpacity={0.04} />}
+          {splitIdx > 0 && <line x1={toX(splitIdx)} y1={pad.top} x2={toX(splitIdx)} y2={pad.top + cH} stroke={t.accent} strokeWidth={1} strokeDasharray="4,4" strokeOpacity={0.35} />}
+          {splitIdx > 0 && <text x={toX(splitIdx) + 5} y={pad.top + 10} fontSize={8} fill={t.accentText} fontFamily="Plus Jakarta Sans">Proyectado →</text>}
+          <path d={smoothPath(projPts)} fill="none" stroke={t.accent} strokeWidth={1.8} strokeDasharray="5,4" strokeOpacity={0.5} />
+          {realPts.length > 1 && <path d={smoothPath(realPts) + areaClose} fill="url(#ag)" />}
+          {realPts.length > 1 && <path d={smoothPath(realPts)} fill="none" stroke={t.accent} strokeWidth={2.8} />}
+          {realPts.map(([x, y], i) => <g key={i}>
+            <circle cx={x} cy={y} r={9} fill={t.accent} fillOpacity={0.12} />
+            <circle cx={x} cy={y} r={5} fill={t.accent} stroke="#fff" strokeWidth={2} />
+            <text x={x} y={y - 12} textAnchor="middle" fontSize={9} fill={t.accentText} fontFamily="DM Mono,monospace" fontWeight="600">{data[i].real}</text>
+          </g>)}
+          {data.map((d, i) => d.real == null && <circle key={i} cx={toX(i)} cy={toY(d.proj)} r={4} fill="none" stroke={t.accent} strokeWidth={1.8} strokeOpacity={0.55} />)}
+          {data.map((d, i) => <text key={i} x={toX(i)} y={H - 6} textAnchor="middle" fontSize={9}
+            fill={t.textMuted} fontFamily="Plus Jakarta Sans" fontWeight={d.real == null ? '400' : '600'}>{d.mes}</text>)}
+        </svg>
+      );
+    };
+
+    // ── Donut Chart ────────────────────────────────────────────
+    const DonutChart = ({ data, compact = false }) => {
+      const t = useTheme();
+      const sz = compact ? 120 : 150, cx = sz / 2, cy = sz / 2, R = compact ? 46 : 58, ri = compact ? 30 : 38;
+      const colors = ['#2a7d46', '#3a9a5c', '#5ab878', '#8dd4a8', '#c2e8cf'];
+      const total = data.reduce((s, d) => s + d.pct, 0);
+      const [hov, setHov] = useState(null);
+      let angle = -Math.PI / 2;
+      const slices = data.map((d, i) => {
+        const sweep = (d.pct / total) * 2 * Math.PI;
+        const sa = angle, ea = angle + sweep;
+        angle += sweep;
+        return { ...d, sa, ea, mid: sa + sweep / 2, i };
+      });
+      const arcPath = (sa, ea, ro, ri_) => {
+        const x1 = cx + ro * Math.cos(sa), y1 = cy + ro * Math.sin(sa);
+        const x2 = cx + ro * Math.cos(ea), y2 = cy + ro * Math.sin(ea);
+        const xi1 = cx + ri_ * Math.cos(ea), yi1 = cy + ri_ * Math.sin(ea);
+        const xi2 = cx + ri_ * Math.cos(sa), yi2 = cy + ri_ * Math.sin(sa);
+        return `M ${x1} ${y1} A ${ro} ${ro} 0 ${ea - sa > Math.PI ? 1 : 0} 1 ${x2} ${y2} L ${xi1} ${yi1} A ${ri_} ${ri_} 0 ${ea - sa > Math.PI ? 1 : 0} 0 ${xi2} ${yi2} Z`;
+      };
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: compact ? 12 : 20 }}>
+          <svg width={sz} height={sz} style={{ flexShrink: 0 }}>
+            {slices.map(s => {
+              const ox = Math.cos(s.mid) * (hov === s.i ? 3 : 0), oy = Math.sin(s.mid) * (hov === s.i ? 3 : 0);
+              return <path key={s.i} d={arcPath(s.sa, s.ea, R, ri)} fill={colors[s.i]} opacity={hov === s.i ? 1 : 0.88}
+                transform={`translate(${ox.toFixed(1)},${oy.toFixed(1)})`}
+                onMouseEnter={() => setHov(s.i)} onMouseLeave={() => setHov(null)}
+                style={{ cursor: 'pointer', transition: 'opacity .15s,transform .15s' }} />;
+            })}
+            <circle cx={cx} cy={cy} r={ri - 2} fill={t.card} />
+            {hov !== null
+              ? <>
+                <text x={cx} y={cy - 3} textAnchor="middle" fontSize={compact ? 13 : 16} fontWeight="800" fill={t.text} fontFamily="Plus Jakarta Sans">{data[hov].pct}%</text>
+                <text x={cx} y={cy + 11} textAnchor="middle" fontSize={compact ? 7 : 8} fill={t.textMuted} fontFamily="Plus Jakarta Sans">{data[hov].cal}</text>
+              </>
+              : <>
+                <text x={cx} y={cy - 3} textAnchor="middle" fontSize={compact ? 10 : 11} fontWeight="700" fill={t.text} fontFamily="Plus Jakarta Sans">4,820</text>
+                <text x={cx} y={cy + 11} textAnchor="middle" fontSize={compact ? 7 : 8} fill={t.textMuted} fontFamily="Plus Jakarta Sans">TM total</text>
+              </>
+            }
+          </svg>
+          <div style={{ flex: 1 }}>
+            {data.map((d, i) => (
+              <div key={d.cal} onMouseEnter={() => setHov(i)} onMouseLeave={() => setHov(null)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6, marginBottom: compact ? 4 : 6, cursor: 'default',
+                  opacity: hov === null || hov === i ? 1 : 0.4, transition: 'opacity .15s'
+                }}>
+                <span style={{ width: 8, height: 8, borderRadius: 2, background: colors[i], flexShrink: 0, display: 'inline-block' }} />
+                <span style={{ fontSize: compact ? 10 : 11, color: t.textMuted, flex: 1 }}>{d.cal}</span>
+                <span style={{ fontSize: compact ? 10 : 11, fontWeight: 700, color: t.text, fontFamily: "'DM Mono',monospace" }}>{d.pct}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    };
+
+    // ── Fundo Bar Chart ────────────────────────────────────────
+    const FundoBarChart = () => {
+      const t = useTheme();
+      const items = [{ name: 'El Palomar', real: 2640, proj: 2850 }, { name: 'La Victoria', real: 1710, proj: 1820 }, { name: 'Los Pinos', real: 0, proj: 150 }];
+      const maxV = Math.max(...items.flatMap(f => [f.real, f.proj])) * 1.1;
+      const W = 340, H = 110, padL = 80, padB = 22, padT = 12;
+      const cW = W - padL - 10, cH = H - padB - padT, barH = 18, gap = 14;
+      return (
+        <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible' }}>
+          {[0, 1, 2, 3].map(i => {
+            const x = padL + (i / 3) * cW, v = Math.round(maxV * i / 3);
+            return <g key={i}>
+              <line x1={x} y1={padT} x2={x} y2={padT + cH} stroke={t.divider} strokeWidth={1} strokeDasharray="2,4" />
+              <text x={x} y={H - 6} textAnchor="middle" fontSize={8} fill={t.textLight} fontFamily="DM Mono,monospace">{v}</text>
+            </g>;
+          })}
+          {items.map((f, i) => {
+            const yBase = padT + i * (barH * 2 + gap);
+            const wReal = (f.real / maxV) * cW, wProj = (f.proj / maxV) * cW;
+            return <g key={f.name}>
+              <text x={padL - 8} y={yBase + barH - 3} textAnchor="end" fontSize={9} fill={t.textMuted} fontFamily="Plus Jakarta Sans">{f.name}</text>
+              <rect x={padL} y={yBase} width={wProj} height={barH} rx={3} fill={t.accent} fillOpacity={0.22} />
+              <text x={padL + wProj + 4} y={yBase + barH - 3} fontSize={8} fill={t.textMuted} fontFamily="DM Mono,monospace">{f.proj}</text>
+              {f.real > 0 && <>
+                <rect x={padL} y={yBase + barH + 2} width={wReal} height={barH - 4} rx={3} fill={t.accent} fillOpacity={0.85} />
+                <text x={padL + wReal + 4} y={yBase + barH * 2 - 3} fontSize={8} fill={t.accentText} fontFamily="DM Mono,monospace" fontWeight="600">{f.real}</text>
+              </>}
+            </g>;
+          })}
+          <g transform={`translate(${padL},${H - 4})`}>
+            <rect width={8} height={6} rx={1} fill={t.accent} fillOpacity={0.22} />
+            <text x={11} y={6} fontSize={7.5} fill={t.textMuted} fontFamily="Plus Jakarta Sans">Proyectado</text>
+            <rect x={68} width={8} height={6} rx={1} fill={t.accent} />
+            <text x={79} y={6} fontSize={7.5} fill={t.accentText} fontFamily="Plus Jakarta Sans">Real</text>
+          </g>
+        </svg>
+      );
+    };
+
+    // ── KPI Card ───────────────────────────────────────────────
+    const KpiCard = ({ label, value, change, trend, icon, color, big = false }) => {
+      const t = useTheme();
+      return (
+        <Card style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
+            <div style={{
+              width: big ? 46 : 38, height: big ? 46 : 38, borderRadius: 10, background: color + '22',
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}>
+              <Icon name={icon} size={big ? 22 : 18} color={color} sw={2} />
+            </div>
+            <span style={{
+              fontSize: 11, fontWeight: 600, color: trend === 'up' ? t.ok : t.warn,
+              background: trend === 'up' ? t.okLight : t.warnLight, padding: '3px 8px', borderRadius: 20
+            }}>{change}</span>
+          </div>
+          <div style={{ fontSize: big ? 34 : 27, fontWeight: 800, color: t.text, letterSpacing: '-0.5px', lineHeight: 1 }}>{value}</div>
+          <div style={{ fontSize: 12, color: t.textMuted, marginTop: 5, fontWeight: 500 }}>{label}</div>
+        </Card>
+      );
+    };
+
+    const HealthRow = ({ items }) => {
+      const t = useTheme();
+      return (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
+          {items.map(h => (
+            <Card key={h.key} p="14px">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <StatusDot status={h.status} />
+                <span style={{ fontSize: 12, fontWeight: 600, color: t.text }}>{h.name}</span>
+              </div>
+              <div style={{ fontSize: 11, color: t.textMuted }}>{h.detail}</div>
+              <div style={{ fontSize: 10, color: t.textLight, marginTop: 3 }}>Verificado {h.check}</div>
+            </Card>
+          ))}
+        </div>
+      );
+    };
+
+    // ── Analyst Dashboard ──────────────────────────────────────
+    const Dashboard = () => {
+      const t = useTheme();
+      const { filters } = useFilters();
+      const cosechaData = MOCK.cosecha[filters.fundo] || MOCK.cosecha.todos;
+      const fundoLabel = filters.fundo === 'todos' ? 'Todos los fundos'
+        : MOCK.fundos.find(f => f.id === filters.fundo)?.name || '';
+
+      return (
+        <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Filter bar */}
+          <FilterBar config={{ fundo: true }} />
+
+          {/* KPIs */}
+          <div style={{ display: 'flex', gap: 14 }}>
+            <KpiCard label="Cosecha Proyectada (TM)" value="4,820" change="+8.3%" trend="up" icon="trendUp" color={t.accent} />
+            <KpiCard label="Eficiencia ETL" value="99.2%" change="+0.1%" trend="up" icon="activity" color={t.ok} />
+            <KpiCard label="Alertas Activas" value="15" change="-3 hoy" trend="up" icon="alertC" color={t.warn} />
+            <KpiCard label="Lotes Activos" value="127" change="+4" trend="up" icon="map" color={t.accent} />
+          </div>
+
+          {/* Health */}
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: t.textMuted, textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 10 }}>Estado del Sistema</div>
+            <HealthRow items={MOCK.health} />
+          </div>
+
+          {/* Main chart */}
+          <Card>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: t.text }}>Proyección de Cosecha — Temporada 2025–2026</div>
+                <div style={{ fontSize: 11, color: t.textMuted, marginTop: 3 }}>
+                  TM · Arándano · {fundoLabel}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 16, fontSize: 11, color: t.textMuted, alignItems: 'center' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span style={{ width: 16, height: 3, background: t.accent, borderRadius: 2, display: 'inline-block' }} />Real
+                </span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <svg width="16" height="3"><line x1="0" y1="1.5" x2="16" y2="1.5" stroke={t.accent} strokeWidth="2" strokeDasharray="4,3" strokeOpacity="0.6" /></svg>
+                  Proyectado
+                </span>
+              </div>
+            </div>
+            <HarvestChart data={cosechaData} />
+          </Card>
+
+          {/* Bottom row */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14 }}>
+            <Card>
+              <div style={{ fontSize: 14, fontWeight: 700, color: t.text, marginBottom: 4 }}>Calibres (Modelo IA)</div>
+              <div style={{ fontSize: 11, color: t.textMuted, marginBottom: 14 }}>Distribución proyectada · Biloxi</div>
+              <DonutChart data={MOCK.calibres} />
+            </Card>
+            <Card>
+              <div style={{ fontSize: 14, fontWeight: 700, color: t.text, marginBottom: 4 }}>Cosecha por Fundo</div>
+              <div style={{ fontSize: 11, color: t.textMuted, marginBottom: 12 }}>TM · Real vs Proyectado</div>
+              <FundoBarChart />
+            </Card>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <Card style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 10 }}>Resumen</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {[
+                    { l: 'Fundos', v: '2 activos', icon: 'map', c: t.accent },
+                    { l: 'Hectáreas', v: '1,015 ha', icon: 'bar', c: t.ok },
+                    { l: 'Variedades', v: '6 tipos', icon: 'pkg', c: t.warn },
+                    { l: 'Duplicados', v: '5 pend.', icon: 'shuffle', c: t.err },
+                  ].map(s => (
+                    <div key={s.l} style={{
+                      background: t.accentLight, borderRadius: 8, padding: '9px 10px',
+                      display: 'flex', alignItems: 'center', gap: 7
+                    }}>
+                      <Icon name={s.icon} size={14} color={s.c} sw={2} />
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: t.text }}>{s.v}</div>
+                        <div style={{ fontSize: 9, color: t.textMuted }}>{s.l}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+              <Card p="14px">
+                <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 8 }}>Última ejecución ETL</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: t.accent, fontFamily: "'DM Mono',monospace" }}>ETL-2847</div>
+                    <div style={{ fontSize: 10, color: t.textMuted }}>Hace 2 horas · 4m 12s</div>
+                  </div>
+                  <Badge status="ok" />
+                </div>
+                <div style={{ marginTop: 8, fontSize: 11, color: t.textMuted }}>
+                  <span style={{ fontFamily: "'DM Mono',monospace", fontWeight: 600, color: t.text }}>2.84M</span> registros procesados
+                </div>
+              </Card>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // ── Executive Portal ───────────────────────────────────────
+    const ExecutivePortal = () => {
+      const t = useTheme();
+      const exportDest = [
+        { country: 'Estados Unidos', pct: 45, flag: '🇺🇸' },
+        { country: 'Países Bajos', pct: 20, flag: '🇳🇱' },
+        { country: 'China', pct: 20, flag: '🇨🇳' },
+        { country: 'Reino Unido', pct: 15, flag: '🇬🇧' },
+      ];
+      const fundoCards = [
+        { name: 'El Palomar', region: 'Lambayeque', ha: 480, tm: 2850, real: 2640, status: 'ok', pct: 92.6 },
+        { name: 'La Victoria', region: 'Piura', ha: 320, tm: 1820, real: 1710, status: 'ok', pct: 93.9 },
+        { name: 'Los Pinos', region: 'La Libertad', ha: 215, tm: 150, real: 0, status: 'warning', pct: 0 },
+      ];
+
+      return (
+        <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {/* Hero header */}
+          <div style={{
+            background: `linear-gradient(135deg, ${t.accent}, ${t.accentHov})`,
+            borderRadius: 16, padding: '28px 32px',
+            boxShadow: `0 8px 32px ${t.accent}44`,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <div>
+              <div style={{
+                fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.7)', letterSpacing: '1px',
+                textTransform: 'uppercase', marginBottom: 8
+              }}>Temporada 2025 – 2026 · Arándano</div>
+              <div style={{ fontSize: 52, fontWeight: 800, color: '#fff', letterSpacing: '-2px', lineHeight: 1 }}>4,820 TM</div>
+              <div style={{ fontSize: 16, color: 'rgba(255,255,255,0.85)', marginTop: 8, fontWeight: 500 }}>
+                Proyección total de cosecha para exportación
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ display: 'flex', gap: 14 }}>
+                {[
+                  { l: 'Avance temporada', v: '79%' },
+                  { l: 'Calibre premium', v: '40%' },
+                  { l: 'Fundos activos', v: '2/3' },
+                ].map(s => (
+                  <div key={s.l} style={{
+                    background: 'rgba(255,255,255,0.15)', borderRadius: 12,
+                    padding: '14px 18px', backdropFilter: 'blur(10px)', textAlign: 'center', minWidth: 110
+                  }}>
+                    <div style={{ fontSize: 28, fontWeight: 800, color: '#fff' }}>{s.v}</div>
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 4 }}>{s.l}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* KPI row */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 14 }}>
+            {[
+              { l: 'Cosecha Real YTD', v: '5,070 TM', sub: 'Oct–Mar acumulado', icon: 'bar', c: t.accent },
+              { l: 'Cumplimiento', v: '93.0%', sub: 'vs proyección inicial', icon: 'checkC', c: t.ok },
+              { l: 'Calibres ≥14mm', v: '75%', sub: 'Alta demanda export', icon: 'star', c: t.warn },
+              { l: 'ETL Uptime', v: '99.2%', sub: 'Último mes', icon: 'activity', c: t.ok },
+            ].map(s => (
+              <Card key={s.l} style={{ textAlign: 'center' }}>
+                <div style={{
+                  width: 44, height: 44, borderRadius: 12, background: s.c + '22',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px'
+                }}>
+                  <Icon name={s.icon} size={22} color={s.c} sw={2} />
+                </div>
+                <div style={{ fontSize: 30, fontWeight: 800, color: t.text, letterSpacing: '-0.5px' }}>{s.v}</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: t.text, marginTop: 4 }}>{s.l}</div>
+                <div style={{ fontSize: 11, color: t.textMuted, marginTop: 2 }}>{s.sub}</div>
+              </Card>
+            ))}
+          </div>
+
+          {/* Main chart + calibres */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16 }}>
+            <Card>
+              <div style={{ fontSize: 16, fontWeight: 700, color: t.text, marginBottom: 4 }}>Curva de Cosecha — Temporada 2025–2026</div>
+              <div style={{ fontSize: 12, color: t.textMuted, marginBottom: 16 }}>TM mensual · Real (line) vs Proyectado (dash)</div>
+              <HarvestChart data={MOCK.cosecha.todos} compact />
+            </Card>
+            <Card>
+              <div style={{ fontSize: 15, fontWeight: 700, color: t.text, marginBottom: 4 }}>Distribución de Calibres</div>
+              <div style={{ fontSize: 12, color: t.textMuted, marginBottom: 16 }}>Proyección IA · Biloxi · El Palomar</div>
+              <DonutChart data={MOCK.calibres} compact />
+              <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${t.divider}` }}>
+                <div style={{ fontSize: 11, color: t.textMuted, fontWeight: 600, marginBottom: 8 }}>Calibres premium (≥14mm)</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ flex: 1, height: 10, background: t.divider, borderRadius: 5, overflow: 'hidden' }}>
+                    <div style={{ width: '75%', height: '100%', background: `linear-gradient(90deg, ${t.accent}, ${t.accentHov})`, borderRadius: 5 }} />
+                  </div>
+                  <span style={{ fontSize: 16, fontWeight: 800, color: t.accent }}>75%</span>
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          {/* Fundo cards + export */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 280px', gap: 14 }}>
+            {fundoCards.map(f => (
+              <Card key={f.name}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: t.text }}>{f.name}</div>
+                    <div style={{ fontSize: 11, color: t.textMuted }}>{f.region} · {f.ha} ha</div>
+                  </div>
+                  <Badge status={f.status} />
+                </div>
+                <div style={{ fontSize: 30, fontWeight: 800, color: t.text, letterSpacing: '-0.5px' }}>{f.tm} TM</div>
+                <div style={{ fontSize: 11, color: t.textMuted, marginTop: 2 }}>Proyección temporada</div>
+                {f.real > 0 && <>
+                  <div style={{ marginTop: 12, height: 6, background: t.divider, borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ width: `${f.pct}%`, height: '100%', background: t.accent, borderRadius: 3 }} />
+                  </div>
+                  <div style={{ fontSize: 10, color: t.textMuted, marginTop: 4 }}>Real: {f.real} TM ({f.pct}% cumplido)</div>
+                </>}
+                {f.real === 0 && <div style={{ fontSize: 11, color: t.warn, marginTop: 8, fontWeight: 500 }}>Pendiente de inicio</div>}
+              </Card>
+            ))}
+            {/* Export destinations */}
+            <Card>
+              <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 7 }}>
+                <Icon name="globe" size={15} color={t.accent} sw={2} />
+                Destinos de Exportación
+              </div>
+              {exportDest.map(d => (
+                <div key={d.country} style={{ marginBottom: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <span style={{ fontSize: 12, color: t.text, fontWeight: 500 }}>{d.flag} {d.country}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: t.accentText }}>{d.pct}%</span>
+                  </div>
+                  <div style={{ height: 5, background: t.divider, borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ width: `${d.pct}%`, height: '100%', background: t.accent, borderRadius: 3 }} />
+                  </div>
+                </div>
+              ))}
+            </Card>
+          </div>
+        </div>
+      );
+    };
+
+    Object.assign(window, { Dashboard, ExecutivePortal, HarvestChart, DonutChart });
+
+  </script>
+  <script type="text/babel">
+    const { useState } = React;
+
+    /* ─────────────────── GEOGRAFÍA ─────────────────── */
+    const Geografia = () => {
+      const t = useTheme();
+      const [openFundo, setOpenFundo] = useState('f1');
+      const [openSector, setOpenSector] = useState(null);
+      const [selected, setSelected] = useState({ type: 'fundo', id: 'f1' });
+      const selFundo = MOCK.fundos.find(f => selected.type === 'fundo' && f.id === selected.id);
+      const selSector = MOCK.fundos.flatMap(f => f.sectores).find(s => selected.type === 'sector' && s.id === selected.id);
+      return (
+        <div className="fade-in">
+          <SectionHeader title="Geografía & Variedades"
+            subtitle="Jerarquía: Fundo → Sector → Módulo → Turno → Válvula → Cama"
+            action={<Btn icon="plus" size="sm">Agregar Fundo</Btn>} />
+          <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 16, height: 'calc(100vh - 190px)' }}>
+            <Card p="0" style={{ overflowY: 'auto' }}>
+              <div style={{
+                padding: '12px 16px', borderBottom: `1px solid ${t.divider}`, fontSize: 11,
+                fontWeight: 700, color: t.textMuted, letterSpacing: '0.8px', textTransform: 'uppercase'
+              }}>
+                Estructura Geográfica
+              </div>
+              {MOCK.fundos.map(fundo => {
+                const fundoOpen = openFundo === fundo.id;
+                const isSel = selected.type === 'fundo' && selected.id === fundo.id;
+                return (
+                  <div key={fundo.id}>
+                    <div onClick={() => { setOpenFundo(fundoOpen ? null : fundo.id); setSelected({ type: 'fundo', id: fundo.id }); }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
+                        background: isSel ? t.navActive : 'transparent', borderLeft: `3px solid ${isSel ? t.accent : 'transparent'}`,
+                        cursor: 'pointer', transition: 'background .15s'
+                      }}>
+                      <Icon name={fundoOpen ? 'chevD' : 'chevR'} size={13} color={t.textMuted} />
+                      <Icon name="map" size={14} color={isSel ? t.accent : t.textMuted} sw={2} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: isSel ? t.accentText : t.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fundo.name}</div>
+                        <div style={{ fontSize: 10, color: t.textMuted }}>{fundo.region} · {fundo.ha} ha</div>
+                      </div>
+                      <StatusDot status={fundo.active ? 'ok' : 'error'} />
+                    </div>
+                    {fundoOpen && fundo.sectores.map(sec => {
+                      const isSecSel = selected.type === 'sector' && selected.id === sec.id;
+                      const secOpen = openSector === sec.id;
+                      return (
+                        <div key={sec.id}>
+                          <div onClick={() => { setOpenSector(secOpen ? null : sec.id); setSelected({ type: 'sector', id: sec.id }); }}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px 8px 34px',
+                              background: isSecSel ? t.navActive : 'transparent', borderLeft: `3px solid ${isSecSel ? t.accent : 'transparent'}`,
+                              cursor: 'pointer', transition: 'background .15s'
+                            }}>
+                            <Icon name={secOpen ? 'chevD' : 'chevR'} size={11} color={t.textLight} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 11, fontWeight: 600, color: isSecSel ? t.accentText : t.textMuted }}>{sec.name}</div>
+                              <div style={{ fontSize: 10, color: t.textLight }}>{sec.variedad} · {sec.camas} camas</div>
+                            </div>
+                          </div>
+                          {secOpen && (
+                            <div style={{ paddingLeft: 52, paddingBottom: 4 }}>
+                              {['Módulos', 'Turnos', 'Válvulas', 'Camas'].map((l, i) => (
+                                <div key={l} style={{
+                                  display: 'flex', justifyContent: 'space-between', padding: '5px 14px 5px 0',
+                                  borderBottom: `1px solid ${t.divider}`, fontSize: 10, color: t.textMuted
+                                }}>
+                                  <span>{l}</span>
+                                  <span style={{ fontWeight: 700, color: t.text, fontFamily: "'DM Mono',monospace" }}>
+                                    {[sec.modulos, sec.turnos, sec.valvulas, sec.camas][i]}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </Card>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, overflowY: 'auto' }}>
+              {selFundo && (
+                <>
+                  <Card>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <h3 style={{ fontSize: 18, fontWeight: 800, color: t.text }}>Fundo {selFundo.name}</h3>
+                          <Badge status={selFundo.active ? 'activo' : 'inactivo'} />
+                        </div>
+                        <p style={{ fontSize: 12, color: t.textMuted, marginTop: 3 }}>{selFundo.region} · {selFundo.ha} ha totales</p>
+                      </div>
+                      <Btn size="sm" variant="secondary" icon="edit">Editar</Btn>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
+                      {[{ l: 'Sectores', v: selFundo.sectores.length }, { l: 'Total camas', v: selFundo.camas.toLocaleString() }, { l: 'Hectáreas', v: `${selFundo.ha} ha` }, { l: 'Variedades', v: selFundo.variedades.length }].map(s => (
+                        <div key={s.l} style={{ background: t.accentLight, borderRadius: 10, padding: '12px 14px' }}>
+                          <div style={{ fontSize: 20, fontWeight: 800, color: t.text }}>{s.v}</div>
+                          <div style={{ fontSize: 11, color: t.textMuted, marginTop: 2 }}>{s.l}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {selFundo.variedades.map(v => (
+                        <span key={v} style={{ padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: t.tag, color: t.tagText }}>{v}</span>
+                      ))}
+                    </div>
+                  </Card>
+                  <Card>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 14 }}>Sectores del Fundo</div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ borderBottom: `2px solid ${t.divider}` }}>
+                          {['Sector', 'Variedad', 'Módulos', 'Turnos', 'Válvulas', 'Camas', 'Hectáreas'].map(h => (
+                            <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontSize: 11, color: t.textMuted, fontWeight: 600 }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selFundo.sectores.map(s => (
+                          <tr key={s.id} onClick={() => { setSelected({ type: 'sector', id: s.id }); setOpenSector(s.id); }}
+                            style={{ borderBottom: `1px solid ${t.divider}`, cursor: 'pointer', transition: 'background .12s' }}
+                            onMouseEnter={e => e.currentTarget.style.background = t.rowHov}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                            {[s.name, s.variedad, s.modulos, s.turnos, s.valvulas, s.camas.toLocaleString(), `${s.ha} ha`].map((v, i) => (
+                              <td key={i} style={{
+                                padding: '9px 10px', fontSize: 12, color: i === 0 ? t.accentText : t.text,
+                                fontWeight: i === 0 ? 600 : 400, fontFamily: i > 1 ? "'DM Mono',monospace" : 'inherit'
+                              }}>{v}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </Card>
+                </>
+              )}
+              {selSector && (
+                <Card>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
+                    <div>
+                      <h3 style={{ fontSize: 16, fontWeight: 700, color: t.text }}>{selSector.name}</h3>
+                      <p style={{ fontSize: 12, color: t.textMuted }}>Variedad: <strong>{selSector.variedad}</strong></p>
+                    </div>
+                    <Btn size="sm" variant="secondary" icon="edit">Editar</Btn>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10 }}>
+                    {[['Módulos', selSector.modulos], ['Turnos', selSector.turnos], ['Válvulas', selSector.valvulas], ['Camas', selSector.camas], ['Hectáreas', `${selSector.ha} ha`]].map(([l, v]) => (
+                      <div key={l} style={{ background: t.accentLight, borderRadius: 8, padding: '10px 12px' }}>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: t.text }}>{v}</div>
+                        <div style={{ fontSize: 10, color: t.textMuted }}>{l}</div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    /* ─────────────────── HOMOLOGACIÓN ─────────────────── */
+    const Homologacion = () => {
+      const t = useTheme();
+      const { filters } = useFilters();
+      const [items, setItems] = useState(MOCK.duplicates);
+      const action = (id, newEstado) => setItems(prev => prev.map(d => d.id === id ? { ...d, estado: newEstado } : d));
+
+      const filtered = items.filter(d => {
+        if (filters.tipo !== 'todos' && d.tipo !== filters.tipo) return false;
+        if (filters.estado !== 'todos' && d.estado !== filters.estado) return false;
+        if (filters.q && !`${d.v1} ${d.v2} ${d.tipo} ${d.campo}`.toLowerCase().includes(filters.q.toLowerCase())) return false;
+        return true;
+      });
+
+      return (
+        <div className="fade-in">
+          <SectionHeader title="Homologación de Datos"
+            subtitle="Detección y resolución de duplicados en tablas maestras"
+            action={<div style={{ display: 'flex', gap: 8 }}>
+              <Btn size="sm" variant="secondary" icon="refresh">Re-escanear</Btn>
+              <Btn size="sm" icon="download">Exportar</Btn>
+            </div>} />
+          <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+            {[
+              { l: 'Pendientes', v: items.filter(d => d.estado === 'pendiente').length, c: t.warn, bg: t.warnLight },
+              { l: 'Revisando', v: items.filter(d => d.estado === 'revisando').length, c: t.accentText, bg: t.accentLight },
+              { l: 'Aprobados', v: items.filter(d => d.estado === 'aprobado').length, c: t.ok, bg: t.okLight },
+              { l: 'Total', v: items.length, c: t.text, bg: t.card },
+            ].map(s => (
+              <Card key={s.l} p="12px 16px" style={{ flex: 1 }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: s.c }}>{s.v}</div>
+                <div style={{ fontSize: 11, color: t.textMuted, marginTop: 2 }}>{s.l}</div>
+              </Card>
+            ))}
+          </div>
+          <FilterBar config={{
+            search: true, searchPlaceholder: 'Buscar por valor, campo...',
+            tipo: true,
+            estado: true, estadoOpts: ['todos', 'pendiente', 'revisando', 'aprobado'],
+            resultCount: filtered.length,
+          }} />
+          <Card p="0">
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: `2px solid ${t.divider}` }}>
+                  {['Tipo', 'Campo', 'Valor A', 'Valor B', 'Confianza', 'Fuente', 'Estado', 'Acciones'].map(h => (
+                    <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontSize: 11, color: t.textMuted, fontWeight: 700, background: t.card }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 && (
+                  <tr><td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: t.textMuted, fontSize: 13 }}>
+                    No se encontraron registros con los filtros aplicados
+                  </td></tr>
+                )}
+                {filtered.map(d => (
+                  <tr key={d.id} style={{ borderBottom: `1px solid ${t.divider}`, transition: 'background .12s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = t.rowHov}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                    <td style={{ padding: '10px 14px' }}>
+                      <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: t.accentLight, color: t.accentText }}>{d.tipo}</span>
+                    </td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: t.textMuted, fontWeight: 500 }}>{d.campo}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: t.text, fontFamily: "'DM Mono',monospace" }}>{d.v1}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: t.text, fontFamily: "'DM Mono',monospace" }}>{d.v2}</td>
+                    <td style={{ padding: '10px 14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ width: 60, height: 6, background: t.divider, borderRadius: 3, overflow: 'hidden' }}>
+                          <div style={{
+                            width: `${d.conf}%`, height: '100%', borderRadius: 3,
+                            background: d.conf >= 95 ? t.ok : d.conf >= 85 ? t.accent : t.warn
+                          }} />
+                        </div>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: t.text, fontFamily: "'DM Mono',monospace" }}>{d.conf}%</span>
+                      </div>
+                    </td>
+                    <td style={{ padding: '10px 14px', fontSize: 11, color: t.textMuted }}>{d.src}</td>
+                    <td style={{ padding: '10px 14px' }}><Badge status={d.estado} /></td>
+                    <td style={{ padding: '10px 14px' }}>
+                      {d.estado === 'pendiente' && <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => action(d.id, 'aprobado')} style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${t.ok}`, background: t.okLight, color: t.ok, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>Fusionar</button>
+                        <button onClick={() => action(d.id, 'revisando')} style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${t.divider}`, background: 'transparent', color: t.textMuted, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>Revisar</button>
+                      </div>}
+                      {d.estado === 'aprobado' && <span style={{ fontSize: 11, color: t.textLight }}>✓ Resuelto</span>}
+                      {d.estado === 'revisando' && <button onClick={() => action(d.id, 'aprobado')} style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${t.accent}`, background: t.accentLight, color: t.accentText, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>Confirmar</button>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        </div>
+      );
+    };
+
+    /* ─────────────────── ETL AUDIT ─────────────────── */
+    const ETLAudit = () => {
+      const t = useTheme();
+      const { filters } = useFilters();
+      const [sel, setSel] = useState(null);
+
+      const filtered = MOCK.etlRuns.filter(r => {
+        if (filters.tabla !== 'todas' && r.tabla !== filters.tabla) return false;
+        if (filters.estado !== 'todos') {
+          if (filters.estado === 'ok' && r.estado !== 'ok') return false;
+          if (filters.estado === 'warning' && r.estado !== 'warning') return false;
+          if (filters.estado === 'error' && r.estado !== 'error') return false;
+        }
+        if (filters.q && !r.id.toLowerCase().includes(filters.q.toLowerCase()) && !r.tabla.includes(filters.q.toLowerCase())) return false;
+        return true;
+      });
+
+      const stats = {
+        ok: MOCK.etlRuns.filter(r => r.estado === 'ok').length,
+        warns: MOCK.etlRuns.reduce((s, r) => s + r.warns, 0),
+        errs: MOCK.etlRuns.reduce((s, r) => s + r.errs, 0),
+        avgRegs: Math.round(MOCK.etlRuns.reduce((s, r) => s + r.regs, 0) / MOCK.etlRuns.length),
+      };
+
+      return (
+        <div className="fade-in">
+          <SectionHeader title="Auditoría ETL"
+            subtitle="Historial de ejecuciones y métricas del pipeline"
+            action={<div style={{ display: 'flex', gap: 8 }}>
+              <Btn size="sm" variant="secondary" icon="filter">Filtrar</Btn>
+              <Btn size="sm" icon="refresh">Ejecutar ahora</Btn>
+            </div>} />
+          <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+            {[
+              { l: 'Runs exitosas', v: stats.ok, c: t.ok, bg: t.okLight },
+              { l: 'Promedio registros', v: `${(stats.avgRegs / 1e6).toFixed(2)}M`, c: t.accent, bg: t.accentLight },
+              { l: 'Total errores', v: stats.errs, c: t.err, bg: t.errLight },
+              { l: 'Total alertas', v: stats.warns, c: t.warn, bg: t.warnLight },
+            ].map(s => (
+              <Card key={s.l} p="12px 16px" style={{ flex: 1 }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: s.c }}>{s.v}</div>
+                <div style={{ fontSize: 11, color: t.textMuted, marginTop: 2 }}>{s.l}</div>
+              </Card>
+            ))}
+          </div>
+          <FilterBar config={{
+            search: true, searchPlaceholder: 'Buscar por Run ID o tabla...',
+            tabla: true,
+            estado: true, estadoOpts: ['todos', 'ok', 'warning', 'error'],
+            resultCount: filtered.length,
+          }} />
+          <Card p="0">
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: `2px solid ${t.divider}` }}>
+                  {['Run ID', 'Fecha', 'Tabla', 'Duración', 'Registros', 'Errores', 'Alertas', 'Estado'].map(h => (
+                    <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontSize: 11, color: t.textMuted, fontWeight: 700, background: t.card }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 && <tr><td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: t.textMuted, fontSize: 13 }}>No hay resultados con los filtros aplicados</td></tr>}
+                {filtered.map(r => (
+                  <tr key={r.id} onClick={() => setSel(sel === r.id ? null : r.id)}
+                    style={{
+                      borderBottom: `1px solid ${t.divider}`, cursor: 'pointer',
+                      background: sel === r.id ? t.accentLight : 'transparent', transition: 'background .12s'
+                    }}
+                    onMouseEnter={e => { if (sel !== r.id) e.currentTarget.style.background = t.rowHov; }}
+                    onMouseLeave={e => { if (sel !== r.id) e.currentTarget.style.background = 'transparent'; }}>
+                    <td style={{ padding: '10px 14px', fontSize: 12, fontWeight: 700, color: t.accentText, fontFamily: "'DM Mono',monospace" }}>{r.id}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: t.text }}>{r.fecha}</td>
+                    <td style={{ padding: '10px 14px' }}>
+                      <span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 11, background: t.tag, color: t.tagText, fontFamily: "'DM Mono',monospace" }}>{r.tabla}</span>
+                    </td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: t.text, fontFamily: "'DM Mono',monospace" }}>{r.dur}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, fontWeight: 600, color: t.text, fontFamily: "'DM Mono',monospace" }}>{(r.regs / 1e6).toFixed(3)}M</td>
+                    <td style={{ padding: '10px 14px' }}><span style={{ color: r.errs > 0 ? t.err : t.textLight, fontWeight: 600, fontSize: 12 }}>{r.errs}</span></td>
+                    <td style={{ padding: '10px 14px' }}><span style={{ color: r.warns > 10 ? t.warn : t.textMuted, fontSize: 12 }}>{r.warns}</span></td>
+                    <td style={{ padding: '10px 14px' }}><Badge status={r.estado} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        </div>
+      );
+    };
+
+    /* ─────────────────── REGLAS ─────────────────── */
+    const Reglas = () => {
+      const t = useTheme();
+      const [rules, setRules] = useState(MOCK.reglas);
+      const toggle = (id) => setRules(prev => prev.map(r => r.id === id ? { ...r, activa: !r.activa } : r));
+      return (
+        <div className="fade-in">
+          <SectionHeader title="Reglas & Restricciones"
+            subtitle="Validaciones aplicadas sobre las tablas maestras del DW"
+            action={<Btn size="sm" icon="plus">Nueva regla</Btn>} />
+          <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+            {[{ l: 'Reglas activas', v: rules.filter(r => r.activa).length, c: t.ok }, { l: 'Inactivas', v: rules.filter(r => !r.activa).length, c: t.textMuted }, { l: 'Violaciones', v: rules.reduce((s, r) => s + r.violaciones, 0), c: t.err }].map(s => (
+              <Card key={s.l} p="14px 18px" style={{ flex: 1 }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: s.c }}>{s.v}</div>
+                <div style={{ fontSize: 11, color: t.textMuted, marginTop: 2 }}>{s.l}</div>
+              </Card>
+            ))}
+          </div>
+          <Card p="0">
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: `2px solid ${t.divider}` }}>
+                  {['ID', 'Regla', 'Tabla', 'Tipo', 'Violaciones', 'Estado', 'Acciones'].map(h => (
+                    <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontSize: 11, color: t.textMuted, fontWeight: 700, background: t.card }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rules.map(r => (
+                  <tr key={r.id} style={{ borderBottom: `1px solid ${t.divider}`, transition: 'background .12s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = t.rowHov}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                    <td style={{ padding: '10px 14px', fontSize: 11, fontFamily: "'DM Mono',monospace", color: t.textMuted }}>{r.id}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 12, color: t.text, fontWeight: 500 }}>{r.nombre}</td>
+                    <td style={{ padding: '10px 14px' }}><span style={{ padding: '2px 8px', borderRadius: 4, fontSize: 11, background: t.tag, color: t.tagText, fontFamily: "'DM Mono',monospace" }}>{r.tabla}</span></td>
+                    <td style={{ padding: '10px 14px', fontSize: 11, color: t.textMuted }}>{r.tipo}</td>
+                    <td style={{ padding: '10px 14px' }}><span style={{ fontSize: 13, fontWeight: 700, color: r.violaciones > 0 ? t.err : t.textLight }}>{r.violaciones}</span></td>
+                    <td style={{ padding: '10px 14px' }}><Badge status={r.activa ? 'activo' : 'inactivo'} /></td>
+                    <td style={{ padding: '10px 14px' }}>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button onClick={() => toggle(r.id)} style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${t.divider}`, background: 'transparent', color: r.activa ? t.err : t.ok, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>{r.activa ? 'Pausar' : 'Activar'}</button>
+                        <button style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${t.divider}`, background: 'transparent', color: t.textMuted, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>Editar</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        </div>
+      );
+    };
+
+    /* ─────────────────── PERSONAL ─────────────────── */
+    const Personal = () => {
+      const t = useTheme();
+      const { filters } = useFilters();
+      const [sel, setSel] = useState(null);
+
+      const filtered = MOCK.personal.filter(p => {
+        if (filters.estado !== 'todos' && p.estado !== filters.estado) return false;
+        if (filters.rol !== 'todos' && p.rol !== filters.rol) return false;
+        if (filters.q && !p.nombre.toLowerCase().includes(filters.q.toLowerCase()) && !p.rol.toLowerCase().includes(filters.q.toLowerCase())) return false;
+        return true;
+      });
+
+      const selUser = sel ? MOCK.personal.find(p => p.id === sel) : null;
+
+      return (
+        <div className="fade-in">
+          <SectionHeader title="Auditoría de Personal"
+            subtitle="Accesos, actividad y seguimiento por usuario"
+            action={<Btn size="sm" icon="plus">Agregar usuario</Btn>} />
+          <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+            {[
+              { l: 'Activos', v: MOCK.personal.filter(p => p.estado === 'activo').length, c: t.ok },
+              { l: 'Inactivos', v: MOCK.personal.filter(p => p.estado === 'inactivo').length, c: t.err },
+              { l: 'Pendientes', v: MOCK.personal.filter(p => p.estado === 'pendiente').length, c: t.warn },
+              { l: 'Total', v: MOCK.personal.length, c: t.text },
+            ].map(s => (
+              <Card key={s.l} p="12px 16px" style={{ flex: 1 }}>
+                <div style={{ fontSize: 22, fontWeight: 800, color: s.c }}>{s.v}</div>
+                <div style={{ fontSize: 11, color: t.textMuted, marginTop: 2 }}>{s.l}</div>
+              </Card>
+            ))}
+          </div>
+          <FilterBar config={{
+            search: true, searchPlaceholder: 'Buscar por nombre o rol...',
+            rol: true,
+            estado: true, estadoOpts: ['todos', 'activo', 'inactivo', 'pendiente'],
+            resultCount: filtered.length,
+          }} />
+          <div style={{ display: 'grid', gridTemplateColumns: sel ? '1fr 300px' : '1fr', gap: 16 }}>
+            <Card p="0">
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: `2px solid ${t.divider}` }}>
+                    {['Usuario', 'Rol', 'Estado', 'Último acceso', 'Módulos', 'Actividad', 'Acciones'].map(h => (
+                      <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontSize: 11, color: t.textMuted, fontWeight: 700, background: t.card }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.length === 0 && <tr><td colSpan={7} style={{ padding: '32px', textAlign: 'center', color: t.textMuted, fontSize: 13 }}>Sin resultados</td></tr>}
+                  {filtered.map(p => (
+                    <tr key={p.id} onClick={() => setSel(sel === p.id ? null : p.id)}
+                      style={{
+                        borderBottom: `1px solid ${t.divider}`, cursor: 'pointer',
+                        background: sel === p.id ? t.accentLight : 'transparent', transition: 'background .12s'
+                      }}
+                      onMouseEnter={e => { if (sel !== p.id) e.currentTarget.style.background = t.rowHov; }}
+                      onMouseLeave={e => { if (sel !== p.id) e.currentTarget.style.background = 'transparent'; }}>
+                      <td style={{ padding: '10px 14px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{
+                            width: 28, height: 28, borderRadius: '50%', background: t.accentLight,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: t.accentText, flexShrink: 0
+                          }}>
+                            {p.nombre.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                          </div>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: t.text }}>{p.nombre}</span>
+                        </div>
+                      </td>
+                      <td style={{ padding: '10px 14px', fontSize: 11, color: t.textMuted }}>{p.rol}</td>
+                      <td style={{ padding: '10px 14px' }}><Badge status={p.estado === 'pendiente' ? 'pendiente_user' : p.estado} /></td>
+                      <td style={{ padding: '10px 14px', fontSize: 11, color: t.textMuted }}>{p.acceso}</td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                          {p.modulos.slice(0, 2).map(m => <span key={m} style={{ padding: '2px 6px', borderRadius: 4, fontSize: 10, background: t.tag, color: t.tagText }}>{m}</span>)}
+                          {p.modulos.length > 2 && <span style={{ fontSize: 10, color: t.textLight }}>+{p.modulos.length - 2}</span>}
+                        </div>
+                      </td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: p.actividad === 'Alta' ? t.ok : p.actividad === 'Media' ? t.accent : p.actividad === 'Baja' ? t.warn : t.textLight }}>{p.actividad}</span>
+                      </td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${t.divider}`, background: 'transparent', color: t.textMuted, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>Ver log</button>
+                          {p.estado === 'pendiente' && <button style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${t.ok}`, background: t.okLight, color: t.ok, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>Activar</button>}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+            {selUser && (
+              <Card className="slide-in">
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <h3 style={{ fontSize: 14, fontWeight: 700, color: t.text }}>Detalle</h3>
+                  <button onClick={() => setSel(null)} style={{ border: 'none', background: 'transparent', cursor: 'pointer' }}><Icon name="x" size={16} color={t.textMuted} /></button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 16 }}>
+                  <div style={{
+                    width: 52, height: 52, borderRadius: '50%', background: t.accentLight,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 800, color: t.accentText
+                  }}>
+                    {selUser.nombre.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: t.text, marginTop: 8 }}>{selUser.nombre}</div>
+                  <div style={{ fontSize: 12, color: t.textMuted }}>{selUser.rol}</div>
+                  <div style={{ marginTop: 8 }}><Badge status={selUser.estado === 'pendiente' ? 'pendiente_user' : selUser.estado} /></div>
+                </div>
+                {[['Último acceso', selUser.acceso], ['Acciones totales', selUser.acc], ['Actividad', selUser.actividad]].map(([l, v]) => (
+                  <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${t.divider}`, fontSize: 12 }}>
+                    <span style={{ color: t.textMuted }}>{l}</span>
+                    <span style={{ fontWeight: 600, color: t.text }}>{v}</span>
+                  </div>
+                ))}
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 11, color: t.textMuted, fontWeight: 600, marginBottom: 8 }}>Módulos con acceso</div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {selUser.modulos.length > 0
+                      ? selUser.modulos.map(m => <span key={m} style={{ padding: '4px 10px', borderRadius: 20, fontSize: 11, background: t.tag, color: t.tagText, fontWeight: 600 }}>{m}</span>)
+                      : <span style={{ fontSize: 11, color: t.textLight }}>Sin accesos asignados</span>
+                    }
+                  </div>
+                </div>
+              </Card>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    /* ─────────────────── MODELOS IA ─────────────────── */
+    const ModelosIA = () => {
+      const t = useTheme();
+      const models = [
+        { id: 'm1', name: 'Proyección de Cosecha', tipo: 'Regresión', estado: 'ok', last: 'Hace 6h', acc: '94.2%', vars: 'Fundo, Semana, Variedad, Temp, HR', desc: 'Predice TM de arándano por fundo/semana para las próximas 8 semanas de exportación.' },
+        { id: 'm2', name: 'Calibres de Fruta', tipo: 'Clasificación', estado: 'warning', last: 'Hace 18h', acc: '91.7%', vars: 'Cama, Variedad, Semana fenológica, Riego', desc: 'Predice distribución de calibres (mm) para optimizar empaque y precios de exportación.' },
+        { id: 'm3', name: 'Detección de Anomalías ETL', tipo: 'Anomaly Detection', estado: 'ok', last: 'Hace 1h', acc: '98.1%', vars: 'Registros por run, Tiempo, Errores, Tabla', desc: 'Detecta corridas ETL anómalas antes de que impacten el DW. Umbral: 3σ.' },
+      ];
+      const [sel, setSel] = useState('m1');
+      const selModel = models.find(m => m.id === sel);
+      return (
+        <div className="fade-in">
+          <SectionHeader title="Modelos de Inteligencia Artificial"
+            subtitle="Proyecciones y predicciones integradas al pipeline"
+            action={<Btn size="sm" icon="cpu">Ejecutar modelo</Btn>} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 20 }}>
+            {models.map(m => (
+              <Card key={m.id} style={{
+                cursor: 'pointer', border: `1px solid ${sel === m.id ? t.accent : t.cardBorder}`,
+                boxShadow: sel === m.id ? `0 0 0 2px ${t.accent}33, ${t.shadow}` : t.shadow, transition: 'all .18s'
+              }}
+                onClick={() => setSel(m.id)}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                  <span style={{ padding: '3px 10px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: t.accentLight, color: t.accentText }}>{m.tipo}</span>
+                  <Badge status={m.estado} />
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: t.text, marginBottom: 4 }}>{m.name}</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12 }}>
+                  <div><div style={{ fontSize: 10, color: t.textMuted }}>Precisión</div><div style={{ fontSize: 18, fontWeight: 800, color: m.estado === 'ok' ? t.ok : t.warn }}>{m.acc}</div></div>
+                  <div style={{ textAlign: 'right' }}><div style={{ fontSize: 10, color: t.textMuted }}>Última ejecución</div><div style={{ fontSize: 11, fontWeight: 600, color: t.text }}>{m.last}</div></div>
+                </div>
+              </Card>
+            ))}
+          </div>
+          {selModel && (
+            <Card className="fade-in">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                <div>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, color: t.text }}>{selModel.name}</h3>
+                  <p style={{ fontSize: 12, color: t.textMuted, marginTop: 4 }}>{selModel.desc}</p>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Btn size="sm" variant="secondary" icon="eye">Ver resultados</Btn>
+                  <Btn size="sm" icon="zap">Ejecutar ahora</Btn>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 16 }}>
+                {[['Tipo', selModel.tipo], ['Precisión', selModel.acc], ['Estado', selModel.estado.toUpperCase()], ['Variables', selModel.vars.split(',').length]].map(([l, v]) => (
+                  <div key={l} style={{ background: t.accentLight, borderRadius: 10, padding: '12px 14px' }}>
+                    <div style={{ fontSize: 11, color: t.textMuted, marginBottom: 4 }}>{l}</div>
+                    <div style={{ fontSize: l === 'Precisión' ? 20 : 14, fontWeight: l === 'Precisión' ? 800 : 600, color: t.text }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: t.textMuted, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.6px' }}>Variables de entrada</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {selModel.vars.split(',').map(v => (
+                  <span key={v} style={{ padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: t.tag, color: t.tagText }}>{v.trim()}</span>
+                ))}
+              </div>
+            </Card>
+          )}
+        </div>
+      );
+    };
+
+    /* ─────────────────── PIPELINE ─────────────────── */
+    const Pipeline = () => {
+      const t = useTheme();
+      const stages = [
+        { id: 1, name: 'Extracción', src: 'Oracle ERP', dest: 'Staging DB', status: 'ok', freq: 'Cada 4h', last: '14:32' },
+        { id: 2, name: 'Transformación', src: 'Staging DB', dest: 'Transform Layer', status: 'ok', freq: 'Post-extracción', last: '14:36' },
+        { id: 3, name: 'Homologación', src: 'Transform Layer', dest: 'Master Tables', status: 'warning', freq: 'Post-transform', last: '14:37' },
+        { id: 4, name: 'Carga DW', src: 'Master Tables', dest: 'Data Warehouse', status: 'ok', freq: 'Post-homologación', last: '14:40' },
+        { id: 5, name: 'Modelos IA', src: 'Data Warehouse', dest: 'Results DB', status: 'ok', freq: 'Cada 6h', last: '08:00' },
+      ];
+      return (
+        <div className="fade-in">
+          <SectionHeader title="Configuración de Pipeline"
+            subtitle="Etapas del flujo ETL y parámetros de ejecución"
+            action={<div style={{ display: 'flex', gap: 8 }}><Btn size="sm" variant="secondary" icon="settings">Configurar</Btn><Btn size="sm" icon="zap">Ejecutar pipeline</Btn></div>} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 0, marginBottom: 24, overflowX: 'auto', paddingBottom: 4 }}>
+            {stages.map((s, i) => (
+              <React.Fragment key={s.id}>
+                <Card p="14px 16px" style={{ minWidth: 160, flexShrink: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <span style={{ fontSize: 10, color: t.textMuted, fontWeight: 600 }}>PASO {s.id}</span>
+                    <StatusDot status={s.status} />
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: t.text }}>{s.name}</div>
+                  <div style={{ fontSize: 10, color: t.textMuted, marginTop: 4 }}>{s.src}</div>
+                  <div style={{ fontSize: 10, color: t.accent, marginTop: 2, fontWeight: 500 }}>→ {s.dest}</div>
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${t.divider}`, fontSize: 10, color: t.textLight }}>{s.freq} · {s.last}</div>
+                </Card>
+                {i < stages.length - 1 && (
+                  <div style={{ width: 32, height: 2, background: t.accent, flexShrink: 0, position: 'relative' }}>
+                    <div style={{ position: 'absolute', right: -4, top: -4, width: 10, height: 10, background: t.accent, clipPath: 'polygon(0 0, 100% 50%, 0 100%)' }} />
+                  </div>
+                )}
+              </React.Fragment>
+            ))}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <Card>
+              <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 14 }}>Parámetros Globales</div>
+              {[['Frecuencia base', 'Cada 4 horas'], ['Timeout por etapa', '15 minutos'], ['Reintentos automáticos', '3'], ['Notificaciones', 'Email + Portal'], ['Modo producción', 'Activo'], ['Ventana de mantenimiento', '02:00–03:00']].map(([k, v]) => (
+                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${t.divider}`, fontSize: 12 }}>
+                  <span style={{ color: t.textMuted }}>{k}</span><span style={{ fontWeight: 600, color: t.text }}>{v}</span>
+                </div>
+              ))}
+            </Card>
+            <Card>
+              <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginBottom: 14 }}>Estado actual</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {stages.map(s => (
+                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <StatusDot status={s.status} />
+                    <span style={{ fontSize: 12, fontWeight: 600, color: t.text, flex: 1 }}>{s.name}</span>
+                    <span style={{ fontSize: 11, color: t.textMuted }}>{s.last}</span>
+                    <Badge status={s.status} />
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+        </div>
+      );
+    };
+
+    /* ─────────────────── SALUD ─────────────────── */
+    const Salud = () => {
+      const t = useTheme();
+      return (
+        <div className="fade-in">
+          <SectionHeader title="Salud del Sistema" subtitle="Estado en tiempo real de componentes críticos"
+            action={<Btn size="sm" variant="secondary" icon="refresh">Actualizar</Btn>} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 14 }}>
+            {MOCK.health.map(h => (
+              <Card key={h.key}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: h.status === 'ok' ? t.okLight : h.status === 'warning' ? t.warnLight : t.errLight, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Icon name={h.key === 'db' ? 'db' : h.key === 'etl' ? 'refresh' : 'cpu'} size={16} color={h.status === 'ok' ? t.ok : h.status === 'warning' ? t.warn : t.err} sw={2} />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: t.text }}>{h.name}</div>
+                      <div style={{ fontSize: 11, color: t.textMuted }}>{h.detail}</div>
+                    </div>
+                  </div>
+                  <Badge status={h.status} />
+                </div>
+                <div style={{ display: 'flex', gap: 16 }}>
+                  <div style={{ flex: 1, background: t.accentLight, borderRadius: 8, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 10, color: t.textMuted }}>Último chequeo</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: t.text, marginTop: 2 }}>{h.check}</div>
+                  </div>
+                  <div style={{ flex: 1, background: t.accentLight, borderRadius: 8, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 10, color: t.textMuted }}>Estado</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: h.status === 'ok' ? t.ok : h.status === 'warning' ? t.warn : t.err, marginTop: 2, textTransform: 'capitalize' }}>{h.status}</div>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      );
+    };
+
+    Object.assign(window, { Geografia, Homologacion, ETLAudit, Reglas, Personal, ModelosIA, Pipeline, Salud });
+
+  </script>
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+      "theme": "verdeGlass",
+      "portalMode": "analyst",
+      "sidebarCollapsed": false
+    }/*EDITMODE-END*/;
+
+    const SCREENS_ANALYST = {
+      dashboard: Dashboard, geografia: Geografia, homologacion: Homologacion,
+      pipeline: Pipeline, etl: ETLAudit, reglas: Reglas,
+      personal: Personal, ia: ModelosIA, salud: Salud,
+    };
+    const SCREENS_EXEC = {
+      executive: ExecutivePortal, ia: ModelosIA, geografia: Geografia, salud: Salud,
+    };
+
+    // ── CP Logo ────────────────────────────────────────────────
+    const CPLogo = ({ scale = 1, dark = false }) => {
+      const textColor = dark ? '#ffffff' : '#1a2e1e';
+      const sepColor = dark ? 'rgba(255,255,255,0.25)' : '#c8d4c8';
+      const rays = [
+        { angle: -54, len: 17, color: '#1a8c38', w: 3.2 }, { angle: -36, len: 19, color: '#4cb828', w: 3.2 },
+        { angle: -18, len: 21, color: '#8cc820', w: 3.2 }, { angle: 0, len: 22, color: '#f5d00a', w: 3.2 },
+        { angle: 18, len: 21, color: '#f5a020', w: 3.2 }, { angle: 36, len: 19, color: '#f07020', w: 3.2 },
+        { angle: 54, len: 17, color: '#e84818', w: 3.2 },
+      ];
+      return (
+        <svg width={200 * scale} height={52 * scale} viewBox="0 0 200 52">
+          <g transform="translate(26,46)">
+            {rays.map((r, i) => {
+              const rad = (r.angle - 90) * Math.PI / 180;
+              return <line key={i} x1={0} y1={0} x2={(Math.cos(rad) * r.len).toFixed(2)} y2={(Math.sin(rad) * r.len).toFixed(2)}
+                stroke={r.color} strokeWidth={r.w} strokeLinecap="round" />;
+            })}
+          </g>
+          <text x={55} y={40} fontSize={32} fontWeight="800" fill={textColor}
+            fontFamily="Plus Jakarta Sans,sans-serif" letterSpacing="-1">CP</text>
+          <line x1={104} y1={9} x2={104} y2={44} stroke={sepColor} strokeWidth={1.2} />
+          <text x={113} y={26} fontSize={13} fontWeight="700" fill={textColor}
+            fontFamily="Plus Jakarta Sans,sans-serif" letterSpacing="0.8">CERRO</text>
+          <text x={113} y={42} fontSize={13} fontWeight="700" fill={textColor}
+            fontFamily="Plus Jakarta Sans,sans-serif" letterSpacing="0.8">PRIETO</text>
+        </svg>
+      );
+    };
+
+    // ── Login Screen ───────────────────────────────────────────
+    const LoginScreen = ({ onLogin, theme: t }) => {
+      const [user, setUser] = useState('');
+      const [pass, setPass] = useState('');
+      const [showPass, setShowPass] = useState(false);
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+      const [focusUser, setFocusUser] = useState(false);
+      const [focusPass, setFocusPass] = useState(false);
+
+      const handleLogin = e => {
+        e.preventDefault();
+        if (!user || !pass) { setError('Por favor ingresa usuario y contraseña.'); return; }
+        setError(''); setLoading(true);
+        setTimeout(() => { setLoading(false); onLogin(); }, 1200);
+      };
+
+      const inp = focused => ({
+        width: '100%', padding: '12px 14px 12px 42px',
+        border: `1.5px solid ${focused ? t.accent : t.cardBorder}`, borderRadius: 10,
+        background: focused ? t.accentLight + '44' : t.card, color: t.text, fontSize: 14, outline: 'none',
+        backdropFilter: t.blur, WebkitBackdropFilter: t.blur, transition: 'border-color .18s,background .18s',
+        boxShadow: focused ? `0 0 0 3px ${t.accent}18` : 'none',
+      });
+
+      return (
+        <div style={{
+          position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: t.bodyBg, overflow: 'hidden'
+        }}>
+          <div style={{ position: 'fixed', inset: 0, backgroundImage: t.orbs, pointerEvents: 'none' }} />
+          <div style={{
+            position: 'fixed', top: '-20%', right: '-15%', width: 600, height: 600, borderRadius: '50%',
+            background: `radial-gradient(circle, ${t.accent}08 0%, transparent 70%)`, pointerEvents: 'none'
+          }} />
+          <div style={{
+            position: 'fixed', bottom: '-15%', left: '-10%', width: 500, height: 500, borderRadius: '50%',
+            background: `radial-gradient(circle, ${t.accent}06 0%, transparent 70%)`, pointerEvents: 'none'
+          }} />
+          <div className="fade-in" style={{ width: 420, position: 'relative', zIndex: 1 }}>
+            <div style={{
+              background: t.card, border: `1px solid ${t.cardBorder}`,
+              backdropFilter: t.blur, WebkitBackdropFilter: t.blur,
+              borderRadius: 20, boxShadow: t.shadowHov, padding: '44px 40px 36px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 32 }}>
+                <CPLogo scale={1} dark={t.id === 'ejecutivoDark'} />
+              </div>
+              <div style={{ textAlign: 'center', marginBottom: 28 }}>
+                <h1 style={{ fontSize: 22, fontWeight: 800, color: t.text, letterSpacing: '-0.4px', marginBottom: 6 }}>Bienvenido al Portal MDM</h1>
+                <p style={{ fontSize: 13, color: t.textMuted }}>Accede con tus credenciales corporativas</p>
+              </div>
+              <form onSubmit={handleLogin}>
+                <div style={{ position: 'relative', marginBottom: 14 }}>
+                  <div style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                    <Icon name="users" size={16} color={focusUser ? t.accent : t.textLight} sw={2} />
+                  </div>
+                  <input type="text" placeholder="Usuario corporativo" value={user}
+                    onChange={e => setUser(e.target.value)} onFocus={() => setFocusUser(true)} onBlur={() => setFocusUser(false)}
+                    style={inp(focusUser)} autoComplete="username" />
+                </div>
+                <div style={{ position: 'relative', marginBottom: 22 }}>
+                  <div style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}>
+                    <Icon name="shield" size={16} color={focusPass ? t.accent : t.textLight} sw={2} />
+                  </div>
+                  <input type={showPass ? 'text' : 'password'} placeholder="Contraseña" value={pass}
+                    onChange={e => setPass(e.target.value)} onFocus={() => setFocusPass(true)} onBlur={() => setFocusPass(false)}
+                    style={inp(focusPass)} autoComplete="current-password" />
+                  <button type="button" onClick={() => setShowPass(!showPass)}
+                    style={{
+                      position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+                      border: 'none', background: 'transparent', cursor: 'pointer', padding: 0, display: 'flex'
+                    }}>
+                    <Icon name="eye" size={15} color={t.textLight} />
+                  </button>
+                </div>
+                {error && (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 7, padding: '8px 12px',
+                    background: t.errLight, borderRadius: 8, marginBottom: 14, fontSize: 12, color: t.err
+                  }}>
+                    <Icon name="alertC" size={14} color={t.err} sw={2} />{error}
+                  </div>
+                )}
+                <button type="submit" disabled={loading}
+                  style={{
+                    width: '100%', padding: '13px', borderRadius: 10, border: 'none',
+                    background: loading ? t.accentLight : t.btnPrimary,
+                    color: loading ? t.accentText : t.btnPrimaryText,
+                    fontSize: 14, fontWeight: 700, cursor: loading ? 'default' : 'pointer',
+                    transition: 'all .18s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    boxShadow: loading ? 'none' : `0 4px 16px ${t.accent}40`
+                  }}>
+                  {loading ? (<>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={t.accentText}
+                      strokeWidth="2.5" strokeLinecap="round" style={{ animation: 'spin .8s linear infinite' }}>
+                      <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+                    </svg>Autenticando...
+                  </>) : (<><Icon name="zap" size={15} color={t.btnPrimaryText} sw={2.2} />Iniciar sesión</>)}
+                </button>
+              </form>
+              <div style={{ marginTop: 20, padding: '10px 14px', background: t.accentLight, borderRadius: 8, textAlign: 'center' }}>
+                <span style={{ fontSize: 11, color: t.textMuted }}>Demo: cualquier usuario y contraseña · </span>
+                <button onClick={() => { setUser('cmendoza'); setPass('Acp2026!'); }}
+                  style={{ fontSize: 11, color: t.accentText, fontWeight: 600, border: 'none', background: 'transparent', cursor: 'pointer', textDecoration: 'underline' }}>
+                  autocompletar
+                </button>
+              </div>
+            </div>
+            <div style={{ textAlign: 'center', marginTop: 20, fontSize: 11, color: t.textMuted }}>
+              Cerro Prieto ACP · Portal MDM v2.2 · 2026
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // ── Tweaks Panel ───────────────────────────────────────────
+    const TweaksPanel = ({ tweaks, setTweaks, visible }) => {
+      const t = useTheme();
+      if (!visible) return null;
+      const set = (key, val) => {
+        const next = { ...tweaks, [key]: val };
+        setTweaks(next);
+        window.parent.postMessage({ type: '__edit_mode_set_keys', edits: next }, '*');
+      };
+      const Row = ({ label, children }) => (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: t.textMuted, textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 7 }}>{label}</div>
+          {children}
+        </div>
+      );
+      return (
+        <div style={{
+          position: 'fixed', bottom: 20, right: 20, width: 230, zIndex: 1000,
+          background: t.topbar, border: `1px solid ${t.cardBorder}`,
+          backdropFilter: t.blur, WebkitBackdropFilter: t.blur,
+          borderRadius: 14, boxShadow: t.shadowHov, padding: '16px 16px 12px'
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: t.text, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Icon name="settings" size={13} color={t.accent} sw={2.2} />Tweaks
+          </div>
+          <Row label="Tema">
+            {Object.values(THEMES).map(th => (
+              <button key={th.id} onClick={() => set('theme', th.id)}
+                style={{
+                  width: '100%', marginBottom: 5, padding: '6px 10px', borderRadius: 8,
+                  border: `1.5px solid ${tweaks.theme === th.id ? t.accent : t.divider}`,
+                  background: tweaks.theme === th.id ? t.accentLight : 'transparent',
+                  color: tweaks.theme === th.id ? t.accentText : t.textMuted,
+                  fontSize: 11, fontWeight: 600, cursor: 'pointer', textAlign: 'left',
+                  display: 'flex', alignItems: 'center', gap: 7, transition: 'all .15s'
+                }}>
+                <span style={{ width: 9, height: 9, borderRadius: '50%', background: th.accent, display: 'inline-block', flexShrink: 0 }} />
+                {th.name}
+              </button>
+            ))}
+          </Row>
+          <Row label="Portal">
+            <div style={{ display: 'flex', gap: 6 }}>
+              {[['analyst', 'Analista'], ['executive', 'Ejecutivo']].map(([id, label]) => (
+                <button key={id} onClick={() => set('portalMode', id)}
+                  style={{
+                    flex: 1, padding: '6px 0', borderRadius: 8,
+                    border: `1.5px solid ${tweaks.portalMode === id ? t.accent : t.divider}`,
+                    background: tweaks.portalMode === id ? t.accentLight : 'transparent',
+                    color: tweaks.portalMode === id ? t.accentText : t.textMuted,
+                    fontSize: 11, fontWeight: 600, cursor: 'pointer', transition: 'all .15s'
+                  }}>{label}</button>
+              ))}
+            </div>
+          </Row>
+          <Row label="Sidebar">
+            <div style={{ display: 'flex', gap: 6 }}>
+              {[[false, 'Expandido'], [true, 'Compacto']].map(([val, label]) => (
+                <button key={label} onClick={() => set('sidebarCollapsed', val)}
+                  style={{
+                    flex: 1, padding: '6px 0', borderRadius: 8,
+                    border: `1.5px solid ${tweaks.sidebarCollapsed === val ? t.accent : t.divider}`,
+                    background: tweaks.sidebarCollapsed === val ? t.accentLight : 'transparent',
+                    color: tweaks.sidebarCollapsed === val ? t.accentText : t.textMuted,
+                    fontSize: 11, fontWeight: 600, cursor: 'pointer', transition: 'all .15s'
+                  }}>{label}</button>
+              ))}
+            </div>
+          </Row>
+        </div>
+      );
+    };
+
+    // ── App Root ───────────────────────────────────────────────
+    const App = () => {
+      const saved = (() => { try { return JSON.parse(localStorage.getItem('mdm_state2') || '{}'); } catch { return {}; } })();
+      const [tweaks, setTweaks] = useState({ ...TWEAK_DEFAULTS, ...saved.tweaks });
+      const [active, setActive] = useState(saved.active || 'dashboard');
+      const [tweaksVis, setTweaksVis] = useState(false);
+      const [loggedIn, setLoggedIn] = useState(!!saved.loggedIn);
+
+      const theme = THEMES[tweaks.theme] || THEMES.verdeGlass;
+      const isExec = tweaks.portalMode === 'executive';
+      const SCREENS = isExec ? SCREENS_EXEC : SCREENS_ANALYST;
+
+      useEffect(() => {
+        localStorage.setItem('mdm_state2', JSON.stringify({ active, tweaks, loggedIn }));
+      }, [active, tweaks, loggedIn]);
+
+      useEffect(() => {
+        const handler = e => {
+          if (e.data?.type === '__activate_edit_mode') setTweaksVis(true);
+          if (e.data?.type === '__deactivate_edit_mode') setTweaksVis(false);
+        };
+        window.addEventListener('message', handler);
+        window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+        return () => window.removeEventListener('message', handler);
+      }, []);
+
+      // Fix active screen when switching portal mode
+      useEffect(() => {
+        if (isExec && !SCREENS_EXEC[active]) setActive('executive');
+        if (!isExec && !SCREENS_ANALYST[active]) setActive('dashboard');
+      }, [tweaks.portalMode]);
+
+      const logout = () => { setLoggedIn(false); localStorage.removeItem('mdm_state2'); };
+
+      if (!loggedIn) {
+        return (
+          <ThemeCtx.Provider value={theme}>
+            <LoginScreen theme={theme} onLogin={() => setLoggedIn(true)} />
+          </ThemeCtx.Provider>
+        );
+      }
+
+      const Screen = SCREENS[active] || (isExec ? ExecutivePortal : Dashboard);
+
+      return (
+        <ThemeCtx.Provider value={theme}>
+          <FiltersProvider>
+            <div style={{ position: 'fixed', inset: 0, background: theme.bodyBg, zIndex: -2 }} />
+            <div style={{ position: 'fixed', inset: 0, backgroundImage: theme.orbs, zIndex: -1, pointerEvents: 'none' }} />
+            <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+              <Sidebar active={active} setActive={setActive}
+                collapsed={tweaks.sidebarCollapsed} portalMode={tweaks.portalMode}
+                setCollapsed={v => { const n = { ...tweaks, sidebarCollapsed: v }; setTweaks(n); window.parent.postMessage({ type: '__edit_mode_set_keys', edits: n }, '*'); }} />
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+                <TopBar active={active} notifs={3} portalMode={tweaks.portalMode} onLogout={logout} />
+                <main style={{ flex: 1, overflowY: 'auto', padding: '24px', minHeight: 0 }}>
+                  <Screen key={active} />
+                </main>
+              </div>
+            </div>
+            <TweaksPanel tweaks={tweaks} setTweaks={setTweaks} visible={tweaksVis} />
+          </FiltersProvider>
+        </ThemeCtx.Provider>
+      );
+    };
+
+    function mountApp() {
+      const el = document.getElementById('root');
+      if (!el) { setTimeout(mountApp, 20); return; }
+      ReactDOM.createRoot(el).render(<App />);
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', mountApp);
+    } else {
+      mountApp();
+    }
+
+  </script>
+</body>
+
+</html>
