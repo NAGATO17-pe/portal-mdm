@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { CheckCircle2, FileSearch2, ShieldAlert, Target } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { KpiCard } from "@/components/charts/kpi-card";
@@ -16,6 +17,8 @@ import {
   QualityRadarChart,
   QualityTrendChart,
 } from "./quality-charts";
+
+export const metadata: Metadata = { title: "Calidad de datos" };
 
 export default function QualityPage() {
   const k = QUALITY_KPIS;

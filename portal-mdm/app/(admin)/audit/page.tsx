@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import {
   Check,
   FilePlus,
@@ -42,6 +43,8 @@ const TONES: Record<AuditAction, string> = {
   eliminacion: "text-[var(--color-destructive)] bg-[color-mix(in_oklab,var(--color-destructive)_18%,transparent)]",
   login: "text-[var(--color-text-muted)] bg-[var(--color-surface-2)]",
 };
+
+export const metadata: Metadata = { title: "Auditoría" };
 
 export default function AuditPage() {
   return (

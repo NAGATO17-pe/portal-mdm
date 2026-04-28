@@ -16,9 +16,13 @@ const jetBrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Portal MDM — ACP",
+  title: {
+    template: "%s — Portal MDM ACP",
+    default: "Portal MDM — ACP",
+  },
   description:
-    "Master Data Management portal for analysts, MDM administrators, and executives.",
+    "Portal de gestión de datos maestros (MDM) para analistas, administradores y ejecutivos de ACP.",
+  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({
@@ -33,6 +37,13 @@ export default function RootLayout({
       className={`${inter.variable} ${jetBrainsMono.variable} h-full antialiased`}
     >
       <body className="bg-bg text-text min-h-full font-sans">
+        {/* Skip navigation link — visible on focus for keyboard users */}
+        <a
+          href="#main-content"
+          className="bg-[var(--color-primary)] text-[var(--color-primary-foreground)] fixed left-2 top-2 z-[9999] -translate-y-20 rounded-md px-4 py-2 text-sm font-medium transition-transform focus:translate-y-0"
+        >
+          Saltar al contenido principal
+        </a>
         <QueryProvider>{children}</QueryProvider>
       </body>
     </html>

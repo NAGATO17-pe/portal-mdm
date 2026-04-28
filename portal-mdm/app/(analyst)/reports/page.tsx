@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Download, FileText } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,8 @@ const REPORTS = [
     formats: ["PDF", "Excel"],
   },
 ];
+
+export const metadata: Metadata = { title: "Reportes" };
 
 export default function ReportsPage() {
   return (

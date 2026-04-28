@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ChevronRight, FlaskConical, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
@@ -24,6 +25,8 @@ const STATUS_VARIANT: Record<
   staging: "warning",
   archivado: "default",
 };
+
+export const metadata: Metadata = { title: "Modelos predictivos" };
 
 export default function ModelsListPage() {
   return (

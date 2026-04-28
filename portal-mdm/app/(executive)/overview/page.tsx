@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import {
   Award,
   CheckCircle2,
@@ -19,6 +20,8 @@ import {
   ExecutiveByEntityChart,
   ExecutiveTrendChart,
 } from "./overview-charts";
+
+export const metadata: Metadata = { title: "Overview ejecutivo" };
 
 export default function OverviewPage() {
   const k = QUALITY_KPIS;

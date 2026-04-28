@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Check, Clock, GitPullRequestArrow, X } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -91,6 +92,8 @@ function Stepper({ status }: { status: WorkflowStatus }) {
     </ol>
   );
 }
+
+export const metadata: Metadata = { title: "Workflows de aprobación" };
 
 export default function WorkflowsPage() {
   const pending = WORKFLOWS.filter(

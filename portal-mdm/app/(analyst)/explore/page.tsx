@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Compass, Database, FileText, FlaskConical } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
@@ -24,6 +25,8 @@ const SHORTCUTS = [
     icon: FileText,
   },
 ];
+
+export const metadata: Metadata = { title: "Exploración de datos" };
 
 export default function ExplorePage() {
   return (
